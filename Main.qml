@@ -3,8 +3,8 @@ import QtQuick
 Window {
     id: appWindow
 
-    width: 720
-    height: 480
+    width: 1024
+    height: 768
     minimumWidth: 200
     minimumHeight: 250
 

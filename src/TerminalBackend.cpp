@@ -215,7 +215,8 @@ void TerminalBackend::resize(int cols, int rows)
     m_cols = cols;
     m_rows = rows;
     if (m_terminal) {
-        m_terminal->resize(cols, rows);
+        // Terminal/Screen take (rows, cols); the PTY takes (cols, rows).
+        m_terminal->resize(rows, cols);
     }
     if (m_pty) {
         m_pty->resize(cols, rows);

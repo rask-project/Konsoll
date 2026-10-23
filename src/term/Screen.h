@@ -78,7 +78,9 @@ private:
     void scrollUpOne(int top, int bottom);
     void scrollDownOne(int top, int bottom);
     void blankLine(int row);
-    void pushScrollback(const Line &line);
+    void pushScrollback(const Line &line, bool wrapped);
+    void lineFeedImpl(bool soft);
+    void reflow();
     std::vector<Line> &grid() { return m_inAlt ? m_alt : m_main; }
     const std::vector<Line> &grid() const { return m_inAlt ? m_alt : m_main; }
 
@@ -88,6 +90,13 @@ private:
     std::vector<Line> m_alt;
     std::vector<Line> m_mainSaved;
     std::deque<Line> m_scrollback;
+    // Reflow bookkeeping: `wrapped[i]` marks a physical line that is a soft
+    // continuation of the line above it (right-margin wrap, not an explicit
+    // CR/LF). Kept parallel to the grid rows and the scrollback so a resize
+    // can re-wrap logical lines to the new width.
+    std::vector<bool> m_mainWrapped;
+    std::deque<bool> m_scrollbackWrapped;
+    std::vector<bool> m_mainSavedWrapped;
     int m_rows;
     int m_cols;
     int m_cursorRow = 0;

@@ -9,8 +9,8 @@ Item {
     readonly property int fontSize: 15
     readonly property real cellWidth: 9
     readonly property real cellHeight: 18
-    readonly property int cols: Math.max(2, Math.floor(width / cellWidth))
-    readonly property int rows: Math.max(2, Math.floor(height / cellHeight))
+    readonly property int cols: Math.max(2, Math.floor(canvas.width / cellWidth))
+    readonly property int rows: Math.max(2, Math.floor(canvas.height / cellHeight))
 
     onColsChanged: Backend.resize(cols, rows)
     onRowsChanged: Backend.resize(cols, rows)
