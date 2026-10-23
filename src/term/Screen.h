@@ -66,6 +66,22 @@ public:
     const Line &scrollbackLine(int index) const; // 0 = oldest
     void clearScrollback();
 
+    // Scrollback limit: 0 = unlimited, > 0 = max lines.
+    void setMaxScrollback(int max);
+    int maxScrollback() const { return m_maxScrollback; }
+
+    // Scroll view: `scrollOffset` is the number of lines the view is scrolled
+    // up from the bottom (0 = at the bottom). `lineAt` addresses the whole
+    // history (scrollback + screen) by absolute index, 0 = oldest.
+    int totalLines() const;
+    int maxScrollOffset() const;
+    void scrollBy(int delta);
+    void scrollTo(int offset);
+    void scrollToBottom();
+    int scrollOffset() const { return m_scrollOffset; }
+    bool atBottom() const { return m_scrollOffset == 0; }
+    const Line &lineAt(int index) const;
+
     // Alternate screen.
     void enterAltScreen();
     void leaveAltScreen();
@@ -105,10 +121,11 @@ private:
     int m_savedCol = 0;
     int m_scrollTop = 0;    // 0-based inclusive
     int m_scrollBottom = 0; // 0-based inclusive
+    int m_maxScrollback = 0; // 0 = unlimited
+    int m_scrollOffset = 0; // 0 = at the bottom
     bool m_cursorVisible = true;
     bool m_inAlt = false;
     bool m_pendingWrap = false;
-    static constexpr int kMaxScrollback = 1000;
 };
 
 } // namespace konsoll

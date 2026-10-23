@@ -135,7 +135,8 @@ const Cell &Screen::cellAt(int row, int col) const
     return grid()[row][col];
 }
 
-void Screen::putChar(QChar ch, unsigned int fg, unsigned int bg, unsigned char flags) // NOLINT: fg/bg are inherently swappable
+void Screen::putChar(QChar ch, unsigned int fg, unsigned int bg, unsigned char flags) // NOLINT: fg/bg are inherently
+                                                                                      // swappable
 {
     if (m_pendingWrap) {
         m_cursorCol = 0;
@@ -337,6 +338,7 @@ void Screen::clearScrollback()
 {
     m_scrollback.clear();
     m_scrollbackWrapped.clear();
+    m_scrollOffset = 0;
 }
 
 void Screen::enterAltScreen()
@@ -420,10 +422,74 @@ void Screen::pushScrollback(const Line &line, bool wrapped)
 {
     m_scrollback.push_back(line);
     m_scrollbackWrapped.push_back(wrapped);
-    while (static_cast<int>(m_scrollback.size()) > kMaxScrollback) {
+    // A new line lands at the bottom: if the view is scrolled up, keep it on
+    // the same absolute line (the offset grows with the bottom).
+    if (m_scrollOffset > 0) {
+        ++m_scrollOffset;
+    }
+
+    // Cap only when a limit is set (0 = unlimited).
+    while (m_maxScrollback > 0 && static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
         m_scrollback.pop_front();
         m_scrollbackWrapped.pop_front();
+        // Popping the oldest line shifts the view down by one; keep it on the
+        // same absolute line.
+        if (m_scrollOffset > 0) {
+            --m_scrollOffset;
+        }
     }
+}
+
+void Screen::setMaxScrollback(int max)
+{
+    m_maxScrollback = std::max(0, max);
+    // Trim if the new limit is smaller than the current scrollback.
+    while (m_maxScrollback > 0 && static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
+        m_scrollback.pop_front();
+        m_scrollbackWrapped.pop_front();
+        if (m_scrollOffset > 0) {
+            --m_scrollOffset;
+        }
+    }
+}
+
+int Screen::totalLines() const
+{
+    return static_cast<int>(m_scrollback.size()) + m_rows;
+}
+
+int Screen::maxScrollOffset() const
+{
+    return static_cast<int>(m_scrollback.size());
+}
+
+void Screen::scrollBy(int delta)
+{
+    m_scrollOffset = std::clamp(m_scrollOffset + delta, 0, maxScrollOffset());
+}
+
+void Screen::scrollTo(int offset)
+{
+    m_scrollOffset = std::clamp(offset, 0, maxScrollOffset());
+}
+
+void Screen::scrollToBottom()
+{
+    m_scrollOffset = 0;
+}
+
+const Line &Screen::lineAt(int index) const
+{
+    static const Line kEmpty;
+    if (index < 0 || index >= totalLines()) {
+        return kEmpty;
+    }
+    if (index < static_cast<int>(m_scrollback.size())) {
+        auto it = m_scrollback.begin();
+        std::advance(it, index);
+        return *it;
+    }
+    return m_main[index - static_cast<int>(m_scrollback.size())];
 }
 
 void Screen::reflow()
@@ -450,7 +516,7 @@ void Screen::reflow()
     //    (they separate words), so only the end of the whole logical line is
     //    padding.
     std::vector<std::vector<Cell>> logical;
-    auto trimEnd = [](std::vector<Cell> &line) {
+    auto const trimEnd = [](std::vector<Cell> &line) {
         while (!line.empty() && line.back().ch == ' ') {
             line.pop_back();
         }
@@ -500,7 +566,9 @@ void Screen::reflow()
     }
     // 4. Redistribute: last `rows` lines -> screen, the rest -> scrollback.
     const size_t total = newPhys.size();
-    const size_t maxTotal = static_cast<size_t>(m_rows) + kMaxScrollback;
+    // Cap only when a limit is set (0 = unlimited).
+    const size_t maxTotal =
+        m_maxScrollback > 0 ? static_cast<size_t>(m_rows) + static_cast<size_t>(m_maxScrollback) : total;
     const size_t keepFrom = total > maxTotal ? total - maxTotal : 0;
     const size_t screenStart = total > static_cast<size_t>(m_rows) ? total - static_cast<size_t>(m_rows) : 0;
     m_scrollback.clear();
@@ -519,10 +587,12 @@ void Screen::reflow()
             m_mainWrapped[r] = false;
         }
     }
-    // 5. Cursor: bottom row, column clamped.
+    // 5. Cursor: bottom row, column clamped. The re-wrapped history is
+    //    re-anchored at the bottom.
     m_cursorRow = m_rows - 1;
     m_cursorCol = std::min(m_cursorCol, m_cols - 1);
     m_pendingWrap = false;
+    m_scrollOffset = 0;
 }
 
 } // namespace konsoll

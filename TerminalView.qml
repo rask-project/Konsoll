@@ -1,5 +1,6 @@
 import QtQuick
 import QtCanvas2D
+import QtQuick.Controls.Basic
 
 Item {
     id: view
@@ -12,12 +13,34 @@ Item {
     readonly property int cols: Math.max(2, Math.floor(canvas.width / cellWidth))
     readonly property int rows: Math.max(2, Math.floor(canvas.height / cellHeight))
 
+    // Accumulates wheel/trackpad deltas so a few small deltas add up to a whole
+    // line. 40 units = 1 line (a mouse notch is 120 units, so 1 notch = 3 lines).
+    property real scrollAccumulator: 0
+
+    // Whole history (scrollback + visible screen) for the scrollbar mapping.
+    readonly property int totalLines: Backend.maxScrollOffset + Backend.rows
+
     onColsChanged: Backend.resize(cols, rows)
     onRowsChanged: Backend.resize(cols, rows)
 
     Keys.onPressed: event => {
         Backend.keyPress(event.key, event.text, event.modifiers);
         event.accepted = true;
+    }
+
+    WheelHandler {
+        onWheel: event => {
+            const dy = event.angleDelta.y; // positive = up, negative = down
+            if (dy !== 0) {
+                view.scrollAccumulator += dy;
+                const step = Math.trunc(view.scrollAccumulator / 40);
+                if (step !== 0) {
+                    Backend.scrollBy(step);
+                    view.scrollAccumulator -= step * 40;
+                }
+            }
+            event.accepted = true;
+        }
     }
 
     function drawRun(ctx, text, startCol, y, fg, flags) {
@@ -88,10 +111,36 @@ Item {
                 view.drawRun(ctx, buf, start, y, fg, flags);
             }
 
-            if (Backend.cursorVisible()) {
+            // The cursor is at the live position (bottom of the main screen),
+            // which is out of view when scrolled up.
+            if (Backend.cursorVisible() && Backend.scrollOffset === 0) {
                 ctx.fillStyle = Qt.rgba(0.88, 0.88, 0.88, 1);
                 ctx.fillRect(Backend.cursorCol() * cw, Backend.cursorRow() * ch, cw, ch);
             }
+        }
+    }
+
+    // Thin scrollbar on the right edge, matching the canvas vertically.
+    // size = visible fraction of the history; position is driven imperatively
+    // from the scroll offset (see onScrollOffsetChanged below) so 0 = oldest
+    // line and 1 - size = the live cursor at the bottom. The style keeps it
+    // thin and fatter on hover; it only shows when there is scrollback.
+    ScrollBar {
+        id: scrollBar
+
+        visible: Backend.maxScrollOffset > 0
+
+        anchors.right: parent.right
+        anchors.top: canvas.top
+        anchors.bottom: canvas.bottom
+        size: Backend.rows / view.totalLines
+
+        orientation: Qt.Vertical
+        onPositionChanged: {
+            const offset = Backend.maxScrollOffset - position * view.totalLines;
+            const target = Math.max(0, Math.min(Backend.maxScrollOffset, Math.round(offset)));
+            if (target !== Backend.scrollOffset)
+                Backend.scrollTo(target);
         }
     }
 
@@ -100,6 +149,13 @@ Item {
 
         function onFrameReady() {
             canvas.requestPaint();
+        }
+
+        // Drive the scrollbar position from the view. Set imperatively (not
+        // bound) so onPositionChanged can't re-trigger itself through a
+        // re-evaluated binding.
+        function onScrollOffsetChanged() {
+            scrollBar.position = (Backend.maxScrollOffset - Backend.scrollOffset) / view.totalLines;
         }
     }
 }

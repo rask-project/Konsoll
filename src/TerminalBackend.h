@@ -22,6 +22,8 @@ class TerminalBackend : public QObject {
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
     Q_PROPERTY(int rows READ rows NOTIFY sizeChanged)
     Q_PROPERTY(int cols READ cols NOTIFY sizeChanged)
+    Q_PROPERTY(int scrollOffset READ scrollOffset NOTIFY scrollOffsetChanged)
+    Q_PROPERTY(int maxScrollOffset READ maxScrollOffset NOTIFY scrollOffsetChanged)
     Q_PROPERTY(unsigned int backgroundColor READ backgroundColor CONSTANT)
     Q_PROPERTY(unsigned int foregroundColor READ foregroundColor CONSTANT)
 
@@ -38,6 +40,13 @@ public:
     // Resize the terminal (cols x rows), driven by the QML view.
     Q_INVOKABLE void resize(int cols, int rows);
 
+    // Scroll the view up/down by `delta` lines (positive = up).
+    Q_INVOKABLE void scrollBy(int delta);
+    // Set the absolute scroll offset (lines up from the bottom; clamped).
+    Q_INVOKABLE void scrollTo(int offset);
+    // Jump to the bottom (newest content).
+    Q_INVOKABLE void scrollToBottom();
+
     // One-frame snapshot of the visible grid for the QML renderer.
     Q_INVOKABLE QVariantList snapshot() const;
     Q_INVOKABLE int cursorRow() const;
@@ -47,6 +56,8 @@ public:
     QString title() const { return m_title; }
     int rows() const { return m_rows; }
     int cols() const { return m_cols; }
+    int scrollOffset() const { return m_terminal ? m_terminal->screen().scrollOffset() : 0; }
+    int maxScrollOffset() const { return m_terminal ? m_terminal->screen().maxScrollOffset() : 0; }
     unsigned int backgroundColor() const { return m_defaultBg; }
     unsigned int foregroundColor() const { return m_defaultFg; }
 
@@ -55,6 +66,7 @@ signals:
     void titleChanged();
     void processExited(int code);
     void sizeChanged();
+    void scrollOffsetChanged();
     void quitRequested();
 
 private:
@@ -62,6 +74,7 @@ private:
     void onExited(int code);
     void onFrameTimer();
     void scheduleFrame();
+    void checkScrollOffsetChanged();
 
     static QString detectDefaultShell();
     static QRgb resolveColor(unsigned int encoded, int defaultColor);

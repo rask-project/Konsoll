@@ -91,6 +91,7 @@ void TerminalBackend::onData(const QByteArray &data)
         emit titleChanged();
         m_terminal->clearTitleDirty();
     }
+    checkScrollOffsetChanged();
     scheduleFrame();
 }
 
@@ -124,6 +125,11 @@ void TerminalBackend::keyPress(
     if (meta && key == static_cast<int>(Qt::Key_Q)) {
         emit quitRequested();
         return;
+    }
+
+    // Typing while scrolled up snaps the view back to the live cursor.
+    if (m_terminal && m_terminal->screen().scrollOffset() > 0) {
+        scrollToBottom();
     }
 
     QByteArray out;
@@ -222,7 +228,45 @@ void TerminalBackend::resize(int cols, int rows)
         m_pty->resize(cols, rows);
     }
     emit sizeChanged();
+    checkScrollOffsetChanged();
     scheduleFrame();
+}
+
+void TerminalBackend::scrollBy(int delta)
+{
+    if (!m_terminal) {
+        return;
+    }
+    m_terminal->screen().scrollBy(delta);
+    checkScrollOffsetChanged();
+    scheduleFrame();
+}
+
+void TerminalBackend::scrollTo(int offset)
+{
+    if (!m_terminal) {
+        return;
+    }
+    m_terminal->screen().scrollTo(offset);
+    checkScrollOffsetChanged();
+    scheduleFrame();
+}
+
+void TerminalBackend::scrollToBottom()
+{
+    if (!m_terminal) {
+        return;
+    }
+    m_terminal->screen().scrollToBottom();
+    checkScrollOffsetChanged();
+    scheduleFrame();
+}
+
+void TerminalBackend::checkScrollOffsetChanged()
+{
+    if (m_terminal) {
+        emit scrollOffsetChanged();
+    }
 }
 
 QVariantList TerminalBackend::snapshot() const
@@ -232,10 +276,16 @@ QVariantList TerminalBackend::snapshot() const
         return rowsOut;
     }
     const Screen &s = m_terminal->screen();
+    // The visible window is the last `rows` lines, shifted up by the scroll
+    // offset (0 = at the bottom).
+    const int total = s.totalLines();
+    const int start = total - s.rows() - s.scrollOffset();
+    static const Cell kBlank{};
     for (int r = 0; r < s.rows(); ++r) {
+        const Line &line = s.lineAt(start + r);
         QVariantList row;
         for (int c = 0; c < s.cols(); ++c) {
-            const Cell &cell = s.cellAt(r, c);
+            const Cell &cell = (c < static_cast<int>(line.size())) ? line[c] : kBlank;
             unsigned int fg = resolveColor(cell.fg, m_defaultFg);
             unsigned int bg = resolveColor(cell.bg, m_defaultBg);
 
