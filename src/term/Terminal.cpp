@@ -29,7 +29,7 @@ void Terminal::processByte(unsigned char c)
 {
     if (m_state == State::Ground && m_utf8Remaining != 0) {
         if (c >= 0x80 && c <= 0xbf) {
-            m_utf8CodePoint = (m_utf8CodePoint << 6) | (c & 0x3f);
+            m_utf8CodePoint = (m_utf8CodePoint << 6) | (c & 0x3fu);
             --m_utf8Remaining;
             if (m_utf8Remaining == 0) {
                 putCodePoint(m_utf8CodePoint < m_utf8Minimum ? 0xfffd : m_utf8CodePoint);
@@ -63,15 +63,15 @@ void Terminal::processByte(unsigned char c)
         } else if (c < 0x80) {
             m_screen.putChar(QChar::fromLatin1(static_cast<char>(c)), m_fg, m_bg, m_flags);
         } else if (c >= 0xc2 && c <= 0xdf) {
-            m_utf8CodePoint = c & 0x1f;
+            m_utf8CodePoint = c & 0x1fu;
             m_utf8Minimum = 0x80;
             m_utf8Remaining = 1;
         } else if (c >= 0xe0 && c <= 0xef) {
-            m_utf8CodePoint = c & 0x0f;
+            m_utf8CodePoint = c & 0x0fu;
             m_utf8Minimum = 0x800;
             m_utf8Remaining = 2;
         } else if (c >= 0xf0 && c <= 0xf4) {
-            m_utf8CodePoint = c & 0x07;
+            m_utf8CodePoint = c & 0x07u;
             m_utf8Minimum = 0x10000;
             m_utf8Remaining = 3;
         } else {
@@ -203,6 +203,9 @@ void Terminal::handleCsi(char final, bool privateMode)
         break;
     case 'J': // NOLINT: similar erase branches
         m_screen.eraseInDisplay(paramAt(p, 0, 0));
+        if (paramAt(p, 0, 0) == 2) {
+            m_clearPending = true; // full-screen erase: selection now sits over blanks.
+        }
         break;
     case 'K': // NOLINT: similar erase branches
         m_screen.eraseInLine(paramAt(p, 0, 0));

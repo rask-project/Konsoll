@@ -33,6 +33,11 @@ public:
     void clearDaPending() { m_daPending = false; }
     static QByteArray daResponse();
 
+    // Set when a full-screen erase (ESC[2J) is processed, so the backend can
+    // drop any selection that now sits over blank lines.
+    bool clearPending() const { return m_clearPending; }
+    void clearClearPending() { m_clearPending = false; }
+
 private:
     enum class State : std::uint8_t {
         Ground,
@@ -69,6 +74,7 @@ private:
     bool m_csiPrivate = false;
     bool m_titleDirty = false;
     bool m_daPending = false;
+    bool m_clearPending = false;
 };
 
 } // namespace konsoll

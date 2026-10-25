@@ -50,3 +50,19 @@ Guidance for AI agents working in this repository.
 - AppKit colors expect **0.0–1.0** components: use `QColor::redF()`/
   `greenF()`/`blueF()`, not `red()`/`green()`/`blue()` (which return 0–255
   ints and clamp to white).
+
+## Verifying QML changes
+
+- After editing any QML, **build and run offscreen** to confirm the QML
+  loads before reporting the change done:
+  `QT_QPA_PLATFORM=offscreen ./build/<config>/konsoll.app/Contents/MacOS/konsoll`.
+  Watch stderr for QML load errors — `Type ... unavailable`,
+  `Cannot assign to non-existent property "..."` — which mean a referenced
+  property/type does not exist on the C++ side.
+- The build already runs QML AOT (`qmlcache`), so a property that does not
+  exist on a `QML_ELEMENT` type also fails the build. A clean build plus a
+  clean offscreen run together confirm the QML is wired correctly.
+- Under offscreen the app **segfaults in `src/macs_translucent.mm`**
+  (AppKit translucency with no real `NSWindow`) — this is pre-existing and
+  unrelated to QML. A clean QML load (font/rendering messages, no QML error)
+  followed by that segfault is the expected, passing result.

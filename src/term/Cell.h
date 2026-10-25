@@ -5,16 +5,19 @@
 namespace konsoll
 {
 
-// Bitmask of per-cell style flags.
-enum CellFlag : unsigned char {
-    None = 0,
-    Bold = 1u << 0,
-    Dim = 1u << 1,
-    Underline = 1u << 2,
-    Strike = 1u << 3,
-    Reverse = 1u << 4,
-    Invisible = 1u << 5,
-};
+// Bitmask of per-cell style flags. Plain unsigned constants (not an enum):
+// a 1-byte enum promotes its values to signed int in |, &, ~ and trips
+// bugprone-signed-bitwise, while a wider enum base trips performance-enum-size.
+namespace CellFlag
+{
+inline constexpr unsigned int None = 0;
+inline constexpr unsigned int Bold = 1u << 0;
+inline constexpr unsigned int Dim = 1u << 1;
+inline constexpr unsigned int Underline = 1u << 2;
+inline constexpr unsigned int Strike = 1u << 3;
+inline constexpr unsigned int Reverse = 1u << 4;
+inline constexpr unsigned int Invisible = 1u << 5;
+}
 
 // Encoded color value stored per cell:
 //   0                       -> default (resolved at render time)
@@ -26,7 +29,7 @@ struct Cell {
     unsigned int fg = 0;
     unsigned int bg = 0;
     QChar ch = u' ';
-    unsigned char flags = None;
+    unsigned char flags = CellFlag::None;
 };
 
 } // namespace konsoll

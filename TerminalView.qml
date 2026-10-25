@@ -93,6 +93,18 @@ Item {
                         ctx.fillRect(c * cw, y, cw, ch);
                     }
                 }
+                // Selection highlight: drawn over cell backgrounds, under text.
+                // Per-row range (iTerm2-style): start line clipped at the press
+                // column, middle lines full, end line clipped at the release
+                // column. -1 means this row is not part of the selection.
+                if (Backend.selectionActive) {
+                    const l = Backend.selRowLeft(r);
+                    const rr = Backend.selRowRight(r);
+                    if (l >= 0 && rr >= l) {
+                        ctx.fillStyle = "rgba(70, 130, 180, 0.45)";
+                        ctx.fillRect(l * cw, y, (rr - l + 1) * cw, ch);
+                    }
+                }
                 let buf = "";
                 let start = 0;
                 let fg = data[rowBase]["fg"];
@@ -117,6 +129,74 @@ Item {
                 ctx.fillStyle = Qt.rgba(0.88, 0.88, 0.88, 1);
                 ctx.fillRect(Backend.cursorCol() * cw, Backend.cursorRow() * ch, cw, ch);
             }
+        }
+    }
+
+    // Mouse selection: press starts, drag extends, a click (no drag) clears,
+    // double-click selects the word. Declared before the ScrollBar so the bar
+    // stays on top in its right-edge strip.
+    MouseArea {
+        id: selectionArea
+
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+        anchors.top: canvas.top
+        anchors.left: canvas.left
+        anchors.right: canvas.right
+        anchors.bottom: canvas.bottom
+
+        function cellAt(x, y) {
+            const col = Math.max(0, Math.min(view.cols - 1, Math.floor(x / view.cellWidth)));
+            const row = Math.max(0, Math.min(view.rows - 1, Math.floor(y / view.cellHeight)));
+            return [col, row];
+        }
+
+        onPressed: mouse => {
+            if (mouse.button === Qt.LeftButton) {
+                const cell = selectionArea.cellAt(mouse.x, mouse.y);
+                Backend.selPress(cell[1], cell[0]);
+            } else if (mouse.button === Qt.RightButton) {
+                const p = selectionArea.mapToGlobal(mouse.x, mouse.y);
+                contextMenu.popup(p.x, p.y);
+            }
+        }
+
+        onPositionChanged: mouse => {
+            if (mouse.buttons & Qt.LeftButton) {
+                const cell = selectionArea.cellAt(mouse.x, mouse.y);
+                Backend.selMove(cell[1], cell[0]);
+            }
+        }
+
+        onReleased: mouse => {
+            if (mouse.button === Qt.LeftButton)
+                Backend.selRelease();
+        }
+
+        onDoubleClicked: mouse => {
+            if (mouse.button === Qt.LeftButton) {
+                const cell = selectionArea.cellAt(mouse.x, mouse.y);
+                Backend.selWord(cell[1], cell[0]);
+            }
+        }
+    }
+
+    Menu {
+        id: contextMenu
+
+        MenuItem {
+            text: "Copiar"
+            onTriggered: Backend.copySelection()
+        }
+
+        MenuItem {
+            text: "Colar"
+            onTriggered: Backend.paste()
+        }
+
+        MenuItem {
+            text: "Selecionar tudo"
+            onTriggered: Backend.selectAll()
         }
     }
 

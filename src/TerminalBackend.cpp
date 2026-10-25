@@ -1,7 +1,9 @@
 #include "TerminalBackend.h"
 
+#include <QClipboard>
 #include <QColor>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QtGui>
 
 #include <pwd.h>
@@ -91,6 +93,14 @@ void TerminalBackend::onData(const QByteArray &data)
         emit titleChanged();
         m_terminal->clearTitleDirty();
     }
+    if (m_terminal->clearPending()) {
+        // The screen was erased (e.g. Ctrl+L / clear); a selection over the
+        // now-blank lines is stale, so drop it.
+        m_selAnchor = {.line=-1, .col=0};
+        m_selCurrent = {.line=-1, .col=0};
+        emit selectionChanged();
+        m_terminal->clearClearPending();
+    }
     checkScrollOffsetChanged();
     scheduleFrame();
 }
@@ -118,13 +128,30 @@ void TerminalBackend::keyPress(
     int modifiers
 ) // NOLINT: keyboard dispatch is inherently branching
 {
-    const bool ctrl = (modifiers & static_cast<int>(Qt::ControlModifier)) != 0;
-    const bool shift = (modifiers & static_cast<int>(Qt::ShiftModifier)) != 0;
-    const bool meta = (modifiers & static_cast<int>(Qt::MetaModifier)) != 0;
+    const unsigned int mods = static_cast<unsigned int>(modifiers);
+    const bool ctrl = (mods & static_cast<unsigned int>(Qt::ControlModifier)) != 0;
+    const bool shift = (mods & static_cast<unsigned int>(Qt::ShiftModifier)) != 0;
+    const bool meta = (mods & static_cast<unsigned int>(Qt::MetaModifier)) != 0;
 
     if (meta && key == static_cast<int>(Qt::Key_Q)) {
         emit quitRequested();
         return;
+    }
+
+    // Editor shortcuts: copy / paste / select-all.
+    if (meta) {
+        if (key == static_cast<int>(Qt::Key_C)) {
+            copySelection();
+            return;
+        }
+        if (key == static_cast<int>(Qt::Key_V)) {
+            paste();
+            return;
+        }
+        if (key == static_cast<int>(Qt::Key_A)) {
+            selectAll();
+            return;
+        }
     }
 
     // Typing while scrolled up snaps the view back to the live cursor.
@@ -141,12 +168,12 @@ void TerminalBackend::keyPress(
             } else if (shift) {
                 const QChar u = c.toUpper();
                 if (u >= 'A' && u <= 'Z') {
-                    out.append(static_cast<char>((u.unicode() - 'A' + 1) & 0x1f));
+                    out.append(static_cast<char>((u.unicode() - 'A' + 1) & 0x1fu));
                 }
             } else {
                 const QChar l = c.toLower();
                 if (l >= 'a' && l <= 'z') {
-                    out.append(static_cast<char>((l.unicode() - 'a' + 1) & 0x1f));
+                    out.append(static_cast<char>((l.unicode() - 'a' + 1) & 0x1fu));
                 }
             }
         }
@@ -218,16 +245,26 @@ void TerminalBackend::resize(int cols, int rows)
     if (cols < 2 || rows < 2 || (cols == m_cols && rows == m_rows)) {
         return;
     }
+
     m_cols = cols;
     m_rows = rows;
+
     if (m_terminal) {
         // Terminal/Screen take (rows, cols); the PTY takes (cols, rows).
         m_terminal->resize(rows, cols);
     }
+
     if (m_pty) {
         m_pty->resize(cols, rows);
     }
+
+    // The reflow re-wraps the history, so absolute selection anchors are stale.
+    m_selAnchor = {.line = -1, .col = 0};
+    m_selCurrent = {.line = -1, .col = 0};
+
+    emit selectionChanged();
     emit sizeChanged();
+
     checkScrollOffsetChanged();
     scheduleFrame();
 }
@@ -237,6 +274,7 @@ void TerminalBackend::scrollBy(int delta)
     if (!m_terminal) {
         return;
     }
+
     m_terminal->screen().scrollBy(delta);
     checkScrollOffsetChanged();
     scheduleFrame();
@@ -247,6 +285,7 @@ void TerminalBackend::scrollTo(int offset)
     if (!m_terminal) {
         return;
     }
+
     m_terminal->screen().scrollTo(offset);
     checkScrollOffsetChanged();
     scheduleFrame();
@@ -257,6 +296,7 @@ void TerminalBackend::scrollToBottom()
     if (!m_terminal) {
         return;
     }
+
     m_terminal->screen().scrollToBottom();
     checkScrollOffsetChanged();
     scheduleFrame();
@@ -267,6 +307,259 @@ void TerminalBackend::checkScrollOffsetChanged()
     if (m_terminal) {
         emit scrollOffsetChanged();
     }
+}
+
+int TerminalBackend::visibleStart() const
+{
+    if (!m_terminal) {
+        return 0;
+    }
+
+    const Screen &s = m_terminal->screen();
+    return s.totalLines() - s.rows() - s.scrollOffset();
+}
+
+void TerminalBackend::selPress(int row, int col)
+{
+    if (!m_terminal) {
+        return;
+    }
+
+    const int absLine = visibleStart() + row;
+    const int c = std::clamp(col, 0, m_terminal->screen().cols() - 1);
+    m_selAnchor = {.line = absLine, .col = c};
+    m_selCurrent = {.line = absLine, .col = c};
+
+    emit selectionChanged();
+}
+
+void TerminalBackend::selMove(int row, int col)
+{
+    if (!m_terminal || m_selAnchor.line < 0) {
+        return;
+    }
+
+    Screen &s = m_terminal->screen();
+    int absLine = visibleStart() + row;
+    const int c = std::clamp(col, 0, s.cols() - 1);
+    // Rubber-band auto-scroll: dragging into the top/bottom edge reveals more
+    // history, like selecting text in any editor. The selection follows the
+    // mouse in absolute coordinates, so it stays on the same text.
+    bool scrolled = false;
+    if (row <= 0 && s.scrollOffset() < s.maxScrollOffset()) {
+        s.scrollBy(1); // up = older lines
+        absLine = visibleStart();
+        scrolled = true;
+    } else if (row >= s.rows() - 1 && s.scrollOffset() > 0) {
+        s.scrollBy(-1); // down = newer lines
+        absLine = visibleStart() + (s.rows() - 1);
+        scrolled = true;
+    }
+
+    m_selCurrent = {.line=absLine, .col=c};
+    emit selectionChanged();
+
+    if (scrolled) {
+        checkScrollOffsetChanged();
+        scheduleFrame();
+    }
+}
+
+void TerminalBackend::selRelease()
+{
+    if (m_selAnchor.line < 0) {
+        return;
+    }
+
+    // A click that didn't drag collapses to a point: clear the selection.
+    if (m_selAnchor.line == m_selCurrent.line && m_selAnchor.col == m_selCurrent.col) {
+        m_selAnchor = {.line=-1, .col=0};
+        m_selCurrent = {.line=-1, .col=0};
+    }
+
+    emit selectionChanged();
+}
+
+void TerminalBackend::selClear()
+{
+    if (m_selAnchor.line < 0) {
+        return;
+    }
+
+    m_selAnchor = {.line=-1, .col=0};
+    m_selCurrent = {.line=-1, .col=0};
+    emit selectionChanged();
+}
+
+void TerminalBackend::selWord(int row, int col)
+{
+    if (!m_terminal) {
+        return;
+    }
+
+    Screen  const&s = m_terminal->screen();
+    const int absLine = visibleStart() + row;
+    const Line &line = s.lineAt(absLine);
+    if (col < 0 || col >= static_cast<int>(line.size())) {
+        m_selAnchor = {.line=-1, .col=0};
+        m_selCurrent = {.line=-1, .col=0};
+        emit selectionChanged();
+        return;
+    }
+
+    auto const isWordChar = [](QChar ch) { return ch.isLetterOrNumber() || ch == '_' || ch == '-'; };
+    int startCol = col;
+    int endCol = col;
+    while (startCol > 0 && isWordChar(line[startCol - 1].ch)) {
+        --startCol;
+    }
+
+    while (endCol + 1 < static_cast<int>(line.size()) && isWordChar(line[endCol + 1].ch)) {
+        ++endCol;
+    }
+
+    m_selAnchor = {.line=absLine, .col=startCol};
+    m_selCurrent = {.line=absLine, .col=endCol};
+    emit selectionChanged();
+}
+
+void TerminalBackend::selectAll()
+{
+    if (!m_terminal) {
+        return;
+    }
+
+    Screen  const&s = m_terminal->screen();
+    const int start = visibleStart();
+    m_selAnchor = {.line=start, .col=0};
+    m_selCurrent = {.line=start + s.rows() - 1, .col=s.cols() - 1};
+    emit selectionChanged();
+}
+
+void TerminalBackend::copySelection()
+{
+    if (!m_terminal || m_selAnchor.line < 0) {
+        return;
+    }
+
+    Screen  const&s = m_terminal->screen();
+    // Reading-order selection: the earlier point starts the selection (its
+    // line runs from that column to the end of the text), the later point
+    // ends it (its line runs from column 0 to that column). Middle lines are
+    // whole. Symmetric in drag direction, like selecting text in an editor.
+    const int sLine = m_selAnchor.line;
+    const int eLine = m_selCurrent.line;
+    const int sCol = m_selAnchor.col;
+    const int eCol = m_selCurrent.col;
+    const int top = std::min(sLine, eLine);
+    const int bot = std::max(sLine, eLine);
+    const int topCol = (sLine == top) ? sCol : eCol;
+    const int botCol = (eLine == bot) ? eCol : sCol;
+    QString text;
+
+    for (int line = top; line <= bot; ++line) {
+        const Line &l = s.lineAt(line);
+        int c0 = 0;
+        int c1 = 0;
+        if (top == bot) {
+            c0 = std::min(sCol, eCol);
+            c1 = std::max(sCol, eCol);
+        } else if (line == top) {
+            c0 = topCol;
+            c1 = lineTextEnd(line);
+        } else if (line == bot) {
+            c0 = 0;
+            c1 = botCol;
+        } else {
+            c0 = 0;
+            c1 = lineTextEnd(line);
+        }
+        c1 = std::min(c1, static_cast<int>(l.size()));
+        while (c1 > c0 && l[c1 - 1].ch == ' ') {
+            --c1;
+        }
+        for (int c = c0; c < c1; ++c) {
+            text.append(l[c].ch);
+        }
+        if (line < bot) {
+            text.append('\n');
+        }
+    }
+    QGuiApplication::clipboard()->setText(text);
+}
+
+void TerminalBackend::paste()
+{
+    if (!m_pty) {
+        return;
+    }
+    const QString text = QGuiApplication::clipboard()->text();
+    if (!text.isEmpty()) {
+        m_pty->write(text.toUtf8());
+    }
+}
+
+int TerminalBackend::lineTextEnd(int line) const
+{
+    const Line &l = m_terminal->screen().lineAt(line);
+    int end = static_cast<int>(l.size()) - 1;
+    while (end >= 0 && l[end].ch == ' ') {
+        --end;
+    }
+    if (end < 0) {
+        return m_terminal->screen().cols() - 1; // blank line: full width
+    }
+    return end;
+}
+
+int TerminalBackend::selRowLeft(int visibleRow) const
+{
+    if (!m_terminal || m_selAnchor.line < 0) {
+        return -1;
+    }
+    const int sLine = m_selAnchor.line;
+    const int eLine = m_selCurrent.line;
+    const int sCol = m_selAnchor.col;
+    const int eCol = m_selCurrent.col;
+    const int topLine = std::min(sLine, eLine);
+    const int botLine = std::max(sLine, eLine);
+    const int absLine = visibleStart() + visibleRow;
+    if (absLine < topLine || absLine > botLine) {
+        return -1;
+    }
+    if (topLine == botLine) {
+        return std::min(sCol, eCol);
+    }
+    if (absLine == topLine) {
+        // The top line is clipped at the column of the point that sits on it.
+        return (sLine == topLine) ? sCol : eCol;
+    }
+    return 0;
+}
+
+int TerminalBackend::selRowRight(int visibleRow) const
+{
+    if (!m_terminal || m_selAnchor.line < 0) {
+        return -1;
+    }
+    const int sLine = m_selAnchor.line;
+    const int eLine = m_selCurrent.line;
+    const int sCol = m_selAnchor.col;
+    const int eCol = m_selCurrent.col;
+    const int topLine = std::min(sLine, eLine);
+    const int botLine = std::max(sLine, eLine);
+    const int absLine = visibleStart() + visibleRow;
+    if (absLine < topLine || absLine > botLine) {
+        return -1;
+    }
+    if (topLine == botLine) {
+        return std::max(sCol, eCol);
+    }
+    if (absLine == botLine) {
+        // The bottom line is clipped at the column of the point that sits on it.
+        return (eLine == botLine) ? eCol : sCol;
+    }
+    return lineTextEnd(absLine);
 }
 
 QVariantList TerminalBackend::snapshot() const
