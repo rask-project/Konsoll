@@ -1,6 +1,6 @@
 import QtQuick
+import QtQuick.Controls
 import QtCanvas2D
-import QtQuick.Controls.Basic
 
 Item {
     id: view
@@ -156,7 +156,9 @@ Item {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 Backend.selPress(cell[1], cell[0]);
             } else if (mouse.button === Qt.RightButton) {
-                const p = selectionArea.mapToGlobal(mouse.x, mouse.y);
+                // popup(x, y) positions the menu relative to its parent item,
+                // so map the click into that parent's space (not global screen).
+                const p = selectionArea.mapToItem(view, mouse.x, mouse.y);
                 contextMenu.popup(p.x, p.y);
             }
         }
