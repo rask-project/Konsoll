@@ -15,6 +15,7 @@ Window {
 
     WindowTranslucency {
         id: translucency
+
         window: appWindow
         color: Backend.backgroundColor
         alpha: 0.85

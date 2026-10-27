@@ -24,6 +24,8 @@ qt_add_qml_module(konsoll
     QML_FILES
         Main.qml
         TerminalView.qml
+        controls/Menu.qml
+        controls/MenuItem.qml
     SOURCES
         src/TerminalBackend.cpp
         src/TerminalBackend.h

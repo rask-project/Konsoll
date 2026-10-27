@@ -2,6 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtCanvas2D
 
+import "controls" as Controls
+
 Item {
     id: view
     focus: true
@@ -183,21 +185,21 @@ Item {
         }
     }
 
-    Menu {
+    ContextMenu.menu: Controls.Menu {
         id: contextMenu
 
-        MenuItem {
-            text: "Copiar"
+        Controls.MenuItem {
+            text: qsTr("Copy")
             onTriggered: Backend.copySelection()
         }
 
-        MenuItem {
-            text: "Colar"
+        Controls.MenuItem {
+            text: qsTr("Paste")
             onTriggered: Backend.paste()
         }
 
-        MenuItem {
-            text: "Selecionar tudo"
+        Controls.MenuItem {
+            text: qsTr("Select All")
             onTriggered: Backend.selectAll()
         }
     }
