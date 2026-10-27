@@ -185,7 +185,7 @@ Item {
         }
     }
 
-    ContextMenu.menu: Controls.Menu {
+    Controls.Menu {
         id: contextMenu
 
         Controls.MenuItem {

@@ -41,6 +41,7 @@ std::array<QRgb, 256> buildPalette()
     p[14] = qRgb(52, 189, 244);
     p[15] = qRgb(242, 242, 242);
     int i = 0;
+
     for (int r = 0; r < 6; ++r) {
         for (int g = 0; g < 6; ++g) {
             for (int b = 0; b < 6; ++b) {
@@ -50,11 +51,75 @@ std::array<QRgb, 256> buildPalette()
             }
         }
     }
+
     for (int i2 = 0; i2 < 24; ++i2) {
         const int v = (i2 * 10) + 8;
         p[232 + i2] = qRgb(v, v, v);
     }
+
     return p;
+}
+
+// Encode a Ctrl+<key> press into the control byte the shell expects, or an
+// empty byte array if the key has no Ctrl meaning.
+QByteArray ctrlKeyByte(const QString &text, bool shift)
+{
+    if (text.isEmpty()) {
+        return {};
+    }
+    const QChar c = text.at(0);
+    if (c.unicode() < 0x20) { // 0x20: below are ASCII control chars; pass through raw
+        return QByteArray(1, static_cast<char>(c.unicode()));
+    }
+    if (shift) {
+        const QChar u = c.toUpper();
+        if (u >= 'A' && u <= 'Z') {
+            return QByteArray(1, static_cast<char>((u.unicode() - 'A' + 1) & 0x1fu));
+        }
+    } else {
+        const QChar l = c.toLower();
+        if (l >= 'a' && l <= 'z') {
+            return QByteArray(1, static_cast<char>((l.unicode() - 'a' + 1) & 0x1fu));
+        }
+    }
+    return {};
+}
+
+// Map a plain (unmodified) special key to its byte sequence, or an empty
+// byte array if the key has no special meaning.
+QByteArray specialKeyByte(int key)
+{
+    switch (key) {
+    case static_cast<int>(Qt::Key_Return):
+    case static_cast<int>(Qt::Key_Enter):
+        return QByteArray(1, static_cast<char>(0x0d));
+    case static_cast<int>(Qt::Key_Backspace):
+        return QByteArray(1, static_cast<char>(0x7f));
+    case static_cast<int>(Qt::Key_Tab):
+        return QByteArray(1, static_cast<char>(0x09));
+    case static_cast<int>(Qt::Key_Escape):
+        return QByteArray(1, static_cast<char>(0x1b));
+    case static_cast<int>(Qt::Key_Up):
+        return "\x1b[A";
+    case static_cast<int>(Qt::Key_Down):
+        return "\x1b[B";
+    case static_cast<int>(Qt::Key_Right):
+        return "\x1b[C";
+    case static_cast<int>(Qt::Key_Left):
+        return "\x1b[D";
+    case static_cast<int>(Qt::Key_Home):
+        return "\x1b[H";
+    case static_cast<int>(Qt::Key_End):
+        return "\x1b[F";
+    case static_cast<int>(Qt::Key_Delete):
+        return "\x1b[3~";
+    case static_cast<int>(Qt::Key_PageUp):
+        return "\x1b[5~";
+    case static_cast<int>(Qt::Key_PageDown):
+        return "\x1b[6~";
+    default:
+        return {};
+    }
 }
 } // namespace
 
@@ -88,19 +153,22 @@ void TerminalBackend::onData(const QByteArray &data)
         m_pty->write(Terminal::daResponse());
         m_terminal->clearDaPending();
     }
+
     if (m_terminal->titleDirty()) {
         m_title = m_terminal->title();
         emit titleChanged();
         m_terminal->clearTitleDirty();
     }
+
     if (m_terminal->clearPending()) {
         // The screen was erased (e.g. Ctrl+L / clear); a selection over the
         // now-blank lines is stale, so drop it.
-        m_selAnchor = {.line=-1, .col=0};
-        m_selCurrent = {.line=-1, .col=0};
+        m_selAnchor = {.line = -1, .col = 0};
+        m_selCurrent = {.line = -1, .col = 0};
         emit selectionChanged();
         m_terminal->clearClearPending();
     }
+
     checkScrollOffsetChanged();
     scheduleFrame();
 }
@@ -122,36 +190,16 @@ void TerminalBackend::scheduleFrame()
     }
 }
 
-void TerminalBackend::keyPress(
-    int key,
-    const QString &text,
-    int modifiers
-) // NOLINT: keyboard dispatch is inherently branching
+void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
 {
     const unsigned int mods = static_cast<unsigned int>(modifiers);
-    const bool ctrl = (mods & static_cast<unsigned int>(Qt::ControlModifier)) != 0;
+    const bool meta = (mods & static_cast<unsigned int>(Qt::ControlModifier)) != 0;
     const bool shift = (mods & static_cast<unsigned int>(Qt::ShiftModifier)) != 0;
-    const bool meta = (mods & static_cast<unsigned int>(Qt::MetaModifier)) != 0;
-
-    if (meta && key == static_cast<int>(Qt::Key_Q)) {
-        emit quitRequested();
-        return;
-    }
 
     // Editor shortcuts: copy / paste / select-all.
     if (meta) {
-        if (key == static_cast<int>(Qt::Key_C)) {
-            copySelection();
-            return;
-        }
-        if (key == static_cast<int>(Qt::Key_V)) {
-            paste();
-            return;
-        }
-        if (key == static_cast<int>(Qt::Key_A)) {
-            selectAll();
-            return;
-        }
+        editorShortcuts(key);
+        return;
     }
 
     // Typing while scrolled up snaps the view back to the live cursor.
@@ -160,75 +208,16 @@ void TerminalBackend::keyPress(
     }
 
     QByteArray out;
-    if (ctrl) {
-        if (!text.isEmpty()) {
-            const QChar c = text.at(0);
-            if (c.unicode() < 0x20) {
-                out.append(static_cast<char>(c.unicode()));
-            } else if (shift) {
-                const QChar u = c.toUpper();
-                if (u >= 'A' && u <= 'Z') {
-                    out.append(static_cast<char>((u.unicode() - 'A' + 1) & 0x1fu));
-                }
-            } else {
-                const QChar l = c.toLower();
-                if (l >= 'a' && l <= 'z') {
-                    out.append(static_cast<char>((l.unicode() - 'a' + 1) & 0x1fu));
-                }
-            }
-        }
+    if (meta) {
+        out = ctrlKeyByte(text, shift);
     } else {
-        switch (key) {
-        case static_cast<int>(Qt::Key_Return):
-        case static_cast<int>(Qt::Key_Enter):
-            out.append(static_cast<char>(0x0d));
-            break;
-        case static_cast<int>(Qt::Key_Backspace):
-            out.append(static_cast<char>(0x7f));
-            break;
-        case static_cast<int>(Qt::Key_Tab):
-            out.append(static_cast<char>(0x09));
-            break;
-        case static_cast<int>(Qt::Key_Escape):
-            out.append(static_cast<char>(0x1b));
-            break;
-        case static_cast<int>(Qt::Key_Up):
-            out = "\x1b[A";
-            break;
-        case static_cast<int>(Qt::Key_Down):
-            out = "\x1b[B";
-            break;
-        case static_cast<int>(Qt::Key_Right):
-            out = "\x1b[C";
-            break;
-        case static_cast<int>(Qt::Key_Left):
-            out = "\x1b[D";
-            break;
-        case static_cast<int>(Qt::Key_Home):
-            out = "\x1b[H";
-            break;
-        case static_cast<int>(Qt::Key_End):
-            out = "\x1b[F";
-            break;
-        case static_cast<int>(Qt::Key_Delete):
-            out = "\x1b[3~";
-            break;
-        case static_cast<int>(Qt::Key_PageUp):
-            out = "\x1b[5~";
-            break;
-        case static_cast<int>(Qt::Key_PageDown):
-            out = "\x1b[6~";
-            break;
-        default:
-            if (!text.isEmpty()) {
-                out = text.toUtf8();
-            }
-            break;
+        out = specialKeyByte(key);
+        if (out.isEmpty() && !text.isEmpty()) {
+            out = text.toUtf8();
         }
     }
+
     if (!out.isEmpty() && m_pty) {
-        // Temporary input trace: hex preserves control keys and UTF-8 without
-        // truncating at NUL or interpreting terminal escape sequences.
         m_pty->write(out);
     }
 }
@@ -356,7 +345,7 @@ void TerminalBackend::selMove(int row, int col)
         scrolled = true;
     }
 
-    m_selCurrent = {.line=absLine, .col=c};
+    m_selCurrent = {.line = absLine, .col = c};
     emit selectionChanged();
 
     if (scrolled) {
@@ -373,8 +362,8 @@ void TerminalBackend::selRelease()
 
     // A click that didn't drag collapses to a point: clear the selection.
     if (m_selAnchor.line == m_selCurrent.line && m_selAnchor.col == m_selCurrent.col) {
-        m_selAnchor = {.line=-1, .col=0};
-        m_selCurrent = {.line=-1, .col=0};
+        m_selAnchor = {.line = -1, .col = 0};
+        m_selCurrent = {.line = -1, .col = 0};
     }
 
     emit selectionChanged();
@@ -386,8 +375,8 @@ void TerminalBackend::selClear()
         return;
     }
 
-    m_selAnchor = {.line=-1, .col=0};
-    m_selCurrent = {.line=-1, .col=0};
+    m_selAnchor = {.line = -1, .col = 0};
+    m_selCurrent = {.line = -1, .col = 0};
     emit selectionChanged();
 }
 
@@ -397,12 +386,12 @@ void TerminalBackend::selWord(int row, int col)
         return;
     }
 
-    Screen  const&s = m_terminal->screen();
+    Screen const &s = m_terminal->screen();
     const int absLine = visibleStart() + row;
     const Line &line = s.lineAt(absLine);
     if (col < 0 || col >= static_cast<int>(line.size())) {
-        m_selAnchor = {.line=-1, .col=0};
-        m_selCurrent = {.line=-1, .col=0};
+        m_selAnchor = {.line = -1, .col = 0};
+        m_selCurrent = {.line = -1, .col = 0};
         emit selectionChanged();
         return;
     }
@@ -418,8 +407,8 @@ void TerminalBackend::selWord(int row, int col)
         ++endCol;
     }
 
-    m_selAnchor = {.line=absLine, .col=startCol};
-    m_selCurrent = {.line=absLine, .col=endCol};
+    m_selAnchor = {.line = absLine, .col = startCol};
+    m_selCurrent = {.line = absLine, .col = endCol};
     emit selectionChanged();
 }
 
@@ -429,10 +418,10 @@ void TerminalBackend::selectAll()
         return;
     }
 
-    Screen  const&s = m_terminal->screen();
+    Screen const &s = m_terminal->screen();
     const int start = visibleStart();
-    m_selAnchor = {.line=start, .col=0};
-    m_selCurrent = {.line=start + s.rows() - 1, .col=s.cols() - 1};
+    m_selAnchor = {.line = start, .col = 0};
+    m_selCurrent = {.line = start + s.rows() - 1, .col = s.cols() - 1};
     emit selectionChanged();
 }
 
@@ -442,7 +431,7 @@ void TerminalBackend::copySelection()
         return;
     }
 
-    Screen  const&s = m_terminal->screen();
+    Screen const &s = m_terminal->screen();
     // Reading-order selection: the earlier point starts the selection (its
     // line runs from that column to the end of the text), the later point
     // ends it (its line runs from column 0 to that column). Middle lines are
@@ -512,6 +501,24 @@ int TerminalBackend::lineTextEnd(int line) const
         return m_terminal->screen().cols() - 1; // blank line: full width
     }
     return end;
+}
+
+void TerminalBackend::editorShortcuts(int key)
+{
+    if (key == static_cast<int>(Qt::Key_C)) {
+        copySelection();
+        return;
+    }
+
+    if (key == static_cast<int>(Qt::Key_V)) {
+        paste();
+        return;
+    }
+
+    if (key == static_cast<int>(Qt::Key_A)) {
+        selectAll();
+        return;
+    }
 }
 
 int TerminalBackend::selRowLeft(int visibleRow) const

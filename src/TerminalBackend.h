@@ -105,6 +105,8 @@ private:
     // Last non-space column of an absolute line (full width if the line is blank).
     int lineTextEnd(int line) const;
 
+    void editorShortcuts(int key);
+
     static QString detectDefaultShell();
     static QRgb resolveColor(unsigned int encoded, int defaultColor);
 
