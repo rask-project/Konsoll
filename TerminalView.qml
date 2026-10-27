@@ -22,6 +22,10 @@ Item {
     // Whole history (scrollback + visible screen) for the scrollbar mapping.
     readonly property int totalLines: Backend.maxScrollOffset + Backend.rows
 
+    // True while syncScrollBar() drives the bar, so onPositionChanged ignores
+    // our imperative sets and only reacts to real user drags.
+    property bool _syncingScrollBar: false
+
     onColsChanged: Backend.resize(cols, rows)
     onRowsChanged: Backend.resize(cols, rows)
 
@@ -205,10 +209,10 @@ Item {
     }
 
     // Thin scrollbar on the right edge, matching the canvas vertically.
-    // size = visible fraction of the history; position is driven imperatively
-    // from the scroll offset (see onScrollOffsetChanged below) so 0 = oldest
-    // line and 1 - size = the live cursor at the bottom. The style keeps it
-    // thin and fatter on hover; it only shows when there is scrollback.
+    // size and position are driven imperatively from the view (see
+    // syncScrollBar below) so 0 = oldest line and 1 - size = the live cursor
+    // at the bottom. The style keeps it thin and fatter on hover; it only
+    // shows when there is scrollback.
     ScrollBar {
         id: scrollBar
 
@@ -217,15 +221,26 @@ Item {
         anchors.right: parent.right
         anchors.top: canvas.top
         anchors.bottom: canvas.bottom
-        size: Backend.rows / view.totalLines
 
         orientation: Qt.Vertical
         onPositionChanged: {
+            if (view._syncingScrollBar)
+                return;
             const offset = Backend.maxScrollOffset - position * view.totalLines;
             const target = Math.max(0, Math.min(Backend.maxScrollOffset, Math.round(offset)));
             if (target !== Backend.scrollOffset)
                 Backend.scrollTo(target);
         }
+    }
+
+    // Drive the scrollbar size (visible fraction) and position from the view.
+    // Both are set imperatively (not bound) so a window resize can't re-trigger
+    // a binding loop through a re-evaluated size binding.
+    function syncScrollBar() {
+        _syncingScrollBar = true;
+        scrollBar.size = Backend.rows / view.totalLines;
+        scrollBar.position = (Backend.maxScrollOffset - Backend.scrollOffset) / view.totalLines;
+        _syncingScrollBar = false;
     }
 
     Connections {
@@ -235,11 +250,12 @@ Item {
             canvas.requestPaint();
         }
 
-        // Drive the scrollbar position from the view. Set imperatively (not
-        // bound) so onPositionChanged can't re-trigger itself through a
-        // re-evaluated binding.
         function onScrollOffsetChanged() {
-            scrollBar.position = (Backend.maxScrollOffset - Backend.scrollOffset) / view.totalLines;
+            view.syncScrollBar();
+        }
+
+        function onSizeChanged() {
+            view.syncScrollBar();
         }
     }
 }
