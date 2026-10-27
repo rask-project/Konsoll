@@ -461,18 +461,20 @@ void TerminalBackend::copySelection()
         const Line &l = s.lineAt(line);
         int c0 = 0;
         int c1 = 0;
+        // c1 is an exclusive end for the copy loop below; the selection points
+        // are inclusive columns, so each bound gets +1.
         if (top == bot) {
             c0 = std::min(sCol, eCol);
-            c1 = std::max(sCol, eCol);
+            c1 = std::max(sCol, eCol) + 1;
         } else if (line == top) {
             c0 = topCol;
-            c1 = lineTextEnd(line);
+            c1 = lineTextEnd(line) + 1;
         } else if (line == bot) {
             c0 = 0;
-            c1 = botCol;
+            c1 = botCol + 1;
         } else {
             c0 = 0;
-            c1 = lineTextEnd(line);
+            c1 = lineTextEnd(line) + 1;
         }
         c1 = std::min(c1, static_cast<int>(l.size()));
         while (c1 > c0 && l[c1 - 1].ch == ' ') {
