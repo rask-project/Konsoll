@@ -108,15 +108,29 @@ QByteArray specialKeyByte(int key)
     case static_cast<int>(Qt::Key_Left):
         return "\x1b[D";
     case static_cast<int>(Qt::Key_Home):
-        return "\x1b[H";
+        return "\x1bOH";
     case static_cast<int>(Qt::Key_End):
-        return "\x1b[F";
+        return "\x1bOF";
     case static_cast<int>(Qt::Key_Delete):
         return "\x1b[3~";
     case static_cast<int>(Qt::Key_PageUp):
         return "\x1b[5~";
     case static_cast<int>(Qt::Key_PageDown):
         return "\x1b[6~";
+    default:
+        return {};
+    }
+}
+
+// Map an Option-modified key to its byte sequence (word movement for the
+// shell line editor), or an empty byte array if the key has no Option meaning.
+QByteArray optionKeyByte(int key)
+{
+    switch (key) {
+    case static_cast<int>(Qt::Key_Left):
+        return "\033b";
+    case static_cast<int>(Qt::Key_Right):
+        return "\033f";
     default:
         return {};
     }
@@ -194,6 +208,7 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
 {
     const unsigned int mods = static_cast<unsigned int>(modifiers);
     const bool meta = (mods & static_cast<unsigned int>(Qt::ControlModifier)) != 0;
+    const bool option = (mods & static_cast<unsigned int>(Qt::AltModifier)) != 0;
     const bool shift = (mods & static_cast<unsigned int>(Qt::ShiftModifier)) != 0;
 
     // Editor shortcuts: copy / paste / select-all.
@@ -212,6 +227,14 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
         out = ctrlKeyByte(text, shift);
     } else {
         out = specialKeyByte(key);
+        if (option) {
+            // Option+arrows: word-by-word movement, handled by the shell
+            // line editor (zsh: \eb/\ef -> backward/forward-word).
+            const QByteArray opt = optionKeyByte(key);
+            if (!opt.isEmpty()) {
+                out = opt;
+            }
+        }
         if (out.isEmpty() && !text.isEmpty()) {
             out = text.toUtf8();
         }
