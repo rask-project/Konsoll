@@ -6,7 +6,6 @@ import "controls" as Controls
 
 Item {
     id: view
-    focus: true
 
     // Menlo advance is 0.6em, so 15px -> exactly 9px per column.
     readonly property int fontSize: 15
@@ -29,9 +28,51 @@ Item {
     onColsChanged: Backend.resize(cols, rows)
     onRowsChanged: Backend.resize(cols, rows)
 
-    Keys.onPressed: event => {
-        Backend.keyPress(event.key, event.text, event.modifiers);
-        event.accepted = true;
+    // Invisible focus target that receives composed text from the macOS text
+    // input system (dead keys / accents). Special keys and Cmd/Option/Ctrl
+    // combos are intercepted here and sent to the backend; printable
+    // characters are let through so the TextInput composes them, then
+    // onTextChanged forwards and clears.
+    TextInput {
+        id: input
+
+        x: 0
+        y: 0
+        width: 1
+        height: 1
+        color: "transparent"
+        cursorVisible: false
+        focus: true
+
+        property bool _clearing: false
+
+        readonly property var specialKeys: [
+            Qt.Key_Return, Qt.Key_Enter, Qt.Key_Backspace, Qt.Key_Tab,
+            Qt.Key_Escape, Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right,
+            Qt.Key_Home, Qt.Key_End, Qt.Key_Delete, Qt.Key_PageUp, Qt.Key_PageDown
+        ]
+
+        Keys.onPressed: event => {
+            const hasCmd = (event.modifiers & Qt.ControlModifier) !== 0
+            const hasOption = (event.modifiers & Qt.AltModifier) !== 0
+            const hasCtrl = (event.modifiers & Qt.MetaModifier) !== 0
+            const isSpecialKey = specialKeys.includes(event.key)
+            if (hasCmd || hasOption || hasCtrl || isSpecialKey) {
+                Backend.keyPress(event.key, event.text, event.modifiers);
+                event.accepted = true;
+            }
+        }
+
+        onTextChanged: {
+            if (_clearing)
+                return;
+            if (text.length > 0) {
+                Backend.writeText(text);
+                _clearing = true;
+                text = "";
+                _clearing = false;
+            }
+        }
     }
 
     WheelHandler {
