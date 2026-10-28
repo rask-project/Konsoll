@@ -122,8 +122,9 @@ QByteArray specialKeyByte(int key)
     }
 }
 
-// Map an Option-modified key to its byte sequence (word movement for the
-// shell line editor), or an empty byte array if the key has no Option meaning.
+// Map an Option-modified key to its byte sequence (word movement and
+// deletion for the shell line editor), or an empty byte array if the key
+// has no Option meaning.
 QByteArray optionKeyByte(int key)
 {
     switch (key) {
@@ -131,6 +132,8 @@ QByteArray optionKeyByte(int key)
         return "\033b";
     case static_cast<int>(Qt::Key_Right):
         return "\033f";
+    case static_cast<int>(Qt::Key_Backspace):
+        return "\033\177";
     default:
         return {};
     }
@@ -236,8 +239,9 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
     } else {
         out = specialKeyByte(key);
         if (option) {
-            // Option+arrows: word-by-word movement, handled by the shell
-            // line editor (zsh: \eb/\ef -> backward/forward-word).
+            // Option-modified keys: word-by-word movement and deletion,
+            // handled by the shell line editor (zsh/bash: \eb/\ef ->
+            // word-left/right, \e\177 -> backward-kill-word).
             const QByteArray opt = optionKeyByte(key);
             if (!opt.isEmpty()) {
                 out = opt;
