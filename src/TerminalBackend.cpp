@@ -208,6 +208,7 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
 {
     const unsigned int mods = static_cast<unsigned int>(modifiers);
     const bool meta = (mods & static_cast<unsigned int>(Qt::ControlModifier)) != 0;
+    const bool ctrl = (mods & static_cast<unsigned int>(Qt::MetaModifier)) != 0;
     const bool option = (mods & static_cast<unsigned int>(Qt::AltModifier)) != 0;
     const bool shift = (mods & static_cast<unsigned int>(Qt::ShiftModifier)) != 0;
 
@@ -223,8 +224,15 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
     }
 
     QByteArray out;
-    if (meta) {
-        out = ctrlKeyByte(text, shift);
+    if (ctrl) {
+        // Physical Ctrl+letter: send the control byte (e.g. Ctrl+C -> 0x03).
+        // The event text may be empty for a Ctrl-modified key, so derive the
+        // letter from the key code if needed.
+        QString ctrlText = text;
+        if (ctrlText.isEmpty() && key >= static_cast<int>(Qt::Key_A) && key <= static_cast<int>(Qt::Key_Z)) {
+            ctrlText = QChar(static_cast<char>('a' + (key - static_cast<int>(Qt::Key_A))));
+        }
+        out = ctrlKeyByte(ctrlText, shift);
     } else {
         out = specialKeyByte(key);
         if (option) {
