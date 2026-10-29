@@ -134,6 +134,8 @@ QByteArray optionKeyByte(int key)
         return "\033f";
     case static_cast<int>(Qt::Key_Backspace):
         return "\033\177";
+    case static_cast<int>(Qt::Key_Delete):
+        return "\033D";
     default:
         return {};
     }
@@ -256,7 +258,8 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
         if (option) {
             // Option-modified keys: word-by-word movement and deletion,
             // handled by the shell line editor (zsh/bash: \eb/\ef ->
-            // word-left/right, \e\177 -> backward-kill-word).
+            // word-left/right, \e\177 -> backward-kill-word, \eD ->
+            // forward-kill-word).
             const QByteArray opt = optionKeyByte(key);
             if (!opt.isEmpty()) {
                 out = opt;
