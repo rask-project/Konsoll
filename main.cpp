@@ -3,6 +3,10 @@
 
 int main(int argc, char *argv[])
 {
+    QCoreApplication::setOrganizationDomain(QStringLiteral("com.github.rask-project"));
+    QCoreApplication::setOrganizationName(QStringLiteral("rask-project"));
+    QCoreApplication::setApplicationName(QStringLiteral("Konsoll"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("1.0.0"));
     QGuiApplication app(argc, argv);
 
     QQmlApplicationEngine engine;
