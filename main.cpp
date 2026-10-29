@@ -1,4 +1,5 @@
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 
 int main(int argc, char *argv[])
@@ -8,6 +9,7 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationName(QStringLiteral("Konsoll"));
     QCoreApplication::setApplicationVersion(QStringLiteral("1.0.0"));
     QGuiApplication app(argc, argv);
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/assets/konsoll.png")));
 
     QQmlApplicationEngine engine;
 

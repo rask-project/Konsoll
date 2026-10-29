@@ -13,8 +13,13 @@ qt_standard_project_setup(REQUIRES 6.12)
 # AGENTS.md). Generator expression scopes it to Debug configs only.
 add_compile_options($<$<CONFIG:Debug>:-Wpadded>)
 
+set(MACOSX_BUNDLE_ICON_FILE konsoll.icns)
+set(app_icon_macos "${CMAKE_CURRENT_SOURCE_DIR}/assets/konsoll.icns")
+set_source_files_properties(${app_icon_macos} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+
 qt_add_executable(konsoll
     main.cpp
+    ${app_icon_macos}
 )
 
 qt_add_qml_module(konsoll
@@ -27,6 +32,8 @@ qt_add_qml_module(konsoll
         controls/Menu.qml
         controls/MenuItem.qml
     SOURCES
+        src/AboutDialog.h
+        src/AboutDialog.mm
         src/TerminalBackend.cpp
         src/TerminalBackend.h
         src/pty/PtyProcess.cpp
@@ -40,6 +47,14 @@ qt_add_qml_module(konsoll
         src/macs_translucent.h
         src/WindowTranslucency.cpp
         src/WindowTranslucency.h
+)
+
+qt_add_resources(konsoll "/"
+    PREFIX "/"
+    FILES
+        assets/konsoll.icns
+        assets/konsoll.png
+        assets/qtlogo-64.png
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
