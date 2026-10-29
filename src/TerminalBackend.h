@@ -29,6 +29,8 @@ class TerminalBackend : public QObject
     Q_PROPERTY(int scrollOffset READ scrollOffset NOTIFY scrollOffsetChanged)
     Q_PROPERTY(int maxScrollOffset READ maxScrollOffset NOTIFY scrollOffsetChanged)
     Q_PROPERTY(bool selectionActive READ selectionActive NOTIFY selectionChanged)
+    Q_PROPERTY(bool mouseTracking READ mouseTracking NOTIFY mouseTrackingChanged)
+    Q_PROPERTY(bool mouseMotionTracking READ mouseMotionTracking NOTIFY mouseTrackingChanged)
     Q_PROPERTY(unsigned int backgroundColor READ backgroundColor CONSTANT)
     Q_PROPERTY(unsigned int foregroundColor READ foregroundColor CONSTANT)
 
@@ -41,6 +43,10 @@ public:
     // Input from QML.
     Q_INVOKABLE void keyPress(int key, const QString &text, int modifiers);
     Q_INVOKABLE void writeText(const QString &text);
+    Q_INVOKABLE void mousePress(int button, int row, int col, int modifiers);
+    Q_INVOKABLE void mouseRelease(int button, int row, int col, int modifiers);
+    Q_INVOKABLE void mouseMove(int button, int row, int col, int modifiers);
+    Q_INVOKABLE void mouseWheel(bool up, int row, int col, int modifiers);
 
     // Resize the terminal (cols x rows), driven by the QML view.
     Q_INVOKABLE void resize(int cols, int rows);
@@ -83,6 +89,8 @@ public:
     int scrollOffset() const { return m_terminal ? m_terminal->screen().scrollOffset() : 0; }
     int maxScrollOffset() const { return m_terminal ? m_terminal->screen().maxScrollOffset() : 0; }
     bool selectionActive() const { return m_selAnchor.line >= 0; }
+    bool mouseTracking() const { return m_terminal && m_terminal->mouseTracking(); }
+    bool mouseMotionTracking() const { return m_terminal && m_terminal->mouseMotionTracking(); }
     unsigned int backgroundColor() const { return m_defaultBg; }
     unsigned int foregroundColor() const { return m_defaultFg; }
 
@@ -93,6 +101,7 @@ signals:
     void sizeChanged();
     void scrollOffsetChanged();
     void selectionChanged();
+    void mouseTrackingChanged();
     void quitRequested();
 
 private:
@@ -106,6 +115,7 @@ private:
     int lineTextEnd(int line) const;
 
     void editorShortcuts(int key);
+    void sendMouseReport(int button, int row, int col, int event, int modifiers);
 
     static QString detectDefaultShell();
     static QRgb resolveColor(unsigned int encoded, int defaultColor);

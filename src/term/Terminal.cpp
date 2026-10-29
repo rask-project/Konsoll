@@ -25,6 +25,67 @@ QByteArray Terminal::daResponse()
     return "\x1b[?62c";
 }
 
+QByteArray Terminal::colorQueryResponse(unsigned char query)
+{
+    // Match the default colors exposed by TerminalBackend (foreground
+    // #e0e0e0, background #141414), in the OSC 10/11 rgb: format.
+    if (query == 10) {
+        return "\x1b]10;rgb:e0e0/e0e0/e0e0\x1b\\";
+    }
+    return "\x1b]11;rgb:1414/1414/1414\x1b\\";
+}
+
+QByteArray Terminal::dsrResponse() const
+{
+    if (m_dsrQuery == 6) {
+        return QByteArray("\x1b[") + QByteArray::number(m_screen.cursorRow() + 1) + ";" +
+               QByteArray::number(m_screen.cursorCol() + 1) + "R";
+    }
+    return "\x1b[0n";
+}
+
+QByteArray Terminal::mouseReport(int button, int row, int col, int event, unsigned int modifiers) const
+{
+    const bool anyMotion = (m_mouseModes & 0x04u) != 0;
+    const bool buttonMotion = (m_mouseModes & 0x02u) != 0;
+    const bool motion = event == 2;
+    const bool release = event == 1;
+    const bool wheel = event == 3 || event == 4;
+    if (!mouseTracking() || (motion && !anyMotion && (!buttonMotion || button < 0))) {
+        return {};
+    }
+
+    int code = wheel ? (event == 3 ? 64 : 65) : ((button < 0) ? 3 : button);
+    if (motion) {
+        code |= 32;
+    }
+    if ((modifiers & 1u) != 0) {
+        code |= 4;
+    }
+    if ((modifiers & 2u) != 0) {
+        code |= 8;
+    }
+    if ((modifiers & 4u) != 0) {
+        code |= 16;
+    }
+
+    const int x = std::clamp(col + 1, 1, m_screen.cols());
+    const int y = std::clamp(row + 1, 1, m_screen.rows());
+    if (m_sgrMouse) {
+        QByteArray report = "\x1b[<" + QByteArray::number(code) + ";" + QByteArray::number(x) + ";" +
+                            QByteArray::number(y);
+        report.append(release ? 'm' : 'M');
+        return report;
+    }
+
+    const int legacyCode = (release ? 3 | (code & 28) : code) + 32;
+    if (x > 223 || y > 223 || legacyCode > 255) {
+        return {};
+    }
+    return QByteArray("\x1b[M") + QByteArray(1, static_cast<char>(legacyCode)) +
+           QByteArray(1, static_cast<char>(x + 32)) + QByteArray(1, static_cast<char>(y + 32));
+}
+
 void Terminal::processByte(unsigned char c)
 {
     if (m_state == State::Ground && m_utf8Remaining != 0) {
@@ -61,7 +122,7 @@ void Terminal::processByte(unsigned char c)
         } else if (c == 0x00) {
             // NUL: dropped.
         } else if (c < 0x80) {
-            m_screen.putChar(QChar::fromLatin1(static_cast<char>(c)), m_fg, m_bg, m_flags);
+            m_screen.putChar(c, m_fg, m_bg, m_flags);
         } else if (c >= 0xc2 && c <= 0xdf) {
             m_utf8CodePoint = c & 0x1fu;
             m_utf8Minimum = 0x80;
@@ -91,8 +152,19 @@ void Terminal::processByte(unsigned char c)
         } else if (c == ']') {
             m_state = State::Osc;
             m_oscBody.clear();
+        } else if (c >= 0x20 && c <= 0x2f) {
+            // ESC sequences with an intermediate byte (for example ESC ( B
+            // to select the ASCII character set) end with a separate final
+            // byte. Consume both; otherwise that final byte leaks as text.
+            m_state = State::EscapeIntermediate;
         } else {
             handleEsc(static_cast<char>(c));
+            m_state = State::Ground;
+        }
+        break;
+
+    case State::EscapeIntermediate:
+        if (c >= 0x30 && c <= 0x7e) {
             m_state = State::Ground;
         }
         break;
@@ -103,6 +175,9 @@ void Terminal::processByte(unsigned char c)
             m_state = State::Ground;
             m_csiBody.clear();
             m_csiPrivate = false;
+        } else if (c == '?' && m_csiBody.isEmpty()) {
+            // DEC private modes follow '[' directly: CSI ? 1049 h.
+            m_csiPrivate = true;
         } else {
             m_csiBody.append(static_cast<char>(c));
         }
@@ -131,14 +206,10 @@ void Terminal::putCodePoint(unsigned int codePoint)
         codePoint = 0xfffd;
     }
 
-    if (codePoint <= 0xffff) {
-        m_screen.putChar(QChar(static_cast<ushort>(codePoint)), m_fg, m_bg, m_flags);
-        return;
-    }
-
-    const unsigned int supplementary = codePoint - 0x10000;
-    m_screen.putChar(QChar(static_cast<ushort>(0xd800 + (supplementary >> 10))), m_fg, m_bg, m_flags);
-    m_screen.putChar(QChar(static_cast<ushort>(0xdc00 + (supplementary & 0x3ff))), m_fg, m_bg, m_flags);
+    // Supplementary-plane characters (e.g. Nerd Font icons, U+F0xxx) occupy
+    // one cell holding the full code point; the renderer encodes them as a
+    // surrogate-pair string.
+    m_screen.putChar(codePoint, m_fg, m_bg, m_flags);
 }
 
 std::vector<int> Terminal::parseParams(const QByteArray &body)
@@ -150,12 +221,17 @@ std::vector<int> Terminal::parseParams(const QByteArray &body)
         if (c >= '0' && c <= '9') {
             cur = (cur * 10) + (c - '0');
             has = true;
-        } else if (c == ';') {
-            out.push_back(has ? cur : 0);
+        } else if (c == ';' || c == ':') {
+            // In colon-form SGR, an empty color-space field is optional
+            // (for example 38:2::r:g:b), so omit empty colon fields. Keep
+            // empty semicolon fields as zero-valued default parameters.
+            if (has || c == ';') {
+                out.push_back(has ? cur : 0);
+            }
             cur = 0;
             has = false;
         }
-        // Intermediate bytes (e.g. '?') are ignored here.
+        // Other intermediate bytes are ignored here.
     }
     out.push_back(has ? cur : 0);
     return out;
@@ -232,6 +308,11 @@ void Terminal::handleCsi(char final, bool privateMode)
     case 'c':
         m_daPending = true;
         break; // Primary DA query.
+    case 'n':
+        if (paramAt(p, 0, 0) == 5 || paramAt(p, 0, 0) == 6) {
+            m_dsrQuery = static_cast<unsigned char>(paramAt(p, 0, 0));
+        }
+        break; // Device status / cursor position report.
     case 'h':  // NOLINT: similar no-op branches
     case 'l':
         break; // Non-private modes: not needed for the MVP.
@@ -242,26 +323,40 @@ void Terminal::handleCsi(char final, bool privateMode)
 
 void Terminal::handleDec(char final, const std::vector<int> &params)
 {
-    const int mode = paramAt(params, 0, 0);
     const bool set = (final == 'h');
-
-    switch (mode) {
-    case 25:
-        m_screen.showCursor(set);
-        break;
-    case 1049:
-        if (set) {
-            m_screen.enterAltScreen();
-        } else {
-            m_screen.leaveAltScreen();
+    for (const int mode : params) {
+        switch (mode) {
+        case 25:
+            m_screen.showCursor(set);
+            break;
+        case 1049:
+            if (set) {
+                m_screen.enterAltScreen();
+            } else {
+                m_screen.leaveAltScreen();
+            }
+            break;
+        case 1000:
+            m_mouseModes = set ? static_cast<unsigned char>(m_mouseModes | 0x01u)
+                               : static_cast<unsigned char>(m_mouseModes & ~0x01u);
+            break;
+        case 1002:
+            m_mouseModes = set ? static_cast<unsigned char>(m_mouseModes | 0x02u)
+                               : static_cast<unsigned char>(m_mouseModes & ~0x02u);
+            break;
+        case 1003:
+            m_mouseModes = set ? static_cast<unsigned char>(m_mouseModes | 0x04u)
+                               : static_cast<unsigned char>(m_mouseModes & ~0x04u);
+            break;
+        case 1006:
+            m_sgrMouse = set;
+            break;
+        case 2004:
+            break; // Bracketed paste: accepted, unused in the MVP.
+        case 6: // Origin mode: ignored.
+        default:
+            break;
         }
-        break;
-    case 2004:
-        break; // Bracketed paste: accepted, unused in the MVP.
-    case 6:    // Origin mode: ignored.
-        break;
-    default:
-        break;
     }
 }
 
@@ -375,6 +470,9 @@ void Terminal::handleOsc(const QByteArray &body)
             m_title = text;
             m_titleDirty = true;
         }
+    }
+    if ((num == "10" || num == "11") && body.mid(idx + 1) == "?") {
+        m_colorQuery = static_cast<unsigned char>(num == "10" ? 10 : 11);
     }
     // "8;" (hyperlink) and others: ignored.
 }

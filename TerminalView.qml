@@ -11,6 +11,15 @@ Item {
     readonly property int fontSize: 15
     readonly property real cellWidth: 9
     readonly property real cellHeight: 18
+    // Primary font for regular text. The Nerd Font is the CSS fallback for
+    // supplementary-plane glyphs (Nerd Font icons, U+F0xxx) that the primary
+    // font lacks: the CSS font-family list does per-glyph fallback, so icons
+    // render from the Nerd Font while regular text stays in the primary font.
+    // The "Mono" variant guarantees every glyph (icons included) is one cell
+    // wide, so the icon column grid stays aligned.
+    readonly property string primaryFont: "monospace"
+    readonly property string nerdFont: "'JetBrainsMono Nerd Font Mono'"
+    readonly property string fontFamily: primaryFont + ", " + nerdFont
     readonly property int cols: Math.max(2, Math.floor(canvas.width / cellWidth))
     readonly property int rows: Math.max(2, Math.floor(canvas.height / cellHeight))
 
@@ -79,27 +88,36 @@ Item {
         onWheel: event => {
             const dy = event.angleDelta.y; // positive = up, negative = down
             if (dy !== 0) {
-                view.scrollAccumulator += dy;
-                const step = Math.trunc(view.scrollAccumulator / 40);
-                if (step !== 0) {
-                    Backend.scrollBy(step);
-                    view.scrollAccumulator -= step * 40;
+                if (Backend.mouseTracking) {
+                    const p = selectionArea.mapFromItem(view, event.x, event.y);
+                    const cell = selectionArea.cellAt(p.x, p.y);
+                    Backend.mouseWheel(dy > 0, cell[1], cell[0], event.modifiers);
+                } else {
+                    view.scrollAccumulator += dy;
+                    const step = Math.trunc(view.scrollAccumulator / 40);
+                    if (step !== 0) {
+                        Backend.scrollBy(step);
+                        view.scrollAccumulator -= step * 40;
+                    }
                 }
             }
             event.accepted = true;
         }
     }
 
-    function drawRun(ctx, text, startCol, y, fg, flags) {
+    // `cells` is the number of terminal cells in the run (not text.length,
+    // which counts UTF-16 units and over-counts supplementary-plane glyphs
+    // like Nerd Font icons that occupy one cell each).
+    function drawRun(ctx, text, startCol, y, fg, flags, cells) {
         if (!text || (flags & 32) !== 0)
             return;
         ctx.fillStyle = Qt.rgba(((fg >> 16) & 255) / 255, ((fg >> 8) & 255) / 255, (fg & 255) / 255, 1);
-        ctx.font = (flags & 1) ? "bold " + view.fontSize + "px monospace" : view.fontSize + "px monospace";
+        ctx.font = ((flags & 1) ? "bold " : "") + view.fontSize + "px " + view.fontFamily;
         ctx.fillText(text, startCol * view.cellWidth, y);
         if (flags & 4)
-            ctx.fillRect(startCol * view.cellWidth, y + view.cellHeight - 1, text.length * view.cellWidth, 1);
+            ctx.fillRect(startCol * view.cellWidth, y + view.cellHeight - 1, cells * view.cellWidth, 1);
         if (flags & 8)
-            ctx.fillRect(startCol * view.cellWidth, y + Math.floor(view.cellHeight / 2), text.length * view.cellWidth, 1);
+            ctx.fillRect(startCol * view.cellWidth, y + Math.floor(view.cellHeight / 2), cells * view.cellWidth, 1);
     }
 
     Canvas2D {
@@ -126,7 +144,7 @@ Item {
             const rows = view.rows;
             ctx.textAlign = "left";
             ctx.textBaseline = "top";
-            ctx.font = view.fontSize + "px monospace";
+            ctx.font = view.fontSize + "px " + view.fontFamily;
 
             // The snapshot is a flat, row-major list of cells:
             // cell(r, c) === data[r * cols + c].
@@ -153,21 +171,24 @@ Item {
                     }
                 }
                 let buf = "";
+                let bufCells = 0;
                 let start = 0;
                 let fg = data[rowBase]["fg"];
                 let flags = data[rowBase]["flags"];
                 for (let c = 0; c < cols; ++c) {
                     const cell = data[rowBase + c];
                     if (cell["fg"] !== fg || cell["flags"] !== flags) {
-                        view.drawRun(ctx, buf, start, y, fg, flags);
+                        view.drawRun(ctx, buf, start, y, fg, flags, bufCells);
                         buf = "";
+                        bufCells = 0;
                         start = c;
                         fg = cell["fg"];
                         flags = cell["flags"];
                     }
                     buf += cell["ch"];
+                    ++bufCells;
                 }
-                view.drawRun(ctx, buf, start, y, fg, flags);
+                view.drawRun(ctx, buf, start, y, fg, flags, bufCells);
             }
 
             // The cursor is at the live position (bottom of the main screen),
@@ -185,7 +206,8 @@ Item {
     MouseArea {
         id: selectionArea
 
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+        hoverEnabled: Backend.mouseMotionTracking
 
         anchors.top: canvas.top
         anchors.left: canvas.left
@@ -198,8 +220,22 @@ Item {
             return [col, row];
         }
 
+        function buttonCode(button) {
+            if (button === Qt.LeftButton)
+                return 0;
+            if (button === Qt.MiddleButton)
+                return 1;
+            if (button === Qt.RightButton)
+                return 2;
+            return -1;
+        }
+
         onPressed: mouse => {
-            if (mouse.button === Qt.LeftButton) {
+            if (Backend.mouseTracking) {
+                const cell = selectionArea.cellAt(mouse.x, mouse.y);
+                Backend.mousePress(selectionArea.buttonCode(mouse.button), cell[1], cell[0], mouse.modifiers);
+                mouse.accepted = true;
+            } else if (mouse.button === Qt.LeftButton) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 Backend.selPress(cell[1], cell[0]);
             } else if (mouse.button === Qt.RightButton) {
@@ -211,19 +247,29 @@ Item {
         }
 
         onPositionChanged: mouse => {
-            if (mouse.buttons & Qt.LeftButton) {
+            if (Backend.mouseTracking && (mouse.buttons !== Qt.NoButton || Backend.mouseMotionTracking)) {
+                const button = (mouse.buttons & Qt.LeftButton) ? Qt.LeftButton
+                    : (mouse.buttons & Qt.MiddleButton) ? Qt.MiddleButton
+                    : (mouse.buttons & Qt.RightButton) ? Qt.RightButton : Qt.NoButton;
+                const cell = selectionArea.cellAt(mouse.x, mouse.y);
+                Backend.mouseMove(selectionArea.buttonCode(button), cell[1], cell[0], mouse.modifiers);
+            } else if (!Backend.mouseTracking && (mouse.buttons & Qt.LeftButton)) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 Backend.selMove(cell[1], cell[0]);
             }
         }
 
         onReleased: mouse => {
-            if (mouse.button === Qt.LeftButton)
+            if (Backend.mouseTracking) {
+                const cell = selectionArea.cellAt(mouse.x, mouse.y);
+                Backend.mouseRelease(selectionArea.buttonCode(mouse.button), cell[1], cell[0], mouse.modifiers);
+            } else if (mouse.button === Qt.LeftButton) {
                 Backend.selRelease();
+            }
         }
 
         onDoubleClicked: mouse => {
-            if (mouse.button === Qt.LeftButton) {
+            if (!Backend.mouseTracking && mouse.button === Qt.LeftButton) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 Backend.selWord(cell[1], cell[0]);
             }

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <QChar>
-
 namespace konsoll
 {
 
@@ -23,12 +21,15 @@ inline constexpr unsigned int Invisible = 1u << 5;
 //   0                       -> default (resolved at render time)
 //   1..256                  -> 256-color palette index
 //   0x80000000 | (r<<16|g<<8|b) -> truecolor (24-bit)
-// Members ordered heaviest-first (4-byte colors, then the 2-byte glyph and
-// 1-byte flags) so the layout is padding-free under -Wpadded.
+// `ch` holds the full Unicode code point (not a UTF-16 code unit) so a
+// supplementary-plane character (e.g. a Nerd Font icon, U+F0xxx) occupies
+// exactly one cell; it is encoded as a surrogate-pair QString at render
+// time. Members ordered heaviest-first (4-byte colors/glyph, then 1-byte
+// flags) so the compiler inserts the least padding.
 struct Cell {
     unsigned int fg = 0;
     unsigned int bg = 0;
-    QChar ch = u' ';
+    unsigned int ch = 0x20;
     unsigned char flags = CellFlag::None;
 };
 

@@ -32,16 +32,30 @@ public:
     bool daPending() const { return m_daPending; }
     void clearDaPending() { m_daPending = false; }
     static QByteArray daResponse();
+    int dsrQuery() const { return m_dsrQuery; }
+    void clearDsrQuery() { m_dsrQuery = 0; }
+    QByteArray dsrResponse() const;
 
     // Set when a full-screen erase (ESC[2J) is processed, so the backend can
     // drop any selection that now sits over blank lines.
     bool clearPending() const { return m_clearPending; }
     void clearClearPending() { m_clearPending = false; }
 
+    bool mouseTracking() const { return m_mouseModes != 0; }
+    bool mouseMotionTracking() const { return (m_mouseModes & 0x06u) != 0; }
+    bool sgrMouse() const { return m_sgrMouse; }
+    QByteArray mouseReport(int button, int row, int col, int event, unsigned int modifiers) const;
+
+    // OSC 10/11 foreground/background color queries from full-screen apps.
+    unsigned char colorQuery() const { return m_colorQuery; }
+    void clearColorQuery() { m_colorQuery = 0; }
+    static QByteArray colorQueryResponse(unsigned char query);
+
 private:
     enum class State : std::uint8_t {
         Ground,
         Escape,
+        EscapeIntermediate,
         Csi,
         Osc
     };
@@ -75,6 +89,10 @@ private:
     bool m_titleDirty = false;
     bool m_daPending = false;
     bool m_clearPending = false;
+    unsigned char m_dsrQuery = 0;
+    unsigned char m_colorQuery = 0;
+    unsigned char m_mouseModes = 0;
+    bool m_sgrMouse = false;
 };
 
 } // namespace konsoll

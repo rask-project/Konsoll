@@ -2,8 +2,6 @@
 
 #include "Cell.h"
 
-#include <QChar>
-
 #include <deque>
 #include <vector>
 
@@ -37,8 +35,8 @@ public:
     // Cell access for rendering.
     const Cell &cellAt(int row, int col) const;
 
-    // Write a character at the cursor (deferred wrap, advances cursor).
-    void putChar(QChar ch, unsigned int fg, unsigned int bg, unsigned char flags);
+    // Write a code point at the cursor (deferred wrap, advances cursor).
+    void putChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned char flags);
 
     // Line discipline.
     void lineFeed();

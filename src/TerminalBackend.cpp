@@ -165,10 +165,25 @@ void TerminalBackend::start()
 
 void TerminalBackend::onData(const QByteArray &data)
 {
+    const bool wasMouseTracking = mouseTracking();
+    const bool wasMouseMotionTracking = mouseMotionTracking();
     m_terminal->write(data);
+    if (wasMouseTracking != mouseTracking() || wasMouseMotionTracking != mouseMotionTracking()) {
+        emit mouseTrackingChanged();
+    }
     if (m_terminal->daPending()) {
         m_pty->write(Terminal::daResponse());
         m_terminal->clearDaPending();
+    }
+    if (m_terminal->colorQuery() != 0) {
+        m_pty->write(Terminal::colorQueryResponse(m_terminal->colorQuery()));
+        m_terminal->clearColorQuery();
+    }
+    // Neovim pairs OSC 11 with CSI 5n and expects the OSC color reply first;
+    // the following DSR response confirms that the color query was supported.
+    if (m_terminal->dsrQuery() != 0) {
+        m_pty->write(m_terminal->dsrResponse());
+        m_terminal->clearDsrQuery();
     }
 
     if (m_terminal->titleDirty()) {
@@ -262,6 +277,44 @@ void TerminalBackend::writeText(const QString &text)
     if (m_pty && !text.isEmpty()) {
         m_pty->write(text.toUtf8());
     }
+}
+
+void TerminalBackend::mousePress(int button, int row, int col, int modifiers)
+{
+    sendMouseReport(button, row, col, 0, modifiers);
+}
+
+void TerminalBackend::mouseRelease(int button, int row, int col, int modifiers)
+{
+    sendMouseReport(button, row, col, 1, modifiers);
+}
+
+void TerminalBackend::mouseMove(int button, int row, int col, int modifiers)
+{
+    sendMouseReport(button, row, col, 2, modifiers);
+}
+
+void TerminalBackend::mouseWheel(bool up, int row, int col, int modifiers)
+{
+    sendMouseReport(up ? 64 : 65, row, col, up ? 3 : 4, modifiers);
+}
+
+void TerminalBackend::sendMouseReport(int button, int row, int col, int event, int modifiers)
+{
+    if (!m_pty || !m_terminal) {
+        return;
+    }
+    unsigned int mouseModifiers = 0;
+    if ((modifiers & Qt::ShiftModifier) != 0) {
+        mouseModifiers |= 1u;
+    }
+    if ((modifiers & Qt::AltModifier) != 0) {
+        mouseModifiers |= 2u;
+    }
+    if ((modifiers & Qt::ControlModifier) != 0) {
+        mouseModifiers |= 4u;
+    }
+    m_pty->write(m_terminal->mouseReport(button, row, col, event, mouseModifiers));
 }
 
 void TerminalBackend::resize(int cols, int rows)
@@ -431,7 +484,13 @@ void TerminalBackend::selWord(int row, int col)
         return;
     }
 
-    auto const isWordChar = [](QChar ch) { return ch.isLetterOrNumber() || ch == '_' || ch == '-'; };
+    auto const isWordChar = [](unsigned int cp) {
+        if (cp >= 0x10000) {
+            return false; // supplementary-plane (e.g. Nerd Font icons): not a word char
+        }
+        const QChar c = QChar(static_cast<ushort>(cp));
+        return c.isLetterOrNumber() || cp == '_' || cp == '-';
+    };
     int startCol = col;
     int endCol = col;
     while (startCol > 0 && isWordChar(line[startCol - 1].ch)) {
@@ -505,7 +564,8 @@ void TerminalBackend::copySelection()
             --c1;
         }
         for (int c = c0; c < c1; ++c) {
-            text.append(l[c].ch);
+            const char32_t cp = static_cast<char32_t>(l[c].ch);
+            text.append(QString::fromUcs4(&cp, 1));
         }
         if (line < bot) {
             text.append('\n');
@@ -630,8 +690,11 @@ QVariantList TerminalBackend::snapshot() const
                 std::swap(fg, bg);
             }
 
+            // Encode the code point as a QString (surrogate pair when
+            // supplementary) so the QML renderer draws one glyph per cell.
+            const char32_t cp = static_cast<char32_t>(cell.ch);
             QVariantMap m;
-            m["ch"] = QString(cell.ch);
+            m["ch"] = QString::fromUcs4(&cp, 1);
             m["fg"] = static_cast<int>(fg);
             m["bg"] = static_cast<int>(bg);
             m["flags"] = static_cast<int>(cell.flags);

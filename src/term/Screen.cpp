@@ -10,7 +10,7 @@ namespace
 {
 Cell blankCell()
 {
-    return Cell{.fg = 0, .bg = 0, .ch = QChar(' '), .flags = CellFlag::None};
+    return Cell{.fg = 0, .bg = 0, .ch = ' ', .flags = CellFlag::None};
 }
 
 std::vector<Line> makeGrid(int rows, int cols)
@@ -135,7 +135,7 @@ const Cell &Screen::cellAt(int row, int col) const
     return grid()[row][col];
 }
 
-void Screen::putChar(QChar ch, unsigned int fg, unsigned int bg, unsigned char flags) // NOLINT: fg/bg are inherently
+void Screen::putChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned char flags) // NOLINT: fg/bg are inherently
                                                                                       // swappable
 {
     if (m_pendingWrap) {
@@ -455,11 +455,17 @@ void Screen::setMaxScrollback(int max)
 
 int Screen::totalLines() const
 {
+    if (m_inAlt) {
+        return m_rows;
+    }
     return static_cast<int>(m_scrollback.size()) + m_rows;
 }
 
 int Screen::maxScrollOffset() const
 {
+    if (m_inAlt) {
+        return 0;
+    }
     return static_cast<int>(m_scrollback.size());
 }
 
@@ -483,6 +489,9 @@ const Line &Screen::lineAt(int index) const
     static const Line kEmpty;
     if (index < 0 || index >= totalLines()) {
         return kEmpty;
+    }
+    if (m_inAlt) {
+        return m_alt[index];
     }
     if (index < static_cast<int>(m_scrollback.size())) {
         auto it = m_scrollback.begin();
