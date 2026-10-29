@@ -61,6 +61,11 @@ target_link_libraries(konsoll
     PRIVATE Qt6::Quick Qt6::CanvasPainter Qt6::QuickControls2
 )
 
+# Enable the QML debug service so the QML Live Preview MCP tool
+# (run_qmlPreview) can hot-reload QML edits without a rebuild.
+# Scoped to Debug builds so the service is not shipped in Release.
+target_compile_definitions(konsoll PRIVATE $<$<CONFIG:Debug>:QT_QML_DEBUG>)
+
 install(TARGETS konsoll
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

@@ -53,16 +53,14 @@ Guidance for AI agents working in this repository.
 
 ## Verifying QML changes
 
-- After editing any QML, **build and run offscreen** to confirm the QML
-  loads before reporting the change done:
-  `QT_QPA_PLATFORM=offscreen ./build/<config>/konsoll.app/Contents/MacOS/konsoll`.
-  Watch stderr for QML load errors — `Type ... unavailable`,
-  `Cannot assign to non-existent property "..."` — which mean a referenced
-  property/type does not exist on the C++ side.
+- **Live preview (hot reload) — preferred for validating the UI and QML.**
+  The app is built with `QT_QML_DEBUG` in Debug (`CMakeLists.txt`), which
+  enables the QML debug service. Build in Debug, then start the preview with
+  the QML Live Preview MCP tool: `run_qmlPreview` with the executable path
+  `./build/<config>/konsoll.app/Contents/MacOS/konsoll`. QML source edits then
+  appear in the running app without a rebuild. A rebuild/restart is still
+  required for C++ changes, `qmldir`, module URI/version, singleton
+  registration, `CMakeLists.txt` edits, new imports of unlinked modules, and
+  new QML files compiled into Qt resources.
 - The build already runs QML AOT (`qmlcache`), so a property that does not
-  exist on a `QML_ELEMENT` type also fails the build. A clean build plus a
-  clean offscreen run together confirm the QML is wired correctly.
-- Under offscreen the app **segfaults in `src/macs_translucent.mm`**
-  (AppKit translucency with no real `NSWindow`) — this is pre-existing and
-  unrelated to QML. A clean QML load (font/rendering messages, no QML error)
-  followed by that segfault is the expected, passing result.
+  exist on a `QML_ELEMENT` type also fails the build.
