@@ -6,6 +6,7 @@
 #include <QColor>
 #include <QObject>
 #include <QTimer>
+#include <QRegularExpression>
 #include <QVariantList>
 #include <QtQml>
 
@@ -64,6 +65,12 @@ public:
     // Clear the screen and the scrollback buffer (Ctrl+L plus Konsole's
     // "Clear Buffer"). Terminal-level action.
     Q_INVOKABLE void clearBuffer();
+    Q_INVOKABLE int search(const QString &query, bool regex);
+    Q_INVOKABLE int searchNext(bool backwards = false);
+    Q_INVOKABLE int searchCurrentIndex() const;
+    Q_INVOKABLE void clearSearch();
+    Q_INVOKABLE int searchRowLeft(int visibleRow) const;
+    Q_INVOKABLE int searchRowRight(int visibleRow) const;
 
     // Mouse selection, in visible-grid coordinates (row 0 = top of the view).
     Q_INVOKABLE void selPress(int row, int col);
@@ -155,8 +162,11 @@ private:
         int col{0};
     };
 
+    struct SearchMatch { int line; int start; int end; };
+
     std::unique_ptr<PtyProcess> m_pty;
     std::unique_ptr<Terminal> m_terminal;
+    QVector<SearchMatch> m_searchMatches;
 
     QTimer m_frameTimer;
     QString m_title{QStringLiteral("Konsoll")};
@@ -164,6 +174,7 @@ private:
     AbsPos m_selCurrent{.line = -1, .col = 0};
     int m_highlightStart{-1};
     int m_highlightEnd{-1};
+    int m_searchIndex{-1};
 
     int m_rows{24};
     int m_cols{80};

@@ -5,7 +5,7 @@ project(RaskKonsoll VERSION 1.0.0 LANGUAGES CXX OBJCXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick CanvasPainter QuickControls2)
+find_package(Qt6 6.12 REQUIRED COMPONENTS Quick CanvasPainter QuickControls2)
 
 qt_standard_project_setup(REQUIRES 6.12)
 
@@ -31,6 +31,7 @@ qt_add_qml_module(konsoll
         TerminalView.qml
         controls/Menu.qml
         controls/MenuItem.qml
+        controls/SearchBar.qml
     SOURCES
         src/AboutDialog.h
         src/AboutDialog.mm
@@ -55,10 +56,13 @@ qt_add_resources(konsoll "/"
         assets/konsoll.icns
         assets/konsoll.png
         assets/qtlogo-64.png
+
         shell-integration/konsoll.zsh
         shell-integration/konsoll.bash
         shell-integration/konsoll.fish
 )
+
+add_subdirectory(resources/icons)
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an

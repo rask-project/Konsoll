@@ -8,8 +8,12 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName(QStringLiteral("rask-project"));
     QCoreApplication::setApplicationName(QStringLiteral("Konsoll"));
     QCoreApplication::setApplicationVersion(QStringLiteral("1.0.0"));
+
     QGuiApplication app(argc, argv);
     QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/assets/konsoll.png")));
+
+    QIcon::setThemeSearchPaths({QStringLiteral(":/icons")});
+    QIcon::setThemeName(QStringLiteral("konsoll"));
 
     QQmlApplicationEngine engine;
 

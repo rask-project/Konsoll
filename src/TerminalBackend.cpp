@@ -439,6 +439,91 @@ void TerminalBackend::clearBuffer()
     scheduleFrame();
 }
 
+int TerminalBackend::search(const QString &query, bool regex)
+{
+    m_searchMatches.clear();
+    m_searchIndex = -1;
+    if (!m_terminal || query.isEmpty()) {
+        scheduleFrame();
+        return 0;
+    }
+    Screen &screen = m_terminal->screen();
+    const QRegularExpression expression(regex ? query : QRegularExpression::escape(query));
+    if (!expression.isValid()) {
+        scheduleFrame();
+        return -1;
+    }
+    for (int lineIndex = 0; lineIndex < screen.totalLines(); ++lineIndex) {
+        const Line &line = screen.lineAt(lineIndex);
+        QString text;
+        QVector<int> offsetToCell;
+        text.reserve(static_cast<qsizetype>(line.size()));
+        for (int cellIndex = 0; cellIndex < static_cast<int>(line.size()); ++cellIndex) {
+            const Cell &cell = line.at(static_cast<std::size_t>(cellIndex));
+            const char32_t cp = static_cast<char32_t>(cell.ch);
+            const QString glyph = QString::fromUcs4(&cp, 1);
+            for (qsizetype unit = 0; unit < glyph.size(); ++unit) offsetToCell.append(cellIndex);
+            text.append(glyph);
+        }
+        offsetToCell.append(static_cast<int>(line.size()));
+        auto it = expression.globalMatch(text);
+        while (it.hasNext()) {
+            const auto match = it.next();
+            if (match.capturedLength() > 0) {
+                const int start = offsetToCell.at(match.capturedStart());
+                const int end = offsetToCell.at(match.capturedStart() + match.capturedLength());
+                if (end > start) m_searchMatches.append({lineIndex, start, end});
+            }
+        }
+    }
+    if (!m_searchMatches.isEmpty()) {
+        m_searchIndex = 0;
+        const int start = m_searchMatches.first().line;
+        screen.scrollTo(screen.totalLines() - screen.rows() - start);
+        checkScrollOffsetChanged();
+    }
+    scheduleFrame();
+    return m_searchMatches.size();
+}
+
+int TerminalBackend::searchNext(bool backwards)
+{
+    if (m_searchMatches.isEmpty()) return 0;
+    const int count = m_searchMatches.size();
+    m_searchIndex = (m_searchIndex + (backwards ? count - 1 : 1)) % count;
+    const auto &match = m_searchMatches.at(m_searchIndex);
+    m_terminal->screen().scrollTo(m_terminal->screen().totalLines() - m_terminal->screen().rows() - match.line);
+    checkScrollOffsetChanged();
+    scheduleFrame();
+    return count;
+}
+
+int TerminalBackend::searchCurrentIndex() const
+{
+    return m_searchIndex >= 0 && m_searchIndex < m_searchMatches.size() ? m_searchIndex + 1 : 0;
+}
+
+void TerminalBackend::clearSearch()
+{
+    m_searchMatches.clear();
+    m_searchIndex = -1;
+    scheduleFrame();
+}
+
+int TerminalBackend::searchRowLeft(int visibleRow) const
+{
+    if (m_searchIndex < 0 || m_searchIndex >= m_searchMatches.size()) return -1;
+    const auto &match = m_searchMatches.at(m_searchIndex);
+    return match.line == visibleStart() + visibleRow ? match.start : -1;
+}
+
+int TerminalBackend::searchRowRight(int visibleRow) const
+{
+    if (m_searchIndex < 0 || m_searchIndex >= m_searchMatches.size()) return -1;
+    const auto &match = m_searchMatches.at(m_searchIndex);
+    return match.line == visibleStart() + visibleRow ? match.end - 1 : -1;
+}
+
 void TerminalBackend::checkScrollOffsetChanged()
 {
     if (m_terminal) {

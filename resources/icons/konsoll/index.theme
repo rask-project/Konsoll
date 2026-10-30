@@ -1,0 +1,8 @@
+[Icon Theme]
+Name=Konsoll
+Comment=Konsoll Icons
+Directories=svg
+
+[svg]
+Size=24
+Type=Scalable

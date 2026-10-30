@@ -23,6 +23,11 @@ Item {
     readonly property int cols: Math.max(2, Math.floor(canvas.width / cellWidth))
     readonly property int rows: Math.max(2, Math.floor(canvas.height / cellHeight))
 
+    SystemPalette {
+        id: appPalette
+        colorGroup: SystemPalette.Active
+    }
+
     // Accumulates wheel/trackpad deltas so a few small deltas add up to a whole
     // line. 40 units = 1 line (a mouse notch is 120 units, so 1 notch = 3 lines).
     property real scrollAccumulator: 0
@@ -67,6 +72,11 @@ Item {
             const hasCtrl = (event.modifiers & Qt.MetaModifier) !== 0
             const isSpecialKey = specialKeys.includes(event.key)
             if (hasCmd || hasOption || hasCtrl || isSpecialKey) {
+                if (hasCmd && event.key === Qt.Key_F) {
+                    searchBar.openSearch();
+                    event.accepted = true;
+                    return;
+                }
                 Backend.keyPress(event.key, event.text, event.modifiers);
                 event.accepted = true;
             }
@@ -157,6 +167,13 @@ Item {
                         ctx.fillStyle = Qt.rgba(((cell["bg"] >> 16) & 255) / 255, ((cell["bg"] >> 8) & 255) / 255, (cell["bg"] & 255) / 255, 1);
                         ctx.fillRect(c * cw, y, cw, ch);
                     }
+                }
+                const matchLeft = Backend.searchRowLeft(r);
+                const matchRight = Backend.searchRowRight(r);
+                if (matchLeft >= 0 && matchRight >= matchLeft) {
+                    const highlight = appPalette.highlight;
+                    ctx.fillStyle = Qt.rgba(highlight.r, highlight.g, highlight.b, 0.55);
+                    ctx.fillRect(matchLeft * cw, y, (matchRight - matchLeft + 1) * cw, ch);
                 }
                 // Selection highlight: drawn over cell backgrounds, under text.
                 // Per-row range (iTerm2-style): start line clipped at the press
@@ -422,6 +439,17 @@ Item {
             text: qsTr("Clear Buffer")
             onTriggered: Backend.clearBuffer()
         }
+    }
+
+    Controls.SearchBar {
+        id: searchBar
+
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.margins: 12
+        z: 10
+        onCloseRequested: input.forceActiveFocus()
+        onRepaintRequested: canvas.requestPaint()
     }
 
     // Thin scrollbar on the right edge, matching the canvas vertically.
