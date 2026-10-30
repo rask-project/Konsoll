@@ -530,7 +530,9 @@ void TerminalBackend::selWord(int row, int col)
             return false; // supplementary-plane (e.g. Nerd Font icons): not a word char
         }
         const QChar c = QChar(static_cast<ushort>(cp));
-        return c.isLetterOrNumber() || cp == '_' || cp == '-';
+        // Treat common path and filename punctuation as part of a word, as
+        // terminal emulators do when double-clicking paths (e.g. docs/foo.md).
+        return c.isLetterOrNumber() || cp == '_' || cp == '-' || cp == '.' || cp == '/';
     };
     int startCol = col;
     int endCol = col;

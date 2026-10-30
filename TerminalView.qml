@@ -166,7 +166,7 @@ Item {
                     const l = Backend.selRowLeft(r);
                     const rr = Backend.selRowRight(r);
                     if (l >= 0 && rr >= l) {
-                        ctx.fillStyle = "rgba(70, 130, 180, 0.45)";
+                        ctx.fillStyle = "rgba(55, 125, 235, 0.82)";
                         ctx.fillRect(l * cw, y, (rr - l + 1) * cw, ch);
                     }
                 }
@@ -175,20 +175,25 @@ Item {
                 let start = 0;
                 let fg = data[rowBase]["fg"];
                 let flags = data[rowBase]["flags"];
+                let selected = false;
                 for (let c = 0; c < cols; ++c) {
                     const cell = data[rowBase + c];
-                    if (cell["fg"] !== fg || cell["flags"] !== flags) {
-                        view.drawRun(ctx, buf, start, y, fg, flags, bufCells);
+                    const selLeft = Backend.selectionActive ? Backend.selRowLeft(r) : -1;
+                    const selRight = Backend.selectionActive ? Backend.selRowRight(r) : -1;
+                    const cellSelected = selLeft >= 0 && c >= selLeft && c <= selRight;
+                    if (cell["fg"] !== fg || cell["flags"] !== flags || cellSelected !== selected) {
+                        view.drawRun(ctx, buf, start, y, selected ? 0xffffffff : fg, flags, bufCells);
                         buf = "";
                         bufCells = 0;
                         start = c;
                         fg = cell["fg"];
                         flags = cell["flags"];
+                        selected = cellSelected;
                     }
                     buf += cell["ch"];
                     ++bufCells;
                 }
-                view.drawRun(ctx, buf, start, y, fg, flags, bufCells);
+                view.drawRun(ctx, buf, start, y, selected ? 0xffffffff : fg, flags, bufCells);
             }
 
             // The cursor is at the live position (bottom of the main screen),
