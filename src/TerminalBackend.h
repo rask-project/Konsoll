@@ -58,6 +58,10 @@ public:
     // Jump to the bottom (newest content).
     Q_INVOKABLE void scrollToBottom();
 
+    // Clear the screen and the scrollback buffer (Ctrl+L plus Konsole's
+    // "Clear Buffer"). Terminal-level action.
+    Q_INVOKABLE void clearBuffer();
+
     // Mouse selection, in visible-grid coordinates (row 0 = top of the view).
     Q_INVOKABLE void selPress(int row, int col);
     Q_INVOKABLE void selMove(int row, int col);

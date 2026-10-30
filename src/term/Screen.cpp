@@ -520,6 +520,9 @@ void Screen::reflow()
         phys.push_back(m_main[r]);
         wrapped.push_back(m_mainWrapped[r]);
     }
+    const size_t cursorPhys = m_scrollback.size() + static_cast<size_t>(m_cursorRow);
+    size_t cursorLogical = 0;
+    size_t cursorLogicalCol = 0;
     // 2. Build logical lines: merge soft continuations, then trim the trailing
     //    padding of each logical line. Spaces at a wrap point are content
     //    (they separate words), so only the end of the whole logical line is
@@ -544,6 +547,10 @@ void Screen::reflow()
             cur = phys[i];
             curValid = true;
         }
+        if (i == cursorPhys) {
+            cursorLogical = logical.size();
+            cursorLogicalCol = (wrapped[i] ? cur.size() - phys[i].size() : 0) + static_cast<size_t>(m_cursorCol);
+        }
     }
     if (curValid) {
         trimEnd(cur);
@@ -552,25 +559,33 @@ void Screen::reflow()
     // 3. Re-wrap each logical line at the new width.
     std::vector<Line> newPhys;
     std::vector<bool> newWrapped;
-    for (auto &log : logical) {
+    size_t cursorNewPhys = 0;
+    size_t cursorNewCol = 0;
+    for (size_t logicalIndex = 0; logicalIndex < logical.size(); ++logicalIndex) {
+        auto &log = logical[logicalIndex];
+        const size_t logicalStart = newPhys.size();
         if (log.empty()) {
             newPhys.emplace_back(m_cols, blankCell());
             newWrapped.push_back(false);
-            continue;
+        } else {
+            bool first = true;
+            for (size_t i = 0; i < log.size(); i += static_cast<size_t>(m_cols)) {
+                Line line;
+                line.reserve(m_cols);
+                for (size_t j = i; j < i + static_cast<size_t>(m_cols) && j < log.size(); ++j) {
+                    line.push_back(log[j]);
+                }
+                while (line.size() < static_cast<size_t>(m_cols)) {
+                    line.push_back(blankCell());
+                }
+                newPhys.push_back(std::move(line));
+                newWrapped.push_back(!first);
+                first = false;
+            }
         }
-        bool first = true;
-        for (size_t i = 0; i < log.size(); i += static_cast<size_t>(m_cols)) {
-            Line line;
-            line.reserve(m_cols);
-            for (size_t j = i; j < i + static_cast<size_t>(m_cols) && j < log.size(); ++j) {
-                line.push_back(log[j]);
-            }
-            while (line.size() < static_cast<size_t>(m_cols)) {
-                line.push_back(blankCell());
-            }
-            newPhys.push_back(std::move(line));
-            newWrapped.push_back(!first);
-            first = false;
+        if (logicalIndex == cursorLogical) {
+            cursorNewPhys = logicalStart + cursorLogicalCol / static_cast<size_t>(m_cols);
+            cursorNewCol = cursorLogicalCol % static_cast<size_t>(m_cols);
         }
     }
     // 4. Redistribute: last `rows` lines -> screen, the rest -> scrollback.
@@ -596,10 +611,11 @@ void Screen::reflow()
             m_mainWrapped[r] = false;
         }
     }
-    // 5. Cursor: bottom row, column clamped. The re-wrapped history is
-    //    re-anchored at the bottom.
-    m_cursorRow = m_rows - 1;
-    m_cursorCol = std::min(m_cursorCol, m_cols - 1);
+    // 5. Keep the cursor attached to its logical line and column. This keeps
+    //    it in place when the window grows instead of anchoring it to the
+    //    bottom row of the newly larger screen.
+    m_cursorRow = std::clamp(static_cast<int>(cursorNewPhys) - static_cast<int>(screenStart), 0, m_rows - 1);
+    m_cursorCol = std::min(static_cast<int>(cursorNewCol), m_cols - 1);
     m_pendingWrap = false;
     m_scrollOffset = 0;
 }

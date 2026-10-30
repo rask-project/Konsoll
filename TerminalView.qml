@@ -293,6 +293,11 @@ Item {
             text: qsTr("Select All")
             onTriggered: Backend.selectAll()
         }
+
+        Controls.MenuItem {
+            text: qsTr("Clear Buffer")
+            onTriggered: Backend.clearBuffer()
+        }
     }
 
     // Thin scrollbar on the right edge, matching the canvas vertically.

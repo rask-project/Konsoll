@@ -28,9 +28,11 @@ std::array<QRgb, 256> buildPalette()
     p[1] = qRgb(194, 54, 33);
     p[2] = qRgb(151, 185, 15);
     p[3] = qRgb(181, 138, 4);
-    p[4] = qRgb(52, 55, 143);
+    // Keep ANSI blue vivid enough to remain legible over the translucent
+    // window when shells use the normal (non-bold) blue for their prompt.
+    p[4] = qRgb(84, 110, 255);
     p[5] = qRgb(140, 83, 194);
-    p[6] = qRgb(38, 139, 172);
+    p[6] = qRgb(48, 190, 225);
     p[7] = qRgb(203, 204, 205);
     p[8] = qRgb(42, 42, 42);
     p[9] = qRgb(234, 92, 53);
@@ -245,6 +247,12 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
 
     QByteArray out;
     if (ctrl) {
+        // Physical Ctrl+K: clear the scrollback buffer (terminal-level action,
+        // like Konsole's "Clear Buffer"). Not sent to the shell.
+        if (key == static_cast<int>(Qt::Key_K)) {
+            clearBuffer();
+            return;
+        }
         // Physical Ctrl+letter: send the control byte (e.g. Ctrl+C -> 0x03).
         // The event text may be empty for a Ctrl-modified key, so derive the
         // letter from the key code if needed.
@@ -378,6 +386,36 @@ void TerminalBackend::scrollToBottom()
     }
 
     m_terminal->screen().scrollToBottom();
+    checkScrollOffsetChanged();
+    scheduleFrame();
+}
+
+void TerminalBackend::clearBuffer()
+{
+    if (!m_terminal) {
+        return;
+    }
+
+    // Drop the history, then let the shell handle Ctrl+L so its line editor
+    // clears the display and redraws the live prompt at the correct position.
+    // Clearing the screen model and moving its cursor directly would leave it
+    // out of sync with the shell's terminal state; the next Enter would then
+    // reveal/redraw the prompt from that stale state.
+    Screen &s = m_terminal->screen();
+    s.clearScrollback();
+
+    if (m_pty) {
+        m_pty->write(QByteArray(1, '\x0c'));
+    } else {
+        s.eraseInDisplay(2);
+        s.moveCursor(0, 0);
+    }
+
+    // A selection over now-gone lines is stale, so drop it.
+    m_selAnchor = {.line = -1, .col = 0};
+    m_selCurrent = {.line = -1, .col = 0};
+    emit selectionChanged();
+
     checkScrollOffsetChanged();
     scheduleFrame();
 }
