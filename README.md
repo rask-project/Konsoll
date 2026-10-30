@@ -38,6 +38,15 @@ generates the build directory itself.)
 On launch Konsoll detects your default shell (from the `passwd` entry) and
 starts it in a PTY.
 
+### Selecting command blocks
+
+Konsoll loads its OSC 133 shell integration automatically for zsh, bash, and
+fish in each PTY session; it does not edit shell startup files. Clicking a
+command or one of its output lines highlights the full block; Cmd+C or the Copy
+menu item copies its text. Other shells continue to run normally and retain
+single-line highlighting. This matches iTerm2's automatic integration for
+supported shells.
+
 ## Features (MVP)
 
 - Real PTY via `forkpty()` running your login shell

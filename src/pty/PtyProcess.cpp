@@ -1,18 +1,26 @@
 #include "PtyProcess.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QDebug>
 #include <QFileInfo>
 #include <QLoggingCategory>
+#include <QSaveFile>
+#include <QStandardPaths>
 
 #include <array>
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
+#include <iterator>
+#include <ranges>
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <util.h>
+
+#include <utility>
+#include <vector>
 
 namespace konsoll
 {
@@ -31,11 +39,123 @@ PtyProcess::~PtyProcess()
 
 bool PtyProcess::start(const QString &shellPath, int cols, int rows)
 {
+    const QString shellName = QFileInfo(shellPath).fileName();
+    const bool isZsh = shellName == QStringLiteral("zsh");
+    const bool isBash = shellName == QStringLiteral("bash");
+    const bool isFish = shellName == QStringLiteral("fish");
+    const QString supportDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) +
+                               QStringLiteral("/shell-integration");
+    const bool supportDirReady = QDir().mkpath(supportDir);
+    const auto installResource = [](const QString &resource, const QString &destination) {
+        QFile source(resource);
+        if (!source.open(QIODevice::ReadOnly)) {
+            return false;
+        }
+        QSaveFile target(destination);
+        if (!target.open(QIODevice::WriteOnly) || target.write(source.readAll()) < 0) {
+            return false;
+        }
+        return target.commit();
+    };
+
+    QString integrationFile;
+    QString startupDir;
+    QByteArray originalStartupDir;
+    QByteArray originalHome;
+    std::vector<QByteArray> shellArgs;
+    if (supportDirReady && isZsh) {
+        integrationFile = supportDir + QStringLiteral("/konsoll.zsh");
+        startupDir = supportDir + QStringLiteral("/zsh-startup");
+        const QByteArray configuredZdotdir = qgetenv("ZDOTDIR");
+        originalStartupDir = configuredZdotdir.isEmpty() ? qgetenv("HOME") : configuredZdotdir;
+        if (originalStartupDir.isEmpty()) {
+            originalStartupDir = QDir::homePath().toLocal8Bit();
+        }
+        QDir().mkpath(startupDir);
+        installResource(QStringLiteral(":/shell-integration/konsoll.zsh"), integrationFile);
+        const QByteArray sourceHelper =
+            "typeset -g _KONSOLL_WRAPPER_ZDOTDIR=\"$ZDOTDIR\"\n"
+            "typeset -g _KONSOLL_USER_ZDOTDIR=\"${KONSOLL_USER_ZDOTDIR:-$HOME}\"\n"
+            "function _konsoll_source_startup_file() {\n"
+            "  local file=\"$1\"\n"
+            "  local startup_path=\"$_KONSOLL_USER_ZDOTDIR/$file\"\n"
+            "  if [[ -r \"$startup_path\" ]]; then\n"
+            "    ZDOTDIR=\"$_KONSOLL_USER_ZDOTDIR\"\n"
+            "    source \"$startup_path\"\n"
+            "    _KONSOLL_USER_ZDOTDIR=\"${ZDOTDIR:-$_KONSOLL_USER_ZDOTDIR}\"\n"
+            "  fi\n"
+            "  ZDOTDIR=\"$_KONSOLL_WRAPPER_ZDOTDIR\"\n"
+            "}\n";
+        const std::array<std::pair<QString, QByteArray>, 3> startupFiles{{
+            {QStringLiteral(".zshenv"),
+             sourceHelper + "_konsoll_source_startup_file .zshenv\n"},
+            {QStringLiteral(".zprofile"), "_konsoll_source_startup_file .zprofile\n"},
+            {QStringLiteral(".zshrc"),
+             "_konsoll_source_startup_file .zshrc\n"
+             "if [[ \"$HISTFILE\" == \"$_KONSOLL_WRAPPER_ZDOTDIR/.zsh_history\" ]]; then\n"
+             "  HISTFILE=\"$_KONSOLL_USER_ZDOTDIR/.zsh_history\"\n"
+             "  [[ -r \"$HISTFILE\" ]] && fc -R \"$HISTFILE\"\n"
+             "fi\n"
+             "source \"$KONSOLL_SHELL_INTEGRATION\"\n"
+             "ZDOTDIR=\"$_KONSOLL_USER_ZDOTDIR\"\n"},
+        }};
+        for (const auto &[name, contents] : startupFiles) {
+            QSaveFile file(startupDir + QLatin1Char('/') + name);
+            if (file.open(QIODevice::WriteOnly)) {
+                file.write(contents);
+                file.commit();
+            }
+        }
+    } else if (supportDirReady && isBash) {
+        integrationFile = supportDir + QStringLiteral("/konsoll.bash");
+        startupDir = supportDir + QStringLiteral("/bash-home");
+        originalHome = qgetenv("HOME");
+        if (originalHome.isEmpty()) {
+            originalHome = QDir::homePath().toLocal8Bit();
+        }
+        QDir().mkpath(startupDir);
+        installResource(QStringLiteral(":/shell-integration/konsoll.bash"), integrationFile);
+        QSaveFile profile(startupDir + QStringLiteral("/.bash_profile"));
+        if (profile.open(QIODevice::WriteOnly)) {
+            profile.write(
+                "export HOME=\"$KONSOLL_ORIGINAL_HOME\"\n"
+                "for _konsoll_profile in .bash_profile .bash_login .profile; do\n"
+                "  if [[ -r \"$HOME/$_konsoll_profile\" ]]; then\n"
+                "    source \"$HOME/$_konsoll_profile\"\n"
+                "    break\n"
+                "  fi\n"
+                "done\n"
+                "source \"$KONSOLL_SHELL_INTEGRATION\"\n");
+            profile.commit();
+        }
+    } else if (supportDirReady && isFish) {
+        integrationFile = supportDir + QStringLiteral("/konsoll.fish");
+        installResource(QStringLiteral(":/shell-integration/konsoll.fish"), integrationFile);
+        shellArgs = {"--init-command", "source $KONSOLL_FISH_INTEGRATION"};
+    }
+
     struct winsize ws;
     ws.ws_col = static_cast<short>(cols);
     ws.ws_row = static_cast<short>(rows);
     ws.ws_xpixel = 0;
     ws.ws_ypixel = 0;
+
+    const QByteArray shellBytes = shellPath.toLocal8Bit();
+    QByteArray argv0 = "-" + QFileInfo(shellPath).baseName().toLocal8Bit();
+    QByteArray homePath = qgetenv("HOME");
+    if (homePath.isEmpty()) {
+        homePath = QDir::homePath().toLocal8Bit();
+    }
+    const QByteArray columns = QByteArray::number(cols);
+    const QByteArray lines = QByteArray::number(rows);
+    const QByteArray path = "/usr/bin:/bin:/usr/sbin:/sbin:" + qgetenv("PATH");
+    const QByteArray integrationPath = integrationFile.toLocal8Bit();
+    const QByteArray startupPath = startupDir.toLocal8Bit();
+    std::vector<char *> argv;
+    argv.reserve(shellArgs.size() + 2);
+    argv.push_back(argv0.data());
+    std::ranges::transform(shellArgs, std::back_inserter(argv), [](QByteArray &arg) { return arg.data(); });
+    argv.push_back(nullptr);
 
     int master = 0;
     // Let forkpty configure the slave's normal terminal defaults. Passing a
@@ -47,14 +167,30 @@ bool PtyProcess::start(const QString &shellPath, int cols, int rows)
 
     if (pid == 0) {
         // Child: exec the shell as a login shell (argv[0] = "-<name>").
+        // GUI apps can inherit `/` (or another launcher's working directory).
+        // Start the interactive session in the user's home, as terminal apps do.
+        if (!homePath.isEmpty()) {
+            ::chdir(homePath.constData());
+        }
         ::setenv("TERM", "xterm-256color", 1);
-        ::setenv("COLUMNS", QByteArray::number(cols).constData(), 1);
-        ::setenv("LINES", QByteArray::number(rows).constData(), 1);
+        ::setenv("COLUMNS", columns.constData(), 1);
+        ::setenv("LINES", lines.constData(), 1);
+        ::setenv("PATH", path.constData(), 1);
 
-        const QByteArray shellBytes = shellPath.toLocal8Bit();
-        QByteArray argv0 = "-" + QFileInfo(shellPath).baseName().toLocal8Bit();
-        char *const argv[] = {argv0.data(), nullptr}; // NOLINT: execvp needs char *const argv[]
-        ::execvp(shellBytes.constData(), argv);
+        if (!integrationFile.isEmpty()) {
+            ::setenv("KONSOLL_SHELL_INTEGRATION", integrationPath.constData(), 1);
+            if (isZsh) {
+                ::setenv("KONSOLL_USER_ZDOTDIR", originalStartupDir.constData(), 1);
+                ::setenv("ZDOTDIR", startupPath.constData(), 1);
+            } else if (isBash) {
+                ::setenv("KONSOLL_ORIGINAL_HOME", originalHome.constData(), 1);
+                ::setenv("HOME", startupPath.constData(), 1);
+            } else if (isFish) {
+                ::setenv("KONSOLL_FISH_INTEGRATION", integrationPath.constData(), 1);
+            }
+        }
+
+        ::execvp(shellBytes.constData(), argv.data());
         ::_exit(127);
     }
 

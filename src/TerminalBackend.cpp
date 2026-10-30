@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <ranges>
 #include <utility>
 
 using namespace std::chrono_literals;
@@ -130,6 +131,10 @@ QByteArray specialKeyByte(int key)
 QByteArray optionKeyByte(int key)
 {
     switch (key) {
+    case static_cast<int>(Qt::Key_Period):
+        // Readline and zle use Meta-. for inserting the previous command's
+        // last argument (and cycling through older history entries).
+        return "\033.";
     case static_cast<int>(Qt::Key_Left):
         return "\033b";
     case static_cast<int>(Qt::Key_Right):
@@ -202,6 +207,9 @@ void TerminalBackend::onData(const QByteArray &data)
         m_selAnchor = {.line = -1, .col = 0};
         m_selCurrent = {.line = -1, .col = 0};
         emit selectionChanged();
+        // The highlighted line is in the erased screen, so clear it.
+        clearHighlight();
+        m_terminal->clearCommandBlocks();
         m_terminal->clearClearPending();
     }
 
@@ -239,6 +247,10 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
         editorShortcuts(key);
         return;
     }
+
+    // Typing or navigating on from the current text action clears its visual
+    // state, including both a command highlight and a text selection.
+    clearTextSelectionAndHighlight();
 
     // Typing while scrolled up snaps the view back to the live cursor.
     if (m_terminal && m_terminal->screen().scrollOffset() > 0) {
@@ -350,6 +362,9 @@ void TerminalBackend::resize(int cols, int rows)
     m_selAnchor = {.line = -1, .col = 0};
     m_selCurrent = {.line = -1, .col = 0};
 
+    // The reflow re-wraps the history, so the highlighted line is stale.
+    clearHighlight();
+
     emit selectionChanged();
     emit sizeChanged();
 
@@ -403,6 +418,7 @@ void TerminalBackend::clearBuffer()
     // reveal/redraw the prompt from that stale state.
     Screen &s = m_terminal->screen();
     s.clearScrollback();
+    m_terminal->clearCommandBlocks();
 
     if (m_pty) {
         m_pty->write(QByteArray(1, '\x0c'));
@@ -415,6 +431,9 @@ void TerminalBackend::clearBuffer()
     m_selAnchor = {.line = -1, .col = 0};
     m_selCurrent = {.line = -1, .col = 0};
     emit selectionChanged();
+
+    // The highlighted line is in the dropped history, so clear it.
+    clearHighlight();
 
     checkScrollOffsetChanged();
     scheduleFrame();
@@ -576,9 +595,150 @@ void TerminalBackend::selectAll()
     emit selectionChanged();
 }
 
+void TerminalBackend::highlightLine(int row)
+{
+    if (!m_terminal) {
+        return;
+    }
+
+    m_highlightStart = visibleStart() + row;
+    m_highlightEnd = m_highlightStart;
+    emit highlightChanged();
+}
+
+void TerminalBackend::highlightCommandAt(int row)
+{
+    if (!m_terminal) {
+        return;
+    }
+
+    const int absoluteLine = visibleStart() + row;
+    if (m_highlightStart >= 0 && absoluteLine >= m_highlightStart && absoluteLine <= m_highlightEnd) {
+        clearHighlight();
+        return;
+    }
+
+    const auto &blocks = m_terminal->commandBlocks();
+    const auto reverseBlocks = std::views::reverse(blocks);
+    const auto block = std::ranges::find_if(reverseBlocks, [absoluteLine](const auto &candidate) {
+        return absoluteLine >= candidate.startLine && absoluteLine <= candidate.endLine;
+    });
+    if (block == reverseBlocks.end()) {
+        const int activeStart = m_terminal->activeCommandStartLine();
+        if (activeStart >= 0 && absoluteLine >= activeStart) {
+            m_highlightStart = activeStart;
+            m_highlightEnd = absoluteLine;
+            emit highlightChanged();
+        } else {
+            highlightLine(row);
+        }
+        return;
+    }
+
+    m_highlightStart = block->startLine;
+    m_highlightEnd = block->endLine;
+    emit highlightChanged();
+}
+
+void TerminalBackend::clearHighlight()
+{
+    if (m_highlightStart < 0) {
+        return;
+    }
+
+    m_highlightStart = -1;
+    m_highlightEnd = -1;
+    emit highlightChanged();
+}
+
+void TerminalBackend::clearTextSelectionAndHighlight()
+{
+    selClear();
+    clearHighlight();
+}
+
+int TerminalBackend::highlightedLineEnd() const
+{
+    if (m_highlightStart < 0 || !m_terminal) {
+        return -1;
+    }
+    return lineTextEnd(m_highlightEnd);
+}
+
+int TerminalBackend::highlightVisibleRow() const
+{
+    if (m_highlightStart < 0 || !m_terminal) {
+        return -1;
+    }
+    const int start = visibleStart();
+    const int row = m_highlightStart - start;
+    if (row < 0 || row >= m_rows) {
+        return -1;
+    }
+    return row;
+}
+
+int TerminalBackend::highlightVisibleStartRow() const
+{
+    if (m_highlightStart < 0 || !m_terminal) {
+        return -1;
+    }
+    const int start = visibleStart();
+    const int end = start + m_rows - 1;
+    if (m_highlightEnd < start || m_highlightStart > end) {
+        return -1;
+    }
+    return std::max(0, m_highlightStart - start);
+}
+
+int TerminalBackend::highlightVisibleEndRow() const
+{
+    if (m_highlightEnd < 0 || !m_terminal) {
+        return -1;
+    }
+    const int start = visibleStart();
+    const int end = start + m_rows - 1;
+    if (m_highlightEnd < start || m_highlightStart > end) {
+        return -1;
+    }
+    return std::min(m_rows - 1, m_highlightEnd - start);
+}
+
 void TerminalBackend::copySelection()
 {
-    if (!m_terminal || m_selAnchor.line < 0) {
+    if (!m_terminal) {
+        return;
+    }
+
+    // A highlighted command block takes priority over a text selection.
+    if (m_highlightStart >= 0) {
+        QString text;
+        const Screen &screen = m_terminal->screen();
+        const auto lines = std::views::iota(m_highlightStart, m_highlightEnd + 1);
+        std::ranges::for_each(lines, [this, &screen, &text](int line) {
+            const Line &cells = screen.lineAt(line);
+            const auto reversedCells = std::views::reverse(cells);
+            const auto lastContent = std::ranges::find_if(reversedCells, [](const Cell &cell) {
+                return cell.ch != ' ';
+            });
+            const int end = lastContent == reversedCells.end()
+                                ? -1
+                                : static_cast<int>(std::distance(cells.begin(), lastContent.base())) - 1;
+            std::ranges::for_each(std::views::iota(0, end + 1), [&cells, &text](int col) {
+                const char32_t cp = static_cast<char32_t>(cells[col].ch);
+                text.append(QString::fromUcs4(&cp, 1));
+            });
+            if (line < m_highlightEnd) {
+                text.append('\n');
+            }
+        });
+        QGuiApplication::clipboard()->setText(text);
+        clearTextSelectionAndHighlight();
+        return;
+    }
+
+    if (m_selAnchor.line < 0) {
+        clearTextSelectionAndHighlight();
         return;
     }
 
@@ -629,6 +789,7 @@ void TerminalBackend::copySelection()
         }
     }
     QGuiApplication::clipboard()->setText(text);
+    clearTextSelectionAndHighlight();
 }
 
 void TerminalBackend::paste()
@@ -640,6 +801,7 @@ void TerminalBackend::paste()
     if (!text.isEmpty()) {
         m_pty->write(text.toUtf8());
     }
+    clearTextSelectionAndHighlight();
 }
 
 int TerminalBackend::lineTextEnd(int line) const
@@ -735,9 +897,9 @@ QVariantList TerminalBackend::snapshot() const
     const int total = s.totalLines();
     const int start = total - s.rows() - s.scrollOffset();
     static const Cell kBlank{};
+    rowsOut.reserve(s.rows() * s.cols());
     for (int r = 0; r < s.rows(); ++r) {
         const Line &line = s.lineAt(start + r);
-        QVariantList row;
         for (int c = 0; c < s.cols(); ++c) {
             const Cell &cell = (c < static_cast<int>(line.size())) ? line[c] : kBlank;
             unsigned int fg = resolveColor(cell.fg, m_defaultFg);
@@ -755,9 +917,8 @@ QVariantList TerminalBackend::snapshot() const
             m["fg"] = static_cast<int>(fg);
             m["bg"] = static_cast<int>(bg);
             m["flags"] = static_cast<int>(cell.flags);
-            row.append(m);
+            rowsOut.append(m);
         }
-        rowsOut.append(row);
     }
     return rowsOut;
 }

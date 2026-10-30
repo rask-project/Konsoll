@@ -55,6 +55,9 @@ qt_add_resources(konsoll "/"
         assets/konsoll.icns
         assets/konsoll.png
         assets/qtlogo-64.png
+        shell-integration/konsoll.zsh
+        shell-integration/konsoll.bash
+        shell-integration/konsoll.fish
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

@@ -15,6 +15,11 @@ namespace konsoll
 class Terminal
 {
 public:
+    struct CommandBlock {
+        int startLine{0};
+        int endLine{0};
+    };
+
     explicit Terminal(int rows, int cols);
 
     void write(const QByteArray &data);
@@ -35,6 +40,10 @@ public:
     int dsrQuery() const { return m_dsrQuery; }
     void clearDsrQuery() { m_dsrQuery = 0; }
     QByteArray dsrResponse() const;
+
+    const std::vector<CommandBlock> &commandBlocks() const { return m_commandBlocks; }
+    int activeCommandStartLine() const { return m_commandStartLine; }
+    void clearCommandBlocks();
 
     // Set when a full-screen erase (ESC[2J) is processed, so the backend can
     // drop any selection that now sits over blank lines.
@@ -66,6 +75,7 @@ private:
     void handleDec(char final, const std::vector<int> &params);
     void handleSgr(const std::vector<int> &params);
     void handleOsc(const QByteArray &body);
+    void handleCommandMark(char mark);
     void handleEsc(char c);
     void cursorMove(int dRow, int dCol);
 
@@ -73,6 +83,7 @@ private:
     static int paramAt(const std::vector<int> &p, int i, int def);
 
     Screen m_screen;
+    std::vector<CommandBlock> m_commandBlocks;
     QByteArray m_csiBody;
     QByteArray m_oscBody;
     QString m_title;
@@ -80,6 +91,7 @@ private:
     unsigned int m_bg = 0;
     unsigned int m_utf8CodePoint = 0;
     unsigned int m_utf8Minimum = 0;
+    int m_commandStartLine = -1;
     State m_state = State::Ground;
 
     // SGR style state applied to subsequent characters.

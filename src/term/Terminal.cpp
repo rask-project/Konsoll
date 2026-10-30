@@ -17,6 +17,13 @@ void Terminal::write(const QByteArray &data)
 void Terminal::resize(int rows, int cols)
 {
     m_screen.resize(rows, cols);
+    clearCommandBlocks();
+}
+
+void Terminal::clearCommandBlocks()
+{
+    m_commandBlocks.clear();
+    m_commandStartLine = -1;
 }
 
 QByteArray Terminal::daResponse()
@@ -330,6 +337,7 @@ void Terminal::handleDec(char final, const std::vector<int> &params)
             m_screen.showCursor(set);
             break;
         case 1049:
+            clearCommandBlocks();
             if (set) {
                 m_screen.enterAltScreen();
             } else {
@@ -458,6 +466,11 @@ void Terminal::handleSgr(const std::vector<int> &p) // NOLINT: SGR dispatch is i
 
 void Terminal::handleOsc(const QByteArray &body)
 {
+    if (body.startsWith("133;") && body.size() > 4) {
+        handleCommandMark(body.at(4));
+        return;
+    }
+
     // Form: <num>;<text>. We only honor 0 (icon+title) and 2 (title).
     const int idx = body.indexOf(';');
     if (idx <= 0) {
@@ -475,6 +488,36 @@ void Terminal::handleOsc(const QByteArray &body)
         m_colorQuery = static_cast<unsigned char>(num == "10" ? 10 : 11);
     }
     // "8;" (hyperlink) and others: ignored.
+}
+
+void Terminal::handleCommandMark(char mark)
+{
+    if (m_screen.inAltScreen()) {
+        return;
+    }
+
+    const int line = m_screen.totalLines() - m_screen.rows() + m_screen.cursorRow();
+    switch (mark) {
+    case 'B':
+        m_commandStartLine = line;
+        break;
+    case 'C':
+        // C marks the start of execution. Use it as a fallback when a shell
+        // emits execution/finish markers but omits the command-start marker.
+        if (m_commandStartLine < 0) {
+            m_commandStartLine = std::max(0, line - (m_screen.cursorCol() == 0 ? 1 : 0));
+        }
+        break;
+    case 'D':
+        if (m_commandStartLine >= 0) {
+            const int endLine = std::max(m_commandStartLine, line - (m_screen.cursorCol() == 0 ? 1 : 0));
+            m_commandBlocks.push_back({m_commandStartLine, endLine});
+            m_commandStartLine = -1;
+        }
+        break;
+    default:
+        break;
+    }
 }
 
 void Terminal::handleEsc(char c)
@@ -498,6 +541,7 @@ void Terminal::handleEsc(char c)
         break;
     case 'c':
         m_screen.fullReset();
+        clearCommandBlocks();
         m_fg = 0;
         m_bg = 0;
         m_flags = CellFlag::None;

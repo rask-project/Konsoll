@@ -146,7 +146,7 @@ Item {
             ctx.textBaseline = "top";
             ctx.font = view.fontSize + "px " + view.fontFamily;
 
-            // The snapshot is a flat, row-major list of cells:
+            // The snapshot is a flat, row-major cell list:
             // cell(r, c) === data[r * cols + c].
             for (let r = 0; r < rows; ++r) {
                 const y = r * ch;
@@ -168,6 +168,25 @@ Item {
                     if (l >= 0 && rr >= l) {
                         ctx.fillStyle = "rgba(55, 125, 235, 0.82)";
                         ctx.fillRect(l * cw, y, (rr - l + 1) * cw, ch);
+                    }
+                }
+                // Command highlight (iTerm2-style), drawn under text with a
+                // distinct amber color from the text selection.
+                if (Backend.highlightActive) {
+                    const first = Backend.highlightStartRow;
+                    const last = Backend.highlightEndRow;
+                    if (first >= 0 && r === first && last >= first) {
+                        const width = cols * cw;
+                        const height = (last - first + 1) * ch;
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.roundRect(0.5, y + 0.5, width - 1, height - 1, Math.min(6, height / 2));
+                        ctx.fillStyle = "rgba(55, 125, 235, 0.0175)";
+                        ctx.fill();
+                        ctx.lineWidth = 1;
+                        ctx.strokeStyle = "rgba(55, 125, 235, 0.65)";
+                        ctx.stroke();
+                        ctx.restore();
                     }
                 }
                 let buf = "";
@@ -252,7 +271,33 @@ Item {
         // following release from collapsing the line selection back to a point.
         property real _doubleAt: -1
         property bool _inTriple: false
+        property bool _inDouble: false
+        property bool _dragging: false
+        property bool _cancelOnly: false
         readonly property real _tapInterval: 350
+
+        property int _pressRow: -1
+        property int _pressCol: -1
+        property real _pressX: 0
+        property real _pressY: 0
+        property int _pendingRow: -1
+
+        Timer {
+            id: singleClickTimer
+
+            interval: selectionArea._tapInterval
+            onTriggered: {
+                const row = selectionArea._pendingRow;
+                const shouldHighlight = !selectionArea._cancelOnly;
+                selectionArea._pendingRow = -1;
+                selectionArea._cancelOnly = false;
+                Backend.selClear();
+                Backend.clearHighlight();
+                if (row >= 0 && shouldHighlight) {
+                    Backend.highlightCommandAt(row);
+                }
+            }
+        }
 
         onPressed: mouse => {
             if (Backend.mouseTracking) {
@@ -261,14 +306,26 @@ Item {
                 mouse.accepted = true;
             } else if (mouse.button === Qt.LeftButton) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
+                selectionArea._pressRow = cell[1];
+                selectionArea._pressCol = cell[0];
+                selectionArea._pressX = mouse.x;
+                selectionArea._pressY = mouse.y;
+                selectionArea._dragging = false;
+                selectionArea._cancelOnly = Backend.selectionActive || Backend.highlightActive;
+                Backend.selClear();
                 if (Date.now() - selectionArea._doubleAt <= selectionArea._tapInterval) {
-                    // Third press within the double-click window: select the
-                    // whole line.
+                    // The third press selects the whole line.
                     selectionArea._inTriple = true;
+                    selectionArea._inDouble = false;
+                    selectionArea._cancelOnly = false;
+                    selectionArea._doubleAt = -1;
+                    singleClickTimer.stop();
+                    selectionArea._pendingRow = -1;
+                    Backend.selClear();
+                    Backend.clearHighlight();
                     Backend.selLine(cell[1]);
                 } else {
                     selectionArea._inTriple = false;
-                    Backend.selPress(cell[1], cell[0]);
                 }
             } else if (mouse.button === Qt.RightButton) {
                 // popup(x, y) positions the menu relative to its parent item,
@@ -286,6 +343,19 @@ Item {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 Backend.mouseMove(selectionArea.buttonCode(button), cell[1], cell[0], mouse.modifiers);
             } else if (!Backend.mouseTracking && (mouse.buttons & Qt.LeftButton)) {
+                const dx = Math.abs(mouse.x - selectionArea._pressX);
+                const dy = Math.abs(mouse.y - selectionArea._pressY);
+                if (!selectionArea._dragging && dx < 4 && dy < 4) {
+                    return;
+                }
+                if (!selectionArea._dragging) {
+                    singleClickTimer.stop();
+                    selectionArea._pendingRow = -1;
+                    selectionArea._cancelOnly = false;
+                    Backend.clearHighlight();
+                    Backend.selPress(selectionArea._pressRow, selectionArea._pressCol);
+                    selectionArea._dragging = true;
+                }
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 Backend.selMove(cell[1], cell[0]);
             }
@@ -300,8 +370,15 @@ Item {
                     // The triple press already selected the line; don't let
                     // the release collapse it back to a point.
                     selectionArea._inTriple = false;
-                } else {
+                } else if (selectionArea._inDouble) {
+                    selectionArea._inDouble = false;
+                } else if (selectionArea._dragging) {
                     Backend.selRelease();
+                    selectionArea._dragging = false;
+                } else {
+                    const cell = selectionArea.cellAt(mouse.x, mouse.y);
+                    selectionArea._pendingRow = cell[1];
+                    singleClickTimer.restart();
                 }
             }
         }
@@ -309,6 +386,14 @@ Item {
         onDoubleClicked: mouse => {
             if (!Backend.mouseTracking && mouse.button === Qt.LeftButton) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
+                singleClickTimer.stop();
+                selectionArea._pendingRow = -1;
+                selectionArea._inDouble = true;
+                selectionArea._cancelOnly = false;
+                Backend.selClear();
+                // A double-click is a selection gesture, so clear the pending
+                // highlight (the user is switching to "selection mode").
+                Backend.clearHighlight();
                 Backend.selWord(cell[1], cell[0]);
                 selectionArea._doubleAt = Date.now();
             }
@@ -378,6 +463,14 @@ Item {
         target: Backend
 
         function onFrameReady() {
+            canvas.requestPaint();
+        }
+
+        function onSelectionChanged() {
+            canvas.requestPaint();
+        }
+
+        function onHighlightChanged() {
             canvas.requestPaint();
         }
 

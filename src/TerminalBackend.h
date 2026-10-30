@@ -29,6 +29,9 @@ class TerminalBackend : public QObject
     Q_PROPERTY(int scrollOffset READ scrollOffset NOTIFY scrollOffsetChanged)
     Q_PROPERTY(int maxScrollOffset READ maxScrollOffset NOTIFY scrollOffsetChanged)
     Q_PROPERTY(bool selectionActive READ selectionActive NOTIFY selectionChanged)
+    Q_PROPERTY(bool highlightActive READ highlightActive NOTIFY highlightChanged)
+    Q_PROPERTY(int highlightStartRow READ highlightStartRow NOTIFY highlightChanged)
+    Q_PROPERTY(int highlightEndRow READ highlightEndRow NOTIFY highlightChanged)
     Q_PROPERTY(bool mouseTracking READ mouseTracking NOTIFY mouseTrackingChanged)
     Q_PROPERTY(bool mouseMotionTracking READ mouseMotionTracking NOTIFY mouseTrackingChanged)
     Q_PROPERTY(unsigned int backgroundColor READ backgroundColor CONSTANT)
@@ -71,6 +74,21 @@ public:
     Q_INVOKABLE void selLine(int row);
     Q_INVOKABLE void selectAll();
 
+    // A click highlights a complete OSC 133 command block when available,
+    // otherwise the clicked line. Cmd+C / Copy copies the highlighted text.
+    Q_INVOKABLE void highlightLine(int row);
+    Q_INVOKABLE void highlightCommandAt(int row);
+    Q_INVOKABLE void clearHighlight();
+    bool highlightActive() const { return m_highlightStart >= 0; }
+    // The highlighted absolute line, or -1 when there is no highlight.
+    int highlightedLine() const { return m_highlightStart; }
+    // Last non-space column of the highlighted line (-1 when none).
+    int highlightedLineEnd() const;
+    // Visible row of the highlighted line, or -1 when it is out of view.
+    Q_INVOKABLE int highlightVisibleRow() const;
+    int highlightStartRow() const { return highlightVisibleStartRow(); }
+    int highlightEndRow() const { return highlightVisibleEndRow(); }
+
     // Per visible row, the selected column range (iTerm2-style): the start
     // line is clipped at the press column, middle lines span the full text,
     // the end line is clipped at the release column. -1 when the row is not
@@ -106,6 +124,7 @@ signals:
     void sizeChanged();
     void scrollOffsetChanged();
     void selectionChanged();
+    void highlightChanged();
     void mouseTrackingChanged();
     void quitRequested();
 
@@ -118,8 +137,11 @@ private:
     int visibleStart() const;
     // Last non-space column of an absolute line (full width if the line is blank).
     int lineTextEnd(int line) const;
+    int highlightVisibleStartRow() const;
+    int highlightVisibleEndRow() const;
 
     void editorShortcuts(int key);
+    void clearTextSelectionAndHighlight();
     void sendMouseReport(int button, int row, int col, int event, int modifiers);
 
     static QString detectDefaultShell();
@@ -140,6 +162,8 @@ private:
     QString m_title{QStringLiteral("Konsoll")};
     AbsPos m_selAnchor{.line = -1, .col = 0};
     AbsPos m_selCurrent{.line = -1, .col = 0};
+    int m_highlightStart{-1};
+    int m_highlightEnd{-1};
 
     int m_rows{24};
     int m_cols{80};
