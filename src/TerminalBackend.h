@@ -68,6 +68,7 @@ public:
     Q_INVOKABLE void selRelease();
     Q_INVOKABLE void selClear();
     Q_INVOKABLE void selWord(int row, int col);
+    Q_INVOKABLE void selLine(int row);
     Q_INVOKABLE void selectAll();
 
     // Per visible row, the selected column range (iTerm2-style): the start

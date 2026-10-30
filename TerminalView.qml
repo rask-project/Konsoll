@@ -245,6 +245,15 @@ Item {
             return -1;
         }
 
+        // Triple-click detection. onDoubleClicked fires on the 2nd press and
+        // suppresses that press/release, so the 3rd press is a regular
+        // onPressed: a press within _tapInterval of the last double-click is
+        // the triple-click (select the whole line). _inTriple keeps the
+        // following release from collapsing the line selection back to a point.
+        property real _doubleAt: -1
+        property bool _inTriple: false
+        readonly property real _tapInterval: 350
+
         onPressed: mouse => {
             if (Backend.mouseTracking) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
@@ -252,7 +261,15 @@ Item {
                 mouse.accepted = true;
             } else if (mouse.button === Qt.LeftButton) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
-                Backend.selPress(cell[1], cell[0]);
+                if (Date.now() - selectionArea._doubleAt <= selectionArea._tapInterval) {
+                    // Third press within the double-click window: select the
+                    // whole line.
+                    selectionArea._inTriple = true;
+                    Backend.selLine(cell[1]);
+                } else {
+                    selectionArea._inTriple = false;
+                    Backend.selPress(cell[1], cell[0]);
+                }
             } else if (mouse.button === Qt.RightButton) {
                 // popup(x, y) positions the menu relative to its parent item,
                 // so map the click into that parent's space (not global screen).
@@ -279,7 +296,13 @@ Item {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 Backend.mouseRelease(selectionArea.buttonCode(mouse.button), cell[1], cell[0], mouse.modifiers);
             } else if (mouse.button === Qt.LeftButton) {
-                Backend.selRelease();
+                if (selectionArea._inTriple) {
+                    // The triple press already selected the line; don't let
+                    // the release collapse it back to a point.
+                    selectionArea._inTriple = false;
+                } else {
+                    Backend.selRelease();
+                }
             }
         }
 
@@ -287,6 +310,7 @@ Item {
             if (!Backend.mouseTracking && mouse.button === Qt.LeftButton) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 Backend.selWord(cell[1], cell[0]);
+                selectionArea._doubleAt = Date.now();
             }
         }
     }

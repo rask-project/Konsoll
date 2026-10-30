@@ -549,6 +549,20 @@ void TerminalBackend::selWord(int row, int col)
     emit selectionChanged();
 }
 
+void TerminalBackend::selLine(int row)
+{
+    if (!m_terminal) {
+        return;
+    }
+
+    // The whole logical line: column 0 to its last non-space column (full
+    // width for a blank line), like a text editor's triple-click.
+    const int absLine = visibleStart() + row;
+    m_selAnchor = {.line = absLine, .col = 0};
+    m_selCurrent = {.line = absLine, .col = lineTextEnd(absLine)};
+    emit selectionChanged();
+}
+
 void TerminalBackend::selectAll()
 {
     if (!m_terminal) {
