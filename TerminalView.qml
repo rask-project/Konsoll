@@ -199,8 +199,18 @@ Item {
             // The cursor is at the live position (bottom of the main screen),
             // which is out of view when scrolled up.
             if (Backend.cursorVisible() && Backend.scrollOffset === 0) {
+                const curCol = Backend.cursorCol();
+                const curRow = Backend.cursorRow();
                 ctx.fillStyle = Qt.rgba(0.88, 0.88, 0.88, 1);
-                ctx.fillRect(Backend.cursorCol() * cw, Backend.cursorRow() * ch, cw, ch);
+                ctx.fillRect(curCol * cw, curRow * ch, cw, ch);
+                // Invert the glyph under the block (standard block-cursor
+                // behavior) so it stays readable against the light block.
+                const curCell = data[curRow * cols + curCol];
+                if (curCell["ch"] && curCell["ch"] !== " " && (curCell["flags"] & 32) === 0) {
+                    ctx.font = ((curCell["flags"] & 1) ? "bold " : "") + view.fontSize + "px " + view.fontFamily;
+                    ctx.fillStyle = Qt.rgba(((bg >> 16) & 255) / 255, ((bg >> 8) & 255) / 255, (bg & 255) / 255, 1);
+                    ctx.fillText(curCell["ch"], curCol * cw, curRow * ch);
+                }
             }
         }
     }
