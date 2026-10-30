@@ -501,6 +501,18 @@ const Line &Screen::lineAt(int index) const
     return m_main[index - static_cast<int>(m_scrollback.size())];
 }
 
+bool Screen::isWrappedContinuation(int index) const
+{
+    if (m_inAlt || index <= 0 || index >= totalLines()) {
+        return false;
+    }
+    const int scrollbackLines = static_cast<int>(m_scrollback.size());
+    if (index < scrollbackLines) {
+        return m_scrollbackWrapped[index];
+    }
+    return m_mainWrapped[index - scrollbackLines];
+}
+
 void Screen::reflow()
 {
     if (m_inAlt) {

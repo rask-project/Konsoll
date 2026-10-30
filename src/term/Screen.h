@@ -79,6 +79,8 @@ public:
     int scrollOffset() const { return m_scrollOffset; }
     bool atBottom() const { return m_scrollOffset == 0; }
     const Line &lineAt(int index) const;
+    // True when this physical row continues the logical line above it.
+    bool isWrappedContinuation(int index) const;
 
     // Alternate screen.
     void enterAltScreen();
