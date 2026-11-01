@@ -13,7 +13,7 @@ endif()
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.12 REQUIRED COMPONENTS Quick CanvasPainter QuickControls2)
+find_package(Qt6 6.12 REQUIRED COMPONENTS Quick CanvasPainter QuickControls2 Svg)
 
 qt_standard_project_setup(REQUIRES 6.12)
 
@@ -99,7 +99,7 @@ set_target_properties(konsoll PROPERTIES
 target_include_directories(konsoll PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_link_libraries(konsoll
-    PRIVATE Qt6::Quick Qt6::CanvasPainter Qt6::QuickControls2
+    PRIVATE Qt6::Quick Qt6::CanvasPainter Qt6::QuickControls2 Qt6::Svg
 )
 
 install(TARGETS konsoll
