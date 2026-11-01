@@ -2,6 +2,7 @@
 
 #include "TerminalBackend.h"
 
+#include <QEvent>
 #include <QObject>
 #include <QVariantList>
 #include <QtQml>
@@ -34,6 +35,7 @@ public:
     Q_INVOKABLE void addSession();
     Q_INVOKABLE void closeSession(QObject *session);
     Q_INVOKABLE void setActiveIndex(int index);
+    Q_INVOKABLE void navigateActivationHistory(int direction);
 
 signals:
     void sessionsChanged();
@@ -43,10 +45,17 @@ signals:
 
 private:
     TerminalBackend *createSession();
+    void recordActivation(int index);
+    void commitActivationHistory();
     void setActiveIndexInternal(int index);
 
     std::vector<std::unique_ptr<TerminalBackend>> m_sessions;
+    std::vector<int> m_activationHistory;
     qsizetype m_activeIndex{-1};
+    qsizetype m_activationHistoryCursor{0};
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
 };
 
 } // namespace konsoll

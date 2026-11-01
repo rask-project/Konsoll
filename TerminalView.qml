@@ -104,6 +104,12 @@ Item {
             const hasCtrl = (event.modifiers & Qt.MetaModifier) !== 0
             const isSpecialKey = specialKeys.includes(event.key)
             if (hasCmd || hasOption || hasCtrl || isSpecialKey) {
+                if (hasCmd && event.key === Qt.Key_Tab) {
+                    const direction = (event.modifiers & Qt.ShiftModifier) !== 0 ? -1 : 1;
+                    SessionManager.navigateActivationHistory(direction);
+                    event.accepted = true;
+                    return;
+                }
                 if (hasCmd && event.key === Qt.Key_F) {
                     searchBar.openSearch();
                     event.accepted = true;

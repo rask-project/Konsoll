@@ -29,6 +29,22 @@ Window {
         onActivated: SessionManager.closeSession(SessionManager.activeSession)
     }
 
+    Shortcut {
+        sequence: "Meta+Tab"
+        context: Qt.WindowShortcut
+        autoRepeat: false
+        enabled: SessionManager.sessions.length > 1
+        onActivated: SessionManager.navigateActivationHistory(1)
+    }
+
+    Shortcut {
+        sequence: "Meta+Shift+Tab"
+        context: Qt.WindowShortcut
+        autoRepeat: false
+        enabled: SessionManager.sessions.length > 1
+        onActivated: SessionManager.navigateActivationHistory(-1)
+    }
+
     // On macOS (Qt >= 6.8, native menu bar) a Menu whose title equals the
     // application name is moved to the app menu (the bold first menu).
     MenuBar {

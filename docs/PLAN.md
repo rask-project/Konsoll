@@ -260,7 +260,7 @@ konsoll/
 | 8 | Session model | Independent terminal session object/model per tab | Implemented; manual acceptance pending |
 | 9 | Multi-session backend | Route input, output, resize, title, exit and view state by session | Implemented; manual acceptance pending |
 | 10 | Title-bar tabs | Adaptive multi-row QML tab strip with add/close controls | Implemented; macOS visual acceptance pending |
-| 11 | Tab actions | Create, activate, close and keyboard shortcuts | Implemented (`Ctrl+T`, `Ctrl+W`); manual acceptance pending |
+| 11 | Tab actions | Create, activate, close and keyboard shortcuts | Implemented (`Ctrl+T`, `Ctrl+W`, MRU navigation); manual acceptance pending |
 | 12 | Tabs acceptance | Verify session isolation, resizing, lifecycle and visual behavior | Build passes; manual checks pending |
 
 **Original order:** 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7. Phases 0–6 are
@@ -372,12 +372,16 @@ restore stale `COLUMNS`/`LINES` values.
    appearances; use the system accent for active emphasis.
 4. Keep the add button at the trailing edge and clear of the safe-area inset.
 5. Closing a tab selects a surviving session; `Ctrl+T` creates a tab and
-   `Ctrl+W` closes the active tab.
+   `Ctrl+W` closes the active tab. `Ctrl+Tab` and `Ctrl+Shift+Tab` navigate
+   through activation history.
 
 ### 15.5 Tab actions and lifecycle decisions
 
 - Add a tab with the plus button or `Ctrl+T`.
 - Close the active tab with its close button or `Ctrl+W`.
+- Navigate through most-recently activated tabs with `Ctrl+Tab` and
+  `Ctrl+Shift+Tab`, wrapping through the history while Ctrl is held. Releasing
+  Ctrl commits the selected tab as the newest activation.
 - Preserve the shell and all terminal state when switching tabs.
 - Closing the final tab or exiting the final shell quits the app, preserving
   the existing single-session lifecycle. Exiting one shell while other tabs

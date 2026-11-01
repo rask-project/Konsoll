@@ -1,5 +1,7 @@
 #include "TerminalManager.h"
 
+#include <QCoreApplication>
+#include <QKeyEvent>
 #include <QTimer>
 
 #include <algorithm>
@@ -10,7 +12,23 @@
 namespace konsoll
 {
 
-TerminalManager::TerminalManager(QObject *parent) : QObject(parent) {}
+TerminalManager::TerminalManager(QObject *parent) : QObject(parent)
+{
+    if (QCoreApplication *application = QCoreApplication::instance()) {
+        application->installEventFilter(this);
+    }
+}
+
+bool TerminalManager::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() == QEvent::KeyRelease) {
+        const auto *keyEvent = static_cast<QKeyEvent *>(event);
+        if (keyEvent->key() == Qt::Key_Control || keyEvent->key() == Qt::Key_Meta) {
+            commitActivationHistory();
+        }
+    }
+    return QObject::eventFilter(watched, event);
+}
 
 QVariantList TerminalManager::sessions() const
 {
@@ -57,6 +75,7 @@ TerminalBackend *TerminalManager::createSession()
     });
 
     m_sessions.push_back(std::move(session));
+    recordActivation(static_cast<int>(m_sessions.size()) - 1);
     emit sessionsChanged();
     setActiveIndexInternal(static_cast<int>(m_sessions.size()) - 1);
     sessionPtr->start();
@@ -79,13 +98,28 @@ void TerminalManager::closeSession(QObject *session)
     const int removedIndex = static_cast<int>(std::distance(m_sessions.begin(), it));
     const bool wasActive = removedIndex == m_activeIndex;
     m_sessions.erase(it);
+    std::erase(m_activationHistory, removedIndex);
+    std::ranges::for_each(m_activationHistory, [removedIndex](int &historyIndex) {
+        if (historyIndex > removedIndex) {
+            --historyIndex;
+        }
+    });
 
     if (wasActive) {
         m_activeIndex = std::min(removedIndex, static_cast<int>(m_sessions.size()) - 1);
+        recordActivation(static_cast<int>(m_activeIndex));
         emit activeSessionChanged();
     } else if (removedIndex < m_activeIndex) {
         --m_activeIndex;
         emit activeSessionChanged();
+    }
+    if (!wasActive) {
+        const auto activeHistory = std::ranges::find(m_activationHistory, static_cast<int>(m_activeIndex));
+        if (activeHistory == m_activationHistory.end()) {
+            recordActivation(static_cast<int>(m_activeIndex));
+        } else {
+            m_activationHistoryCursor = static_cast<qsizetype>(std::distance(m_activationHistory.begin(), activeHistory));
+        }
     }
     emit sessionsChanged();
 }
@@ -96,6 +130,34 @@ void TerminalManager::setActiveIndex(int index)
         return;
     }
     setActiveIndexInternal(index);
+    recordActivation(index);
+}
+
+void TerminalManager::navigateActivationHistory(int direction)
+{
+    const qsizetype historySize = static_cast<qsizetype>(m_activationHistory.size());
+    if (historySize < 2) {
+        return;
+    }
+
+    const qsizetype step = direction < 0 ? -1 : 1;
+    m_activationHistoryCursor = (m_activationHistoryCursor + step + historySize) % historySize;
+    setActiveIndexInternal(m_activationHistory.at(static_cast<std::size_t>(m_activationHistoryCursor)));
+}
+
+void TerminalManager::recordActivation(int index)
+{
+    std::erase(m_activationHistory, index);
+    m_activationHistory.insert(m_activationHistory.begin(), index);
+    m_activationHistoryCursor = 0;
+}
+
+void TerminalManager::commitActivationHistory()
+{
+    if (m_activationHistoryCursor > 0 &&
+        m_activationHistoryCursor < static_cast<qsizetype>(m_activationHistory.size())) {
+        recordActivation(m_activationHistory.at(static_cast<std::size_t>(m_activationHistoryCursor)));
+    }
 }
 
 void TerminalManager::setActiveIndexInternal(int index)
