@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Basic
+import "." as Controls
 
 TabButton {
     id: tab
@@ -68,7 +69,7 @@ TabButton {
     contentItem: Row {
         spacing: 6
 
-        ToolButton {
+        Controls.ToolButton {
             id: closeButton
 
             Accessible.name: qsTr("Close tab")
@@ -83,11 +84,6 @@ TabButton {
             icon.name: "close"
             icon.color: systemPalette.windowText
             display: AbstractButton.IconOnly
-
-            background: Rectangle {
-                radius: width / 2
-                color: closeButton.hovered ? Qt.rgba(systemPalette.windowText.r, systemPalette.windowText.g, systemPalette.windowText.b, 0.10) : "transparent"
-            }
 
             onClicked: tab.closeRequested()
         }

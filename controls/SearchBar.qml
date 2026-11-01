@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Effects
 import QtQuick.Layouts
+import "." as Controls
 
 Rectangle {
     id: root
@@ -104,7 +105,7 @@ Rectangle {
             verticalAlignment: Text.AlignVCenter
         }
 
-        ToolButton {
+        Controls.ToolButton {
             Accessible.name: qsTr("Previous match")
 
             enabled: root.matchCount > 0
@@ -119,7 +120,7 @@ Rectangle {
             }
         }
 
-        ToolButton {
+        Controls.ToolButton {
             Accessible.name: qsTr("Next match")
 
             enabled: root.matchCount > 0
@@ -134,7 +135,7 @@ Rectangle {
             }
         }
 
-        ToolButton {
+        Controls.ToolButton {
             Accessible.name: qsTr("Close find")
 
             icon.name: "close"

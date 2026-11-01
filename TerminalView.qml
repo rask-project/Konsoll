@@ -88,31 +88,31 @@ Item {
     TextInput {
         id: input
 
+        visible: false
+
         x: 0
         y: 0
+
         width: 1
         height: 1
+
         color: "transparent"
         cursorVisible: false
         focus: view.active
 
         property bool _clearing: false
 
-        readonly property var specialKeys: [
-            Qt.Key_Return, Qt.Key_Enter, Qt.Key_Backspace, Qt.Key_Tab,
-            Qt.Key_Escape, Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right,
-            Qt.Key_Home, Qt.Key_End, Qt.Key_Delete, Qt.Key_PageUp, Qt.Key_PageDown
-        ]
+        readonly property var specialKeys: [Qt.Key_Return, Qt.Key_Enter, Qt.Key_Backspace, Qt.Key_Tab, Qt.Key_Escape, Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right, Qt.Key_Home, Qt.Key_End, Qt.Key_Delete, Qt.Key_PageUp, Qt.Key_PageDown]
 
         Keys.onPressed: event => {
             if (!view.active) {
                 event.accepted = true;
                 return;
             }
-            const hasCommand = (event.modifiers & Qt.ControlModifier) !== 0
-            const hasOption = (event.modifiers & Qt.AltModifier) !== 0
-            const hasPhysicalControl = (event.modifiers & Qt.MetaModifier) !== 0
-            const isSpecialKey = specialKeys.includes(event.key)
+            const hasCommand = (event.modifiers & Qt.ControlModifier) !== 0;
+            const hasOption = (event.modifiers & Qt.AltModifier) !== 0;
+            const hasPhysicalControl = (event.modifiers & Qt.MetaModifier) !== 0;
+            const isSpecialKey = specialKeys.includes(event.key);
             if (hasCommand || hasOption || hasPhysicalControl || isSpecialKey) {
                 if (hasCommand && event.key === Qt.Key_F) {
                     searchBar.openSearch();
@@ -205,9 +205,7 @@ Item {
             const cols = view.cols;
             const rows = view.rows;
             const selectedText = appPalette.highlightedText;
-            const selectedForeground = (Math.round(selectedText.r * 255) << 16)
-                    | (Math.round(selectedText.g * 255) << 8)
-                    | Math.round(selectedText.b * 255);
+            const selectedForeground = (Math.round(selectedText.r * 255) << 16) | (Math.round(selectedText.g * 255) << 8) | Math.round(selectedText.b * 255);
             ctx.textAlign = "left";
             ctx.textBaseline = "top";
             ctx.font = view.fontSize + "px " + view.fontFamily;
@@ -310,6 +308,14 @@ Item {
         }
     }
 
+    Rectangle {
+        anchors.fill: canvas
+        color: appPalette.windowText
+        opacity: view.active ? 0 : 0.025
+        visible: !view.active
+        Accessible.ignored: true
+    }
+
     // Mouse selection: press starts, drag extends, a click (no drag) clears,
     // double-click selects the word. Declared before the ScrollBar so the bar
     // stays on top in its right-edge strip.
@@ -350,6 +356,7 @@ Item {
         property bool _inDouble: false
         property bool _dragging: false
         property bool _cancelOnly: false
+        property bool _activationClick: false
         readonly property real _tapInterval: 350
 
         property int _pressRow: -1
@@ -376,8 +383,14 @@ Item {
         }
 
         onPressed: mouse => {
-            if (view.session) {
+            if (!view.session)
+                return;
+            const wasActive = view.session === SessionManager.activeSession;
+            if (!wasActive) {
+                selectionArea._activationClick = true;
                 SessionManager.activateSession(view.session);
+                mouse.accepted = true;
+                return;
             }
             if (view.session.mouseTracking) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
@@ -416,10 +429,10 @@ Item {
         }
 
         onPositionChanged: mouse => {
+            if (selectionArea._activationClick)
+                return;
             if (view.session.mouseTracking && (mouse.buttons !== Qt.NoButton || view.session.mouseMotionTracking)) {
-                const button = (mouse.buttons & Qt.LeftButton) ? Qt.LeftButton
-                    : (mouse.buttons & Qt.MiddleButton) ? Qt.MiddleButton
-                    : (mouse.buttons & Qt.RightButton) ? Qt.RightButton : Qt.NoButton;
+                const button = (mouse.buttons & Qt.LeftButton) ? Qt.LeftButton : (mouse.buttons & Qt.MiddleButton) ? Qt.MiddleButton : (mouse.buttons & Qt.RightButton) ? Qt.RightButton : Qt.NoButton;
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 view.session.mouseMove(selectionArea.buttonCode(button), cell[1], cell[0], mouse.modifiers);
             } else if (!view.session.mouseTracking && (mouse.buttons & Qt.LeftButton)) {
@@ -442,6 +455,11 @@ Item {
         }
 
         onReleased: mouse => {
+            if (selectionArea._activationClick) {
+                selectionArea._activationClick = false;
+                mouse.accepted = true;
+                return;
+            }
             if (view.session.mouseTracking) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 view.session.mouseRelease(selectionArea.buttonCode(mouse.button), cell[1], cell[0], mouse.modifiers);
@@ -464,7 +482,7 @@ Item {
         }
 
         onDoubleClicked: mouse => {
-            if (!view.session.mouseTracking && mouse.button === Qt.LeftButton) {
+            if (!selectionArea._activationClick && !view.session.mouseTracking && mouse.button === Qt.LeftButton) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 singleClickTimer.stop();
                 selectionArea._pendingRow = -1;
@@ -478,6 +496,8 @@ Item {
                 selectionArea._doubleAt = Date.now();
             }
         }
+
+        onCanceled: selectionArea._activationClick = false
     }
 
     Controls.Menu {
@@ -486,16 +506,16 @@ Item {
         Controls.MenuItem {
             text: qsTr("Split Side by Side")
             onTriggered: {
-                SessionManager.activateSession(view.session)
-                SessionManager.splitActive(Qt.Horizontal)
+                SessionManager.activateSession(view.session);
+                SessionManager.splitActive(Qt.Horizontal);
             }
         }
 
         Controls.MenuItem {
             text: qsTr("Split Top and Bottom")
             onTriggered: {
-                SessionManager.activateSession(view.session)
-                SessionManager.splitActive(Qt.Vertical)
+                SessionManager.activateSession(view.session);
+                SessionManager.splitActive(Qt.Vertical);
             }
         }
 
@@ -545,6 +565,7 @@ Item {
         visible: view.session && view.session.maxScrollOffset > 0
 
         anchors.right: parent.right
+        anchors.rightMargin: 5
         anchors.top: canvas.top
         anchors.bottom: canvas.bottom
 
@@ -557,6 +578,8 @@ Item {
             if (target !== view.session.scrollOffset)
                 view.session.scrollTo(target);
         }
+
+        background: Item {}
     }
 
     // Drive the scrollbar size (visible fraction) and position from the view.

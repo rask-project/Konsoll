@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls.Basic
+import "." as Controls
 
 Item {
     id: strip
@@ -109,7 +110,7 @@ Item {
         }
     }
 
-    ToolButton {
+    Controls.ToolButton {
         id: addButton
 
         Accessible.name: qsTr("New tab")
@@ -124,11 +125,6 @@ Item {
 
         icon.name: "add"
         display: AbstractButton.IconOnly
-
-        background: Rectangle {
-            radius: width / 2
-            color: addButton.hovered ? Qt.rgba(systemPalette.windowText.r, systemPalette.windowText.g, systemPalette.windowText.b, 0.12) : "transparent"
-        }
 
         onClicked: strip.addRequested()
     }

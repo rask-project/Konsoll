@@ -33,6 +33,7 @@ qt_add_qml_module(konsoll
         TerminalView.qml
         controls/TerminalTabStrip.qml
         controls/TerminalTabButton.qml
+        controls/ToolButton.qml
         controls/Menu.qml
         controls/MenuItem.qml
         controls/SearchBar.qml

@@ -69,12 +69,23 @@ void Screen::resize(int rows, int cols)
         ensureRows(m_mainSaved, rows, oldCols);
         ensureWrappedFlags(m_mainSavedWrapped, m_mainSaved.size());
     } else {
-        // Keep every old physical row until reflow has moved any rows that no
-        // longer fit into scrollback. Truncating first loses the bottom of
-        // the terminal whenever a pane becomes shorter.
-        ensureRows(m_main, rows, oldCols);
-        ensureWrappedFlags(m_mainWrapped, m_main.size());
-        reflow();
+        const bool emptyScreen = m_scrollback.empty()
+            && std::ranges::all_of(m_main, [](const Line &line) {
+                   return std::ranges::all_of(line, [](const Cell &cell) { return cell.ch == ' '; });
+               });
+        if (emptyScreen) {
+            // A smaller pane must not turn unused blank screen rows into
+            // scrollback; that makes an idle terminal appear scrollable.
+            m_main = makeGrid(rows, cols);
+            m_mainWrapped.assign(rows, false);
+        } else {
+            // Keep every old physical row until reflow has moved any rows that
+            // no longer fit into scrollback. Truncating first loses the bottom
+            // of the terminal whenever a pane becomes shorter.
+            ensureRows(m_main, rows, oldCols);
+            ensureWrappedFlags(m_mainWrapped, m_main.size());
+            reflow();
+        }
     }
     m_cursorRow = std::clamp(m_cursorRow, 0, rows - 1);
     m_cursorCol = std::clamp(m_cursorCol, 0, cols - 1);

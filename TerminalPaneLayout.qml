@@ -1,6 +1,9 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Basic
+import "controls" as Controls
 
 Item {
     id: pane
@@ -32,14 +35,19 @@ Item {
 
             Column {
                 anchors.fill: parent
-                spacing: 0
+                spacing: 5
+                topPadding: 5
 
                 Rectangle {
-                    width: parent.width
-                    height: 30
-                    color: Qt.rgba(palette.window.r, palette.window.g, palette.window.b, 0.88)
+                    width: parent.width - 10
+                    height: 32
+                    anchors.horizontalCenter: parent.horizontalCenter
+
+                    color: Qt.rgba(palette.window.r, palette.window.g, palette.window.b, 0.50)
+
                     border.width: 1
-                    border.color: leafItem.active ? palette.accent : Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.16)
+                    border.color: leafItem.active ? palette.accent : Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.15)
+                    radius: 16
 
                     TapHandler {
                         enabled: leafItem.session !== null
@@ -49,38 +57,40 @@ Item {
                     Row {
                         x: 4
                         y: 0
+
                         width: parent.width - 9
                         height: parent.height
                         spacing: 4
 
-                        ToolButton {
-                            width: 22
-                            height: 24
-                            padding: 3
-                            text: "×"
+                        Controls.ToolButton {
                             enabled: leafItem.session !== null
+
                             Accessible.name: qsTr("Close sub-tab")
+
+                            width: 28
+                            height: 28
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            icon.name: "close"
                             onClicked: SessionManager.closeSession(leafItem.session)
                         }
 
                         Text {
                             width: Math.max(0, parent.width - 36)
                             height: parent.height
+
+                            text: leafItem.session ? (leafItem.session.currentDirectory !== "" ? leafItem.session.currentDirectory : leafItem.session.title) : ""
+                            color: palette.windowText
+
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideMiddle
-                            color: palette.windowText
-                            text: leafItem.session
-                                  ? (leafItem.session.currentDirectory !== ""
-                                     ? leafItem.session.currentDirectory : leafItem.session.title)
-                                  : ""
                         }
-
                     }
                 }
 
                 TerminalView {
                     width: parent.width
-                    height: Math.max(0, parent.height - 30)
+                    height: Math.max(0, parent.height - 42)
                     session: leafItem.session
                     active: leafItem.active
                 }
@@ -95,19 +105,44 @@ Item {
             id: splitItem
             property var node: null
 
+            SystemPalette {
+                id: dividerPalette
+                colorGroup: SystemPalette.Active
+            }
+
             anchors.fill: parent
             orientation: node ? node.orientation : Qt.Horizontal
-            handle: Rectangle {
-                implicitWidth: 5
-                implicitHeight: 5
-                color: Qt.rgba(1, 1, 1, 0.14)
+
+            handle: Item {
+                z: 10
+                implicitWidth: 2
+                implicitHeight: 2
+
+                Rectangle {
+                    x: splitItem.orientation === Qt.Horizontal ? Math.floor(parent.width / 2) - 1 : 0
+                    y: splitItem.orientation === Qt.Vertical ? Math.floor(parent.height / 2) - 1 : 0
+                    width: splitItem.orientation === Qt.Horizontal ? 1 : parent.width
+                    height: splitItem.orientation === Qt.Vertical ? 1 : parent.height
+                    color: Qt.rgba(dividerPalette.dark.r, dividerPalette.dark.g, dividerPalette.dark.b, 0.15)
+                }
+
+                Rectangle {
+                    x: splitItem.orientation === Qt.Horizontal ? Math.floor(parent.width / 2) : 0
+                    y: splitItem.orientation === Qt.Vertical ? Math.floor(parent.height / 2) : 0
+                    width: splitItem.orientation === Qt.Horizontal ? 1 : parent.width
+                    height: splitItem.orientation === Qt.Vertical ? 1 : parent.height
+                    color: Qt.rgba(dividerPalette.midlight.r, dividerPalette.midlight.g, dividerPalette.midlight.b, 0.75)
+                }
             }
 
             Loader {
                 id: firstLoader
+
                 property var node: splitItem.node ? splitItem.node.first : null
+
                 sourceComponent: node ? (node.leaf ? leafComponent : splitComponent) : null
                 onLoaded: item.node = node
+
                 SplitView.minimumWidth: 120
                 SplitView.minimumHeight: 80
                 SplitView.preferredWidth: splitItem.width / 2
@@ -116,9 +151,12 @@ Item {
 
             Loader {
                 id: secondLoader
+
                 property var node: splitItem.node ? splitItem.node.second : null
+
                 sourceComponent: node ? (node.leaf ? leafComponent : splitComponent) : null
                 onLoaded: item.node = node
+
                 SplitView.minimumWidth: 120
                 SplitView.minimumHeight: 80
                 SplitView.fillWidth: true
