@@ -1,5 +1,6 @@
 set(ICONS_SRC
     konsoll/index.theme
+    konsoll/svg/add.svg
     konsoll/svg/arrow-prev.svg
     konsoll/svg/arrow-next.svg
     konsoll/svg/close.svg

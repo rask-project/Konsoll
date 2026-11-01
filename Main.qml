@@ -4,14 +4,14 @@ import QtQuick.Controls
 Window {
     id: appWindow
 
+    visible: true
+
     width: 1024
     height: 768
     minimumWidth: 200
     minimumHeight: 250
 
-    visible: true
-
-    title: Backend.title
+    flags: Qt.Window | Qt.ExpandedClientAreaHint | Qt.NoTitleBarBackgroundHint
     color: "transparent"
 
     // On macOS (Qt >= 6.8, native menu bar) a Menu whose title equals the
@@ -40,23 +40,22 @@ Window {
         id: translucency
 
         window: appWindow
-        color: Backend.backgroundColor
+        color: SessionManager.activeSession ? SessionManager.activeSession.backgroundColor : 0xff141414
         alpha: 0.85
     }
 
-    TerminalView {
+    TerminalWorkspace {
         anchors.fill: parent
+
+        safeTop: appWindow.SafeArea.margins.top
+        safeLeft: appWindow.SafeArea.margins.left
+        safeRight: appWindow.SafeArea.margins.right
     }
 
-    Component.onCompleted: Backend.start()
+    Component.onCompleted: SessionManager.start()
 
     Connections {
-        target: Backend
-
-        function onProcessExited(code) {
-            Qt.quit();
-        }
-
+        target: SessionManager
         function onQuitRequested() {
             Qt.quit();
         }

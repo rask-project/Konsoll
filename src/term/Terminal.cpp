@@ -1,5 +1,7 @@
 #include "Terminal.h"
 
+#include <QUrl>
+
 #include <algorithm>
 
 namespace konsoll
@@ -466,6 +468,16 @@ void Terminal::handleSgr(const std::vector<int> &p) // NOLINT: SGR dispatch is i
 
 void Terminal::handleOsc(const QByteArray &body)
 {
+    if (body.startsWith("7;")) {
+        const QUrl url = QUrl::fromEncoded(body.mid(2), QUrl::TolerantMode);
+        const QString path = url.scheme() == QStringLiteral("file") ? url.path(QUrl::FullyDecoded) : QString{};
+        if (path.startsWith(QLatin1Char('/')) && path != m_currentDirectory) {
+            m_currentDirectory = path;
+            m_currentDirectoryDirty = true;
+        }
+        return;
+    }
+
     if (body.startsWith("133;") && body.size() > 4) {
         handleCommandMark(body.at(4));
         return;

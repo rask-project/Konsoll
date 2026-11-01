@@ -7,9 +7,14 @@ _KONSOLL_PROMPT_MARKER='\[\e]133;B\a\]'
 bind '"\e.": yank-last-arg'
 
 _konsoll_prompt_command() {
+    local encoded_path=${PWD//%/%25}
+    encoded_path=${encoded_path// /%20}
+    encoded_path=${encoded_path//#/%23}
+    encoded_path=${encoded_path//\?/%3F}
     if (( _KONSOLL_COMMAND_ACTIVE )); then
         printf '\e]133;D;%d\a' "$_KONSOLL_CAPTURED_STATUS"
     fi
+    printf '\e]7;file://%s%s\a' "${HOSTNAME:-localhost}" "$encoded_path"
     printf '\e]133;A\a'
     if [[ "$PS1" != *"$_KONSOLL_PROMPT_MARKER" ]]; then
         PS1+=$_KONSOLL_PROMPT_MARKER

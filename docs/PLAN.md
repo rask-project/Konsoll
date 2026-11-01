@@ -60,11 +60,12 @@ A working end-to-end terminal:
 - Scrollback with reflow on resize and user scrolling (current buffer is
   unlimited; there is no 1000-line cap)
 
-### Out (remaining post-MVP backlog, §15)
+### Out (remaining post-MVP work, §§15–16)
 
-Tabs, splits, bracketed paste, color profiles/themes, proper multi-cell
-grapheme rendering, autocomplete, and Figma design-system integration. Search,
-selection/clipboard, and mouse reporting are already implemented (see §14).
+Tabs are planned in §15; splits, bracketed paste, color profiles/themes,
+proper multi-cell grapheme rendering, autocomplete, and Figma design-system
+integration remain in §16. Search, selection/clipboard, and mouse reporting
+are already implemented (see §14).
 
 ## 4. Architecture
 
@@ -255,10 +256,15 @@ konsoll/
 | 5 | Keyboard | Special/control key mappings, composed text and IME/dead-key input | Implemented |
 | 6 | Resize + scroll | `TIOCSWINSZ`, screen reflow, unlimited scrollback, wheel and scrollbar navigation | Implemented |
 | 7 | Final acceptance | §2 manual scenarios and polish | Not recorded as verified; run the checklist on macOS |
+| 8 | Session model | Independent terminal session object/model per tab | Implemented; runtime checks pending |
+| 9 | Multi-session backend | Route input, output, resize, title, exit and view state by session | Initial implementation in place; acceptance pending |
+| 10 | Title-bar tabs | QML `TabBar`/`TabButton`, close and add controls, specified visual states | Implemented in QML; macOS visual check pending |
+| 11 | Tab actions | Create, activate, close and keyboard shortcuts | Add/activate/close implemented; shortcuts pending |
+| 12 | Tabs acceptance | Verify session isolation, resizing, lifecycle and visual behavior | Build passes; end-to-end checks pending |
 
 **Original order:** 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7. Phases 0–6 are
-implemented; phase 7 is the remaining manual acceptance pass. Phases 3 and 4
-were independently implementable.
+implemented; phase 7 is the remaining manual acceptance pass. Tabs follow as
+phases 8–12. Phases 3 and 4 were independently implementable.
 
 ## 12. Testing
 
@@ -301,9 +307,104 @@ implemented in the repository:
 These feature implementations are present; the §2 manual acceptance checklist
 is still the place to record end-to-end verification.
 
-## 15. Post-MVP backlog (unordered)
+## 15. Planned feature: QML tabs with independent terminal sessions
 
-- Tabs and splits (QML `TabBar`/`StackedLayout` + one PTY per tab)
+Tabs are a post-MVP feature under implementation. The initial implementation
+adds QML tab controls and a manager that owns independent terminal backend
+instances. They are drawn in the expanded, transparent title-bar area and do
+not use native `NSWindow` tabbing. macOS runtime behavior still needs review.
+
+### 15.1 Visual and interaction design
+
+- Use Qt Quick Controls `TabBar` and `TabButton` as the selection and
+  navigation model, with a custom QML style for the Konsoll appearance.
+- Keep the title-bar surface transparent. Derive the tab surfaces from the
+  system palette: a dark tint for dark appearance and a light tint for light
+  appearance. Do not use macOS glass, blur, or material effects.
+- Give the active tab a visibly highlighted background and border. Keep
+  inactive tabs quieter, with the active width around 150 logical pixels and
+  inactive width around 80 logical pixels. Set explicit widths because
+  `TabBar` distributes its available width equally by default; allow its
+  overflow behavior to scroll when tabs no longer fit.
+- Place each tab's close button on its right side. Place the existing add
+  icon button at the trailing corner of the title-bar area.
+- Respect the leading safe-area inset reserved for the macOS traffic-light
+  controls and the trailing safe-area inset around the add button. Keep the
+  terminal viewport below the title-bar tab strip and inside the window's
+  safe area.
+- Preserve the current macOS window appearance and custom tab visuals across
+  light and dark appearance changes.
+
+### 15.2 Session model
+
+Each tab represents one independent terminal session. A session owns its own
+`PtyProcess`, `Terminal`/`Screen`, shell process, title, scrollback, selection,
+search state, command highlights, and mouse modes. Switching tabs changes the
+session shown by the renderer without stopping or resetting the other shells.
+
+`TerminalManager` owns one `TerminalBackend` instance per session and exposes
+the dynamic session list and active session to QML. Signals and invokable
+operations are session-scoped so output, input, resize, search, clipboard and
+process-exit handling cannot leak between tabs.
+
+All sessions share the window's terminal viewport dimensions. On window
+resize, update each session's PTY and screen size so switching tabs does not
+restore stale `COLUMNS`/`LINES` values.
+
+### 15.3 Backend migration
+
+1. Use one session-scoped `TerminalBackend` instance to own each terminal and
+   PTY.
+2. Add a manager that creates sessions, selects the active session and closes
+   sessions safely. Start the default shell for every new session.
+3. Bind each `TerminalView` and its search controls to its session instance;
+   use a `StackLayout` indexed by the active session to show one view at a
+   time while retaining the other sessions' state.
+4. Keep other sessions running when one shell exits; preserve the current
+   behavior of quitting when the last shell exits.
+
+### 15.4 QML title-bar UI
+
+1. Add a title-bar tab strip in the expanded client area. Keep it in the
+   title-bar region while the terminal view remains inset by the safe area.
+2. Bind a `TabBar` to the session model and bind its current index to the
+   active session. Use a `Repeater` or model-backed delegates for dynamic
+   `TabButton`s.
+3. Style tab backgrounds, borders, widths, labels and close buttons for
+   active/inactive states and both system appearances.
+4. Place the existing add-icon `ToolButton` at the trailing edge, clear of
+   the safe-area inset; connect it to session creation.
+5. Connect each close button to closing that tab and selecting the adjacent
+   surviving session.
+
+### 15.5 Tab actions and lifecycle decisions
+
+- Add a tab with the plus button and `Cmd+T`.
+- Close the active tab with its close button and `Cmd+W`.
+- Preserve the shell and all terminal state when switching tabs.
+- Closing the final tab or exiting the final shell quits the app, preserving
+  the existing single-session lifecycle. Exiting one shell while other tabs
+  remain leaves the other sessions running.
+- Ensure application shutdown terminates/reaps every remaining shell.
+
+### 15.6 Acceptance criteria
+
+- Opening two tabs starts two independent shells; commands and output remain
+  isolated per tab.
+- Switching tabs restores each session's screen, cursor, scrollback and
+  window title without restarting its shell.
+- Closing one tab leaves other shells running and selects a surviving tab.
+- Resizing updates `stty size` in each tab, including inactive tabs.
+- Search, selection, command highlights, clipboard operations and mouse
+  reporting apply to the intended session.
+- The tab strip stays clear of window controls; the terminal starts below it.
+- Tab widths, active border/background, add and close controls follow the
+  specified design in dark and light appearances.
+- Window shutdown closes and reaps all child shell processes.
+
+## 16. Remaining post-MVP backlog (unordered)
+
+- Splits (one PTY per pane)
 - Bracketed paste (`?2004h` mode is accepted but paste is not wrapped)
 - Color profiles/themes + configurable font
 - Ligatures + proper `grapheme` clustering (emoji, ZWJ)

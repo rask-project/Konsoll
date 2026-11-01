@@ -7,6 +7,9 @@ import "controls" as Controls
 Item {
     id: view
 
+    property var session: null
+    property bool active: false
+
     // Menlo advance is 0.6em, so 15px -> exactly 9px per column.
     readonly property int fontSize: 15
     readonly property real cellWidth: 9
@@ -28,19 +31,48 @@ Item {
         colorGroup: SystemPalette.Active
     }
 
+    readonly property color systemBackground: appPalette.window
+    readonly property color systemForeground: appPalette.windowText
+
+    onSystemBackgroundChanged: applySystemColors()
+    onSystemForegroundChanged: applySystemColors()
+
     // Accumulates wheel/trackpad deltas so a few small deltas add up to a whole
     // line. 40 units = 1 line (a mouse notch is 120 units, so 1 notch = 3 lines).
     property real scrollAccumulator: 0
 
     // Whole history (scrollback + visible screen) for the scrollbar mapping.
-    readonly property int totalLines: Backend.maxScrollOffset + Backend.rows
+    readonly property int totalLines: view.session ? view.session.maxScrollOffset + view.session.rows : 0
 
     // True while syncScrollBar() drives the bar, so onPositionChanged ignores
     // our imperative sets and only reacts to real user drags.
     property bool _syncingScrollBar: false
 
-    onColsChanged: Backend.resize(cols, rows)
-    onRowsChanged: Backend.resize(cols, rows)
+    onColsChanged: if (session) session.resize(cols, rows)
+    onRowsChanged: if (session) session.resize(cols, rows)
+    onSessionChanged: {
+        if (session) {
+            session.resize(cols, rows);
+            applySystemColors();
+        }
+    }
+    onActiveChanged: focusInputIfActive()
+
+    Component.onCompleted: focusInputIfActive()
+
+    function focusInputIfActive() {
+        if (active) {
+            Qt.callLater(() => {
+                if (view.active)
+                    input.forceActiveFocus();
+            });
+        }
+    }
+
+    function applySystemColors() {
+        if (session)
+            session.setSystemColors(systemBackground, systemForeground);
+    }
 
     // Invisible focus target that receives composed text from the macOS text
     // input system (dead keys / accents). Special keys and Cmd/Option/Ctrl
@@ -56,7 +88,7 @@ Item {
         height: 1
         color: "transparent"
         cursorVisible: false
-        focus: true
+        focus: view.active
 
         property bool _clearing: false
 
@@ -77,7 +109,8 @@ Item {
                     event.accepted = true;
                     return;
                 }
-                Backend.keyPress(event.key, event.text, event.modifiers);
+                if (view.session)
+                    view.session.keyPress(event.key, event.text, event.modifiers);
                 event.accepted = true;
             }
         }
@@ -86,7 +119,8 @@ Item {
             if (_clearing)
                 return;
             if (text.length > 0) {
-                Backend.writeText(text);
+                if (view.session)
+                    view.session.writeText(text);
                 _clearing = true;
                 text = "";
                 _clearing = false;
@@ -98,15 +132,15 @@ Item {
         onWheel: event => {
             const dy = event.angleDelta.y; // positive = up, negative = down
             if (dy !== 0) {
-                if (Backend.mouseTracking) {
+                if (view.session.mouseTracking) {
                     const p = selectionArea.mapFromItem(view, event.x, event.y);
                     const cell = selectionArea.cellAt(p.x, p.y);
-                    Backend.mouseWheel(dy > 0, cell[1], cell[0], event.modifiers);
+                    view.session.mouseWheel(dy > 0, cell[1], cell[0], event.modifiers);
                 } else {
                     view.scrollAccumulator += dy;
                     const step = Math.trunc(view.scrollAccumulator / 40);
                     if (step !== 0) {
-                        Backend.scrollBy(step);
+                        view.session.scrollBy(step);
                         view.scrollAccumulator -= step * 40;
                     }
                 }
@@ -144,14 +178,20 @@ Item {
 
         onPaint: {
             const ctx = getContext("2d");
-            const data = Backend.snapshot();
+            if (!view.session)
+                return;
+            const data = view.session.snapshot();
             const cw = view.cellWidth;
             const ch = view.cellHeight;
             // |0 coerces to signed 32-bit so it matches the signed ints the
             // snapshot sends (C++ static_cast<int> of 0xAARRGGBB).
-            const bg = Backend.backgroundColor | 0;
+            const bg = view.session.backgroundColor | 0;
             const cols = view.cols;
             const rows = view.rows;
+            const selectedText = appPalette.highlightedText;
+            const selectedForeground = (Math.round(selectedText.r * 255) << 16)
+                    | (Math.round(selectedText.g * 255) << 8)
+                    | Math.round(selectedText.b * 255);
             ctx.textAlign = "left";
             ctx.textBaseline = "top";
             ctx.font = view.fontSize + "px " + view.fontFamily;
@@ -168,10 +208,10 @@ Item {
                         ctx.fillRect(c * cw, y, cw, ch);
                     }
                 }
-                const matchLeft = Backend.searchRowLeft(r);
-                const matchRight = Backend.searchRowRight(r);
+                const matchLeft = view.session.searchRowLeft(r);
+                const matchRight = view.session.searchRowRight(r);
                 if (matchLeft >= 0 && matchRight >= matchLeft) {
-                    const highlight = appPalette.highlight;
+                    const highlight = appPalette.accent;
                     ctx.fillStyle = Qt.rgba(highlight.r, highlight.g, highlight.b, 0.55);
                     ctx.fillRect(matchLeft * cw, y, (matchRight - matchLeft + 1) * cw, ch);
                 }
@@ -179,29 +219,31 @@ Item {
                 // Per-row range (iTerm2-style): start line clipped at the press
                 // column, middle lines full, end line clipped at the release
                 // column. -1 means this row is not part of the selection.
-                if (Backend.selectionActive) {
-                    const l = Backend.selRowLeft(r);
-                    const rr = Backend.selRowRight(r);
+                if (view.session.selectionActive) {
+                    const l = view.session.selRowLeft(r);
+                    const rr = view.session.selRowRight(r);
                     if (l >= 0 && rr >= l) {
-                        ctx.fillStyle = "rgba(55, 125, 235, 0.82)";
+                        const accent = appPalette.accent;
+                        ctx.fillStyle = Qt.rgba(accent.r, accent.g, accent.b, 0.82);
                         ctx.fillRect(l * cw, y, (rr - l + 1) * cw, ch);
                     }
                 }
                 // Command highlight (iTerm2-style), drawn under text with a
                 // distinct amber color from the text selection.
-                if (Backend.highlightActive) {
-                    const first = Backend.highlightStartRow;
-                    const last = Backend.highlightEndRow;
+                if (view.session.highlightActive) {
+                    const first = view.session.highlightStartRow;
+                    const last = view.session.highlightEndRow;
                     if (first >= 0 && r === first && last >= first) {
                         const width = cols * cw;
                         const height = (last - first + 1) * ch;
                         ctx.save();
                         ctx.beginPath();
                         ctx.roundRect(0.5, y + 0.5, width - 1, height - 1, Math.min(6, height / 2));
-                        ctx.fillStyle = "rgba(55, 125, 235, 0.0175)";
+                        const accent = appPalette.accent;
+                        ctx.fillStyle = Qt.rgba(accent.r, accent.g, accent.b, 0.0175);
                         ctx.fill();
                         ctx.lineWidth = 1;
-                        ctx.strokeStyle = "rgba(55, 125, 235, 0.65)";
+                        ctx.strokeStyle = Qt.rgba(accent.r, accent.g, accent.b, 0.65);
                         ctx.stroke();
                         ctx.restore();
                     }
@@ -214,11 +256,11 @@ Item {
                 let selected = false;
                 for (let c = 0; c < cols; ++c) {
                     const cell = data[rowBase + c];
-                    const selLeft = Backend.selectionActive ? Backend.selRowLeft(r) : -1;
-                    const selRight = Backend.selectionActive ? Backend.selRowRight(r) : -1;
+                    const selLeft = view.session.selectionActive ? view.session.selRowLeft(r) : -1;
+                    const selRight = view.session.selectionActive ? view.session.selRowRight(r) : -1;
                     const cellSelected = selLeft >= 0 && c >= selLeft && c <= selRight;
                     if (cell["fg"] !== fg || cell["flags"] !== flags || cellSelected !== selected) {
-                        view.drawRun(ctx, buf, start, y, selected ? 0xffffffff : fg, flags, bufCells);
+                        view.drawRun(ctx, buf, start, y, selected ? selectedForeground : fg, flags, bufCells);
                         buf = "";
                         bufCells = 0;
                         start = c;
@@ -229,15 +271,16 @@ Item {
                     buf += cell["ch"];
                     ++bufCells;
                 }
-                view.drawRun(ctx, buf, start, y, selected ? 0xffffffff : fg, flags, bufCells);
+                view.drawRun(ctx, buf, start, y, selected ? selectedForeground : fg, flags, bufCells);
             }
 
             // The cursor is at the live position (bottom of the main screen),
             // which is out of view when scrolled up.
-            if (Backend.cursorVisible() && Backend.scrollOffset === 0) {
-                const curCol = Backend.cursorCol();
-                const curRow = Backend.cursorRow();
-                ctx.fillStyle = Qt.rgba(0.88, 0.88, 0.88, 1);
+            if (view.session.cursorVisible() && view.session.scrollOffset === 0) {
+                const curCol = view.session.cursorCol();
+                const curRow = view.session.cursorRow();
+                const cursor = view.session.foregroundColor | 0;
+                ctx.fillStyle = Qt.rgba(((cursor >> 16) & 255) / 255, ((cursor >> 8) & 255) / 255, (cursor & 255) / 255, 1);
                 ctx.fillRect(curCol * cw, curRow * ch, cw, ch);
                 // Invert the glyph under the block (standard block-cursor
                 // behavior) so it stays readable against the light block.
@@ -258,7 +301,7 @@ Item {
         id: selectionArea
 
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
-        hoverEnabled: Backend.mouseMotionTracking
+        hoverEnabled: view.session ? view.session.mouseMotionTracking : false
 
         anchors.top: canvas.top
         anchors.left: canvas.left
@@ -308,18 +351,18 @@ Item {
                 const shouldHighlight = !selectionArea._cancelOnly;
                 selectionArea._pendingRow = -1;
                 selectionArea._cancelOnly = false;
-                Backend.selClear();
-                Backend.clearHighlight();
+                view.session.selClear();
+                view.session.clearHighlight();
                 if (row >= 0 && shouldHighlight) {
-                    Backend.highlightCommandAt(row);
+                    view.session.highlightCommandAt(row);
                 }
             }
         }
 
         onPressed: mouse => {
-            if (Backend.mouseTracking) {
+            if (view.session.mouseTracking) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
-                Backend.mousePress(selectionArea.buttonCode(mouse.button), cell[1], cell[0], mouse.modifiers);
+                view.session.mousePress(selectionArea.buttonCode(mouse.button), cell[1], cell[0], mouse.modifiers);
                 mouse.accepted = true;
             } else if (mouse.button === Qt.LeftButton) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
@@ -328,8 +371,8 @@ Item {
                 selectionArea._pressX = mouse.x;
                 selectionArea._pressY = mouse.y;
                 selectionArea._dragging = false;
-                selectionArea._cancelOnly = Backend.selectionActive || Backend.highlightActive;
-                Backend.selClear();
+                selectionArea._cancelOnly = view.session.selectionActive || view.session.highlightActive;
+                view.session.selClear();
                 if (Date.now() - selectionArea._doubleAt <= selectionArea._tapInterval) {
                     // The third press selects the whole line.
                     selectionArea._inTriple = true;
@@ -338,9 +381,9 @@ Item {
                     selectionArea._doubleAt = -1;
                     singleClickTimer.stop();
                     selectionArea._pendingRow = -1;
-                    Backend.selClear();
-                    Backend.clearHighlight();
-                    Backend.selLine(cell[1]);
+                    view.session.selClear();
+                    view.session.clearHighlight();
+                    view.session.selLine(cell[1]);
                 } else {
                     selectionArea._inTriple = false;
                 }
@@ -353,13 +396,13 @@ Item {
         }
 
         onPositionChanged: mouse => {
-            if (Backend.mouseTracking && (mouse.buttons !== Qt.NoButton || Backend.mouseMotionTracking)) {
+            if (view.session.mouseTracking && (mouse.buttons !== Qt.NoButton || view.session.mouseMotionTracking)) {
                 const button = (mouse.buttons & Qt.LeftButton) ? Qt.LeftButton
                     : (mouse.buttons & Qt.MiddleButton) ? Qt.MiddleButton
                     : (mouse.buttons & Qt.RightButton) ? Qt.RightButton : Qt.NoButton;
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
-                Backend.mouseMove(selectionArea.buttonCode(button), cell[1], cell[0], mouse.modifiers);
-            } else if (!Backend.mouseTracking && (mouse.buttons & Qt.LeftButton)) {
+                view.session.mouseMove(selectionArea.buttonCode(button), cell[1], cell[0], mouse.modifiers);
+            } else if (!view.session.mouseTracking && (mouse.buttons & Qt.LeftButton)) {
                 const dx = Math.abs(mouse.x - selectionArea._pressX);
                 const dy = Math.abs(mouse.y - selectionArea._pressY);
                 if (!selectionArea._dragging && dx < 4 && dy < 4) {
@@ -369,19 +412,19 @@ Item {
                     singleClickTimer.stop();
                     selectionArea._pendingRow = -1;
                     selectionArea._cancelOnly = false;
-                    Backend.clearHighlight();
-                    Backend.selPress(selectionArea._pressRow, selectionArea._pressCol);
+                    view.session.clearHighlight();
+                    view.session.selPress(selectionArea._pressRow, selectionArea._pressCol);
                     selectionArea._dragging = true;
                 }
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
-                Backend.selMove(cell[1], cell[0]);
+                view.session.selMove(cell[1], cell[0]);
             }
         }
 
         onReleased: mouse => {
-            if (Backend.mouseTracking) {
+            if (view.session.mouseTracking) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
-                Backend.mouseRelease(selectionArea.buttonCode(mouse.button), cell[1], cell[0], mouse.modifiers);
+                view.session.mouseRelease(selectionArea.buttonCode(mouse.button), cell[1], cell[0], mouse.modifiers);
             } else if (mouse.button === Qt.LeftButton) {
                 if (selectionArea._inTriple) {
                     // The triple press already selected the line; don't let
@@ -390,7 +433,7 @@ Item {
                 } else if (selectionArea._inDouble) {
                     selectionArea._inDouble = false;
                 } else if (selectionArea._dragging) {
-                    Backend.selRelease();
+                    view.session.selRelease();
                     selectionArea._dragging = false;
                 } else {
                     const cell = selectionArea.cellAt(mouse.x, mouse.y);
@@ -401,17 +444,17 @@ Item {
         }
 
         onDoubleClicked: mouse => {
-            if (!Backend.mouseTracking && mouse.button === Qt.LeftButton) {
+            if (!view.session.mouseTracking && mouse.button === Qt.LeftButton) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 singleClickTimer.stop();
                 selectionArea._pendingRow = -1;
                 selectionArea._inDouble = true;
                 selectionArea._cancelOnly = false;
-                Backend.selClear();
+                view.session.selClear();
                 // A double-click is a selection gesture, so clear the pending
                 // highlight (the user is switching to "selection mode").
-                Backend.clearHighlight();
-                Backend.selWord(cell[1], cell[0]);
+                view.session.clearHighlight();
+                view.session.selWord(cell[1], cell[0]);
                 selectionArea._doubleAt = Date.now();
             }
         }
@@ -422,28 +465,29 @@ Item {
 
         Controls.MenuItem {
             text: qsTr("Copy")
-            onTriggered: Backend.copySelection()
+            onTriggered: view.session.copySelection()
         }
 
         Controls.MenuItem {
             text: qsTr("Paste")
-            onTriggered: Backend.paste()
+            onTriggered: view.session.paste()
         }
 
         Controls.MenuItem {
             text: qsTr("Select All")
-            onTriggered: Backend.selectAll()
+            onTriggered: view.session.selectAll()
         }
 
         Controls.MenuItem {
             text: qsTr("Clear Buffer")
-            onTriggered: Backend.clearBuffer()
+            onTriggered: view.session.clearBuffer()
         }
     }
 
     Controls.SearchBar {
         id: searchBar
 
+        session: view.session
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.margins: 12
@@ -460,7 +504,7 @@ Item {
     ScrollBar {
         id: scrollBar
 
-        visible: Backend.maxScrollOffset > 0
+        visible: view.session && view.session.maxScrollOffset > 0
 
         anchors.right: parent.right
         anchors.top: canvas.top
@@ -470,10 +514,10 @@ Item {
         onPositionChanged: {
             if (view._syncingScrollBar)
                 return;
-            const offset = Backend.maxScrollOffset - position * view.totalLines;
-            const target = Math.max(0, Math.min(Backend.maxScrollOffset, Math.round(offset)));
-            if (target !== Backend.scrollOffset)
-                Backend.scrollTo(target);
+            const offset = view.session.maxScrollOffset - position * view.totalLines;
+            const target = Math.max(0, Math.min(view.session.maxScrollOffset, Math.round(offset)));
+            if (target !== view.session.scrollOffset)
+                view.session.scrollTo(target);
         }
     }
 
@@ -482,13 +526,13 @@ Item {
     // a binding loop through a re-evaluated size binding.
     function syncScrollBar() {
         _syncingScrollBar = true;
-        scrollBar.size = Backend.rows / view.totalLines;
-        scrollBar.position = (Backend.maxScrollOffset - Backend.scrollOffset) / view.totalLines;
+        scrollBar.size = view.session.rows / view.totalLines;
+        scrollBar.position = (view.session.maxScrollOffset - view.session.scrollOffset) / view.totalLines;
         _syncingScrollBar = false;
     }
 
     Connections {
-        target: Backend
+        target: view.session
 
         function onFrameReady() {
             canvas.requestPaint();

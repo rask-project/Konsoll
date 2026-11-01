@@ -21,10 +21,8 @@ class TerminalBackend : public QObject
 {
     Q_OBJECT
 
-    QML_NAMED_ELEMENT(Backend)
-    QML_SINGLETON
-
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
+    Q_PROPERTY(QString currentDirectory READ currentDirectory NOTIFY currentDirectoryChanged)
     Q_PROPERTY(int rows READ rows NOTIFY sizeChanged)
     Q_PROPERTY(int cols READ cols NOTIFY sizeChanged)
     Q_PROPERTY(int scrollOffset READ scrollOffset NOTIFY scrollOffsetChanged)
@@ -35,14 +33,15 @@ class TerminalBackend : public QObject
     Q_PROPERTY(int highlightEndRow READ highlightEndRow NOTIFY highlightChanged)
     Q_PROPERTY(bool mouseTracking READ mouseTracking NOTIFY mouseTrackingChanged)
     Q_PROPERTY(bool mouseMotionTracking READ mouseMotionTracking NOTIFY mouseTrackingChanged)
-    Q_PROPERTY(unsigned int backgroundColor READ backgroundColor CONSTANT)
-    Q_PROPERTY(unsigned int foregroundColor READ foregroundColor CONSTANT)
+    Q_PROPERTY(unsigned int backgroundColor READ backgroundColor NOTIFY colorSchemeChanged)
+    Q_PROPERTY(unsigned int foregroundColor READ foregroundColor NOTIFY colorSchemeChanged)
 
 public:
     explicit TerminalBackend(QObject *parent = nullptr);
 
     // Start the terminal with the detected default shell.
     Q_INVOKABLE void start();
+    Q_INVOKABLE void setSystemColors(const QColor &background, const QColor &foreground);
 
     // Input from QML.
     Q_INVOKABLE void keyPress(int key, const QString &text, int modifiers);
@@ -114,6 +113,7 @@ public:
     Q_INVOKABLE bool cursorVisible() const;
 
     QString title() const { return m_title; }
+    QString currentDirectory() const { return m_currentDirectory; }
     int rows() const { return m_rows; }
     int cols() const { return m_cols; }
     int scrollOffset() const { return m_terminal ? m_terminal->screen().scrollOffset() : 0; }
@@ -127,6 +127,8 @@ public:
 signals:
     void frameReady();
     void titleChanged();
+    void currentDirectoryChanged();
+    void colorSchemeChanged();
     void processExited(int code);
     void sizeChanged();
     void scrollOffsetChanged();
@@ -170,6 +172,7 @@ private:
 
     QTimer m_frameTimer;
     QString m_title{QStringLiteral("Konsoll")};
+    QString m_currentDirectory;
     AbsPos m_selAnchor{.line = -1, .col = 0};
     AbsPos m_selCurrent{.line = -1, .col = 0};
     int m_highlightStart{-1};

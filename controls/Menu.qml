@@ -5,6 +5,11 @@ import QtQuick.Effects
 Menu {
     id: control
 
+    SystemPalette {
+        id: systemPalette
+        colorGroup: SystemPalette.Active
+    }
+
     leftPadding: 6
     topPadding: 6
     rightPadding: 6
@@ -28,8 +33,8 @@ Menu {
                 height: control.background.height + control.topInset + control.bottomInset
 
                 radius: 16
-                color: Application.styleHints.colorScheme === Qt.Light ? Qt.darker(control.palette.window, 1.04) : Qt.darker(control.palette.window, 1.2)
-                border.color: Application.styleHints.colorScheme === Qt.Light ? Qt.darker(control.palette.window, 1.4) : Qt.lighter(control.palette.window, 2.0)
+                color: Application.styleHints.colorScheme === Qt.Light ? Qt.darker(systemPalette.window, 1.04) : Qt.darker(systemPalette.window, 1.2)
+                border.color: Application.styleHints.colorScheme === Qt.Light ? Qt.darker(systemPalette.window, 1.4) : Qt.lighter(systemPalette.window, 2.0)
                 border.width: 1
             }
 

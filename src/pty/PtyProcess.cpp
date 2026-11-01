@@ -16,6 +16,7 @@
 #include <ranges>
 #include <signal.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <util.h>
 
@@ -31,8 +32,25 @@ PtyProcess::~PtyProcess()
 {
     closeMaster();
     if (m_pid > 0) {
+        const pid_t pid = static_cast<pid_t>(m_pid);
+        if (::kill(-pid, SIGHUP) < 0) {
+            ::kill(pid, SIGHUP);
+        }
+
         int status = 0;
-        waitpid(m_pid, &status, 0);
+        pid_t result = 0;
+        do {
+            result = ::waitpid(pid, &status, WNOHANG);
+        } while (result < 0 && errno == EINTR);
+
+        if (result == 0) {
+            if (::kill(-pid, SIGKILL) < 0) {
+                ::kill(pid, SIGKILL);
+            }
+            do {
+                result = ::waitpid(pid, &status, 0);
+            } while (result < 0 && errno == EINTR);
+        }
         m_pid = -1;
     }
 }
@@ -245,7 +263,10 @@ void PtyProcess::resize(int cols, int rows) const // NOLINT: cols/rows are inher
 void PtyProcess::terminate() const
 {
     if (m_pid > 0) {
-        ::kill(m_pid, SIGHUP);
+        const pid_t pid = static_cast<pid_t>(m_pid);
+        if (::kill(-pid, SIGHUP) < 0) {
+            ::kill(pid, SIGHUP);
+        }
     }
 }
 
@@ -274,7 +295,12 @@ void PtyProcess::onReadable()
 
     if (eof) {
         int status = 0;
-        waitpid(m_pid, &status, 0);
+        const pid_t pid = static_cast<pid_t>(m_pid);
+        pid_t result = 0;
+        do {
+            result = ::waitpid(pid, &status, 0);
+        } while (result < 0 && errno == EINTR);
+        m_pid = -1;
         const int code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
         closeMaster();
         emit processExited(code);

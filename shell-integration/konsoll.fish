@@ -1,4 +1,6 @@
 function _konsoll_prompt --on-event fish_prompt
+    set -l encoded_path (string escape --style=url -- "$PWD")
+    printf '\e]7;file://%s%s\a' (hostname) "$encoded_path"
     printf '\e]133;A\a'
     printf '\e]133;B\a'
 end

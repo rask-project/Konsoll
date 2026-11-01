@@ -8,6 +8,7 @@ import QtQuick.Layouts
 Rectangle {
     id: root
 
+    property var session: null
     property bool regexSearch: false
     property int matchCount: 0
     property int currentMatch: 0
@@ -46,7 +47,7 @@ Rectangle {
 
     function closeSearch() {
         visible = false;
-        Backend.clearSearch();
+        root.session.clearSearch();
         matchCount = 0;
         currentMatch = 0;
         closeRequested();
@@ -65,8 +66,8 @@ Rectangle {
             checked: root.regexSearch
             onToggled: {
                 root.regexSearch = checked;
-                root.matchCount = Backend.search(searchField.text, checked);
-                root.currentMatch = Backend.searchCurrentIndex();
+                root.matchCount = root.session.search(searchField.text, checked);
+                root.currentMatch = root.session.searchCurrentIndex();
                 root.repaintRequested();
             }
         }
@@ -79,8 +80,8 @@ Rectangle {
             placeholderText: qsTr("Type here")
 
             onTextChanged: {
-                root.matchCount = Backend.search(text, root.regexSearch);
-                root.currentMatch = Backend.searchCurrentIndex();
+                root.matchCount = root.session.search(text, root.regexSearch);
+                root.currentMatch = root.session.searchCurrentIndex();
                 root.repaintRequested();
             }
 
@@ -89,8 +90,8 @@ Rectangle {
                     root.closeSearch();
                     event.accepted = true;
                 } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    root.matchCount = Backend.searchNext((event.modifiers & Qt.ShiftModifier) !== 0);
-                    root.currentMatch = Backend.searchCurrentIndex();
+                    root.matchCount = root.session.searchNext((event.modifiers & Qt.ShiftModifier) !== 0);
+                    root.currentMatch = root.session.searchCurrentIndex();
                     root.repaintRequested();
                     event.accepted = true;
                 }
@@ -112,8 +113,8 @@ Rectangle {
             icon.color: appPalette.buttonText
 
             onClicked: {
-                root.matchCount = Backend.searchNext(true);
-                root.currentMatch = Backend.searchCurrentIndex();
+                root.matchCount = root.session.searchNext(true);
+                root.currentMatch = root.session.searchCurrentIndex();
                 root.repaintRequested();
             }
         }
@@ -127,8 +128,8 @@ Rectangle {
             icon.color: appPalette.buttonText
 
             onClicked: {
-                root.matchCount = Backend.searchNext(false);
-                root.currentMatch = Backend.searchCurrentIndex();
+                root.matchCount = root.session.searchNext(false);
+                root.currentMatch = root.session.searchCurrentIndex();
                 root.repaintRequested();
             }
         }

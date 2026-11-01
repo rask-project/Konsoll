@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <ranges>
 #include <utility>
 
@@ -61,6 +62,48 @@ std::array<QRgb, 256> buildPalette()
     }
 
     return p;
+}
+
+double linearRgbChannel(int channel)
+{
+    const double value = static_cast<double>(channel) / 255.0;
+    return value <= 0.04045 ? value / 12.92 : std::pow((value + 0.055) / 1.055, 2.4);
+}
+
+double relativeLuminance(QRgb color)
+{
+    return (0.2126 * linearRgbChannel(qRed(color))) + (0.7152 * linearRgbChannel(qGreen(color))) +
+           (0.0722 * linearRgbChannel(qBlue(color)));
+}
+
+double contrastRatio(QRgb foreground, QRgb background)
+{
+    const double foregroundLuminance = relativeLuminance(foreground);
+    const double backgroundLuminance = relativeLuminance(background);
+    return (std::max(foregroundLuminance, backgroundLuminance) + 0.05) /
+           (std::min(foregroundLuminance, backgroundLuminance) + 0.05);
+}
+
+QRgb readableForeground(QRgb foreground, QRgb background)
+{
+    const double backgroundLuminance = relativeLuminance(background);
+    if (backgroundLuminance <= 0.5 || contrastRatio(foreground, background) >= 4.5) {
+        return foreground;
+    }
+
+    const double foregroundLuminance = relativeLuminance(foreground);
+    if (foregroundLuminance <= 0.0) {
+        return foreground;
+    }
+
+    const double targetLuminance = ((backgroundLuminance + 0.05) / 4.5) - 0.05;
+    const double scale = std::clamp(targetLuminance / foregroundLuminance, 0.0, 1.0);
+    const auto toSrgb = [scale](int channel) {
+        const double linear = linearRgbChannel(channel) * scale;
+        const double value = linear <= 0.0031308 ? linear * 12.92 : (1.055 * std::pow(linear, 1.0 / 2.4)) - 0.055;
+        return static_cast<int>(std::lround(value * 255.0));
+    };
+    return qRgb(toSrgb(qRed(foreground)), toSrgb(qGreen(foreground)), toSrgb(qBlue(foreground)));
 }
 
 // Encode a Ctrl+<key> press into the control byte the shell expects, or an
@@ -154,6 +197,25 @@ TerminalBackend::TerminalBackend(QObject *parent) : QObject(parent)
     m_frameTimer.setTimerType(Qt::CoarseTimer);
     m_frameTimer.setInterval(16ms);
     connect(&m_frameTimer, &QTimer::timeout, this, &TerminalBackend::onFrameTimer);
+
+    const QPalette palette = QGuiApplication::palette();
+    setSystemColors(palette.color(QPalette::Window), palette.color(QPalette::WindowText));
+}
+
+void TerminalBackend::setSystemColors(const QColor &background, const QColor &foreground)
+{
+    const unsigned int newBackground = background.rgba();
+    const unsigned int newForeground = foreground.rgba();
+    if (m_defaultBg == newBackground && m_defaultFg == newForeground) {
+        return;
+    }
+
+    m_defaultBg = newBackground;
+    m_defaultFg = newForeground;
+    emit colorSchemeChanged();
+    if (m_terminal) {
+        scheduleFrame();
+    }
 }
 
 void TerminalBackend::start()
@@ -199,6 +261,11 @@ void TerminalBackend::onData(const QByteArray &data)
         m_title = m_terminal->title();
         emit titleChanged();
         m_terminal->clearTitleDirty();
+    }
+    if (m_terminal->currentDirectoryDirty()) {
+        m_currentDirectory = m_terminal->currentDirectory();
+        emit currentDirectoryChanged();
+        m_terminal->clearCurrentDirectoryDirty();
     }
 
     if (m_terminal->clearPending()) {
@@ -1001,6 +1068,7 @@ QVariantList TerminalBackend::snapshot() const
             if ((cell.flags & CellFlag::Reverse) != 0) {
                 std::swap(fg, bg);
             }
+            fg = readableForeground(static_cast<QRgb>(fg), static_cast<QRgb>(bg));
 
             // Encode the code point as a QString (surrogate pair when
             // supplementary) so the QML renderer draws one glyph per cell.

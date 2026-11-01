@@ -32,6 +32,9 @@ public:
     QString title() const { return m_title; }
     bool titleDirty() const { return m_titleDirty; }
     void clearTitleDirty() { m_titleDirty = false; }
+    QString currentDirectory() const { return m_currentDirectory; }
+    bool currentDirectoryDirty() const { return m_currentDirectoryDirty; }
+    void clearCurrentDirectoryDirty() { m_currentDirectoryDirty = false; }
 
     // Device-attributes reply (so apps like vim/less don't hang waiting).
     bool daPending() const { return m_daPending; }
@@ -87,6 +90,7 @@ private:
     QByteArray m_csiBody;
     QByteArray m_oscBody;
     QString m_title;
+    QString m_currentDirectory;
     unsigned int m_fg = 0;
     unsigned int m_bg = 0;
     unsigned int m_utf8CodePoint = 0;
@@ -99,6 +103,7 @@ private:
     unsigned char m_utf8Remaining = 0;
     bool m_csiPrivate = false;
     bool m_titleDirty = false;
+    bool m_currentDirectoryDirty = false;
     bool m_daPending = false;
     bool m_clearPending = false;
     unsigned char m_dsrQuery = 0;

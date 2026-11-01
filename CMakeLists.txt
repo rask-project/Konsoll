@@ -28,7 +28,10 @@ qt_add_qml_module(konsoll
     NAMESPACE konsoll
     QML_FILES
         Main.qml
+        TerminalWorkspace.qml
         TerminalView.qml
+        controls/TerminalTabStrip.qml
+        controls/TerminalTabButton.qml
         controls/Menu.qml
         controls/MenuItem.qml
         controls/SearchBar.qml
@@ -37,6 +40,8 @@ qt_add_qml_module(konsoll
         src/AboutDialog.mm
         src/TerminalBackend.cpp
         src/TerminalBackend.h
+        src/TerminalManager.cpp
+        src/TerminalManager.h
         src/pty/PtyProcess.cpp
         src/pty/PtyProcess.h
         src/term/Cell.h
