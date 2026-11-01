@@ -109,6 +109,7 @@ void TerminalManager::start()
 
 void TerminalManager::addWorkspace()
 {
+    const QString workingDirectory = m_activeSession ? m_activeSession->currentDirectory() : QString{};
     TerminalBackend *session = createSession();
     auto workspace = std::make_unique<TerminalWorkspaceModel>(
         QStringLiteral("Workspace %1").arg(m_nextWorkspaceNumber++),
@@ -117,7 +118,7 @@ void TerminalManager::addWorkspace()
     emit workspacesChanged();
     emit activeWorkspaceChanged();
     setActiveSession(session, true);
-    session->start();
+    session->start(workingDirectory);
 }
 
 void TerminalManager::moveWorkspace(int fromIndex, int toIndex)
@@ -172,6 +173,7 @@ void TerminalManager::splitActive(int orientation)
         return;
     }
 
+    const QString workingDirectory = m_activeSession->currentDirectory();
     auto newSession = createSession();
     auto oldLeaf = std::move(*leafSlot);
     auto newLeaf = std::make_unique<TerminalLayoutNode>(newSession);
@@ -183,7 +185,7 @@ void TerminalManager::splitActive(int orientation)
     emit workspacesChanged();
     emit activeWorkspaceChanged();
     setActiveSession(newSession, true);
-    newSession->start();
+    newSession->start(workingDirectory);
 }
 
 void TerminalManager::closeWorkspace(QObject *workspaceObject)

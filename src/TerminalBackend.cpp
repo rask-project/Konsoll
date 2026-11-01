@@ -218,7 +218,7 @@ void TerminalBackend::setSystemColors(const QColor &background, const QColor &fo
     }
 }
 
-void TerminalBackend::start()
+void TerminalBackend::start(const QString &workingDirectory)
 {
     if (m_pty) {
         return; // Already running.
@@ -229,7 +229,7 @@ void TerminalBackend::start()
     connect(m_pty.get(), &PtyProcess::dataReceived, this, &TerminalBackend::onData);
     connect(m_pty.get(), &PtyProcess::processExited, this, &TerminalBackend::onExited);
     const QString shell = detectDefaultShell();
-    if (!m_pty->start(shell, m_cols, m_rows)) {
+    if (!m_pty->start(shell, m_cols, m_rows, workingDirectory)) {
         qWarning("Konsoll: failed to start the PTY");
     }
 }

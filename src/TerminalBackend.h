@@ -40,7 +40,7 @@ public:
     explicit TerminalBackend(QObject *parent = nullptr);
 
     // Start the terminal with the detected default shell.
-    Q_INVOKABLE void start();
+    Q_INVOKABLE void start(const QString &workingDirectory = {});
     Q_INVOKABLE void setSystemColors(const QColor &background, const QColor &foreground);
 
     // Input from QML.

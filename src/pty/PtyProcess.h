@@ -19,7 +19,7 @@ public:
     ~PtyProcess() override;
 
     // Launch `shellPath` in a fresh PTY sized `cols`x`rows`.
-    bool start(const QString &shellPath, int cols, int rows);
+    bool start(const QString &shellPath, int cols, int rows, const QString &workingDirectory = {});
 
     void write(const QByteArray &data) const;
     void resize(int cols, int rows) const;

@@ -55,7 +55,7 @@ PtyProcess::~PtyProcess()
     }
 }
 
-bool PtyProcess::start(const QString &shellPath, int cols, int rows)
+bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QString &workingDirectory)
 {
     const QString shellName = QFileInfo(shellPath).fileName();
     const bool isZsh = shellName == QStringLiteral("zsh");
@@ -164,6 +164,10 @@ bool PtyProcess::start(const QString &shellPath, int cols, int rows)
     if (homePath.isEmpty()) {
         homePath = QDir::homePath().toLocal8Bit();
     }
+    QByteArray initialDirectory = workingDirectory.toLocal8Bit();
+    if (initialDirectory.isEmpty() || !QDir(workingDirectory).exists()) {
+        initialDirectory = homePath;
+    }
     const QByteArray columns = QByteArray::number(cols);
     const QByteArray lines = QByteArray::number(rows);
     const QByteArray path = "/usr/bin:/bin:/usr/sbin:/sbin:" + qgetenv("PATH");
@@ -186,8 +190,9 @@ bool PtyProcess::start(const QString &shellPath, int cols, int rows)
     if (pid == 0) {
         // Child: exec the shell as a login shell (argv[0] = "-<name>").
         // GUI apps can inherit `/` (or another launcher's working directory).
-        // Start the interactive session in the user's home, as terminal apps do.
-        if (!homePath.isEmpty()) {
+        // Start in the inherited session directory, falling back to the user's home.
+        if (!initialDirectory.isEmpty() && ::chdir(initialDirectory.constData()) < 0
+            && !homePath.isEmpty()) {
             ::chdir(homePath.constData());
         }
         ::setenv("TERM", "xterm-256color", 1);
