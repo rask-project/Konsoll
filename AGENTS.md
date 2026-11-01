@@ -50,17 +50,3 @@ Guidance for AI agents working in this repository.
 - AppKit colors expect **0.0–1.0** components: use `QColor::redF()`/
   `greenF()`/`blueF()`, not `red()`/`green()`/`blue()` (which return 0–255
   ints and clamp to white).
-
-## Verifying QML changes
-
-- **Live preview (hot reload) — preferred for validating the UI and QML.**
-  The app is built with `QT_QML_DEBUG` in Debug (`CMakeLists.txt`), which
-  enables the QML debug service. Build in Debug, then start the preview with
-  the QML Live Preview MCP tool: `run_qmlPreview` with the executable path
-  `./build/<config>/konsoll.app/Contents/MacOS/konsoll`. QML source edits then
-  appear in the running app without a rebuild. A rebuild/restart is still
-  required for C++ changes, `qmldir`, module URI/version, singleton
-  registration, `CMakeLists.txt` edits, new imports of unlinked modules, and
-  new QML files compiled into Qt resources.
-- The build already runs QML AOT (`qmlcache`), so a property that does not
-  exist on a `QML_ELEMENT` type also fails the build.

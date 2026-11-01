@@ -304,13 +304,16 @@ void TerminalBackend::scheduleFrame()
 void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
 {
     const unsigned int mods = static_cast<unsigned int>(modifiers);
-    const bool meta = (mods & static_cast<unsigned int>(Qt::ControlModifier)) != 0;
-    const bool ctrl = (mods & static_cast<unsigned int>(Qt::MetaModifier)) != 0;
+    // On macOS, the Qt/QML shortcut spelling `Ctrl` maps to Command, while
+    // the physical Control key arrives here as MetaModifier in this app's
+    // key-event path. Keep shell control bytes distinct from app shortcuts.
+    const bool command = (mods & static_cast<unsigned int>(Qt::ControlModifier)) != 0;
+    const bool control = (mods & static_cast<unsigned int>(Qt::MetaModifier)) != 0;
     const bool option = (mods & static_cast<unsigned int>(Qt::AltModifier)) != 0;
     const bool shift = (mods & static_cast<unsigned int>(Qt::ShiftModifier)) != 0;
 
     // Editor shortcuts: copy / paste / select-all.
-    if (meta) {
+    if (command) {
         editorShortcuts(key);
         return;
     }
@@ -325,7 +328,7 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
     }
 
     QByteArray out;
-    if (ctrl) {
+    if (control) {
         // Physical Ctrl+K: clear the scrollback buffer (terminal-level action,
         // like Konsole's "Clear Buffer"). Not sent to the shell.
         if (key == static_cast<int>(Qt::Key_K)) {

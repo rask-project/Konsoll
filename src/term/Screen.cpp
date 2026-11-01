@@ -30,30 +30,19 @@ std::vector<Line> resizeGrid(const std::vector<Line> &old, int rows, int cols)
     return grid;
 }
 
-// Keep the wrapped flags for rows whose content survives the resize; new
-// rows are hard breaks. `flags` is resized to `rows`.
-void carryWrappedFlags(std::vector<bool> &flags, int rows)
+// Add hard-break flags for newly allocated rows without dropping existing
+// rows. Reflow needs the complete old screen to preserve its contents.
+void ensureWrappedFlags(std::vector<bool> &flags, size_t rows)
 {
-    const int keep = std::min(rows, static_cast<int>(flags.size()));
-    std::vector<bool> old(flags);
-    flags.assign(rows, false);
-    for (int r = 0; r < keep; ++r) {
-        flags[r] = old[r];
-    }
+    flags.resize(std::max(flags.size(), rows), false);
 }
 
-// Adjust a grid to have exactly `rows` rows, each `width` cols wide (new rows
-// blank, excess dropped). Used before reflow so the grid has the right row
-// count at the OLD width; reflow then re-wraps to the new width. Padding the
-// rows to the new width first would leave padding in the middle of logical
-// lines.
-void resizeRowsTo(std::vector<Line> &grid, int rows, int width)
+// Ensure at least `rows` physical lines exist before reflow. Existing lines
+// must remain available, especially when the window gets shorter.
+void ensureRows(std::vector<Line> &grid, int rows, int width)
 {
     while (static_cast<int>(grid.size()) < rows) {
         grid.emplace_back(width, blankCell());
-    }
-    if (static_cast<int>(grid.size()) > rows) {
-        grid.resize(rows);
     }
 }
 } // namespace
@@ -77,14 +66,14 @@ void Screen::resize(int rows, int cols)
         // width. The saved main screen is re-wrapped on leaveAltScreen, so
         // keep it (and its wrapped flags) at the new row count, old width.
         m_alt = resizeGrid(m_alt, rows, cols);
-        resizeRowsTo(m_mainSaved, rows, oldCols);
-        carryWrappedFlags(m_mainSavedWrapped, rows);
+        ensureRows(m_mainSaved, rows, oldCols);
+        ensureWrappedFlags(m_mainSavedWrapped, m_mainSaved.size());
     } else {
-        // Keep the grid at the new row count (old width) so reflow() reads
-        // valid rows, then re-wrap the main screen + scrollback to the new
-        // width.
-        resizeRowsTo(m_main, rows, oldCols);
-        carryWrappedFlags(m_mainWrapped, rows);
+        // Keep every old physical row until reflow has moved any rows that no
+        // longer fit into scrollback. Truncating first loses the bottom of
+        // the terminal whenever a pane becomes shorter.
+        ensureRows(m_main, rows, oldCols);
+        ensureWrappedFlags(m_mainWrapped, m_main.size());
         reflow();
     }
     m_cursorRow = std::clamp(m_cursorRow, 0, rows - 1);
@@ -522,13 +511,13 @@ void Screen::reflow()
     //    (top -> bottom).
     std::vector<Line> phys;
     std::vector<bool> wrapped;
-    phys.reserve(m_scrollback.size() + m_rows);
-    wrapped.reserve(m_scrollback.size() + m_rows);
+    phys.reserve(m_scrollback.size() + m_main.size());
+    wrapped.reserve(m_scrollback.size() + m_main.size());
     for (size_t i = 0; i < m_scrollback.size(); ++i) {
         phys.push_back(m_scrollback[i]);
         wrapped.push_back(m_scrollbackWrapped[i]);
     }
-    for (int r = 0; r < m_rows; ++r) {
+    for (size_t r = 0; r < m_main.size(); ++r) {
         phys.push_back(m_main[r]);
         wrapped.push_back(m_mainWrapped[r]);
     }

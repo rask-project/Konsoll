@@ -17,37 +17,33 @@ Item {
 
         x: 0
         y: 3
-
         width: workspace.width
         height: workspace.titleBarHeight
-
         baseSafeTop: workspace.safeTop
         leadingInset: Math.max(84, workspace.safeLeft)
         trailingInset: workspace.safeRight
-
-        sessions: SessionManager.sessions
-        currentIndex: SessionManager.activeIndex
-        onActivateRequested: index => SessionManager.setActiveIndex(index)
-        onCloseRequested: session => SessionManager.closeSession(session)
-        onAddRequested: SessionManager.addSession()
+        tabs: SessionManager.workspaces
+        currentIndex: SessionManager.activeWorkspaceIndex
+        onActivateRequested: index => SessionManager.setActiveWorkspace(index)
+        onCloseRequested: workspace => SessionManager.closeWorkspace(workspace)
+        onAddRequested: SessionManager.addWorkspace()
     }
 
     StackLayout {
-        id: terminalStack
-
         anchors.fill: parent
         anchors.topMargin: workspace.titleBarHeight + tabStrip.y
-        currentIndex: SessionManager.activeIndex
+        currentIndex: SessionManager.activeWorkspaceIndex
 
         Repeater {
-            model: SessionManager.sessions
+            model: SessionManager.workspaces
 
-            delegate: TerminalView {
-                required property int index
+            delegate: Item {
                 required property var modelData
 
-                session: modelData
-                active: index === SessionManager.activeIndex
+                TerminalPaneLayout {
+                    anchors.fill: parent
+                    node: modelData.rootNode
+                }
             }
         }
     }

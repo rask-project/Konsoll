@@ -62,9 +62,11 @@ A working end-to-end terminal:
 
 ### Out (remaining post-MVP work, §§15–16)
 
-Tabs are implemented; their remaining manual acceptance checks are in §15.6.
-Splits, bracketed paste, color profiles/themes, proper multi-cell grapheme
-rendering, autocomplete, and Figma design-system integration remain in §16.
+Tabs and nested horizontal/vertical splits are implemented; their remaining
+manual acceptance checks are in §§15.6 and 17. Splits give each pane an
+independent shell session. Bracketed paste, color profiles/themes, proper
+multi-cell grapheme rendering, autocomplete, and Figma design-system
+integration remain in §16.
 Search, selection/clipboard, and mouse reporting are already implemented (see
 §14).
 
@@ -262,6 +264,7 @@ konsoll/
 | 10 | Title-bar tabs | Adaptive multi-row QML tab strip with add/close controls | Implemented; macOS visual acceptance pending |
 | 11 | Tab actions | Create, activate, close and keyboard shortcuts | Implemented (`Ctrl+T`, `Ctrl+W`, MRU navigation); manual acceptance pending |
 | 12 | Tabs acceptance | Verify session isolation, resizing, lifecycle and visual behavior | Build passes; manual checks pending |
+| 13 | Split panes | Nested horizontal/vertical splits, per-pane title bars and session history navigation | Implemented; manual checks pending |
 
 **Original order:** 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7. Phases 0–6 are
 implemented; phase 7 is the remaining MVP manual acceptance pass. Tab
@@ -407,9 +410,49 @@ restore stale `COLUMNS`/`LINES` values.
 
 ## 16. Remaining post-MVP backlog (unordered)
 
-- Splits (one PTY per pane)
 - Bracketed paste (`?2004h` mode is accepted but paste is not wrapped)
 - Color profiles/themes + configurable font
 - Ligatures + proper `grapheme` clustering (emoji, ZWJ)
 - Figma design-system integration (tokens + components)
 - QML tests (`qmltestrunner`) for `TerminalView`
+
+## 17. Implemented feature: nested split panes
+
+Each top-level tab is a workspace with a binary split tree. A leaf owns one
+independent terminal session and PTY. Splits can be nested horizontally
+(side-by-side panes) or vertically (stacked panes). Each leaf has its own
+title bar with a close control on the left. Splits are created from the
+terminal context menu, keeping pane controls out of the title bar and
+preserving terminal key combinations such as Ctrl+D. New splits start at
+equal proportions, and their dividers remain adjustable. Closing a leaf
+collapses its parent split and expands the remaining subtree into the
+available space. A workspace tab shows the title or current directory of its
+most recently active session and restores that session when reselected.
+
+The active session is tracked independently from the active workspace. The
+activation history stores session identities, so `Ctrl+Tab`/`Meta+Tab` and
+their Shift variants navigate across panes and workspaces without depending
+on mutable list indices. Selecting a history entry activates its workspace
+and focuses its terminal. `Ctrl+T` creates a workspace; `Ctrl+W` closes the
+current workspace. On macOS, `Cmd+D` and `Cmd+Shift+D` create side-by-side
+and stacked splits; physical `Ctrl+D` is sent to the active shell as EOF.
+
+### 17.1 Acceptance criteria
+
+- Split a pane horizontally and vertically; each new pane starts an
+  independent shell.
+- Nest both split orientations and resize the dividers; each PTY reports its
+  own current `stty size`.
+- Each pane title reflects its current directory or shell title, and its
+  close control removes only that session.
+- Closing a pane collapses empty branches without disturbing surviving
+  shells or their terminal state.
+- `Ctrl+Tab`/`Meta+Tab` and Shift variants navigate sessions in activation
+  history across both panes and workspaces; releasing the modifier commits
+  the selected session.
+- Closing a workspace closes all of its sessions and leaves other workspaces
+  running. When the only workspace contains multiple panes, its tab close
+  control closes the active pane and keeps the workspace open. Closing the
+  final remaining session quits the app.
+- Exiting one shell removes only its pane; exiting the final shell quits the
+  app.

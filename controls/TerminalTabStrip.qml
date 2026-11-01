@@ -6,7 +6,7 @@ import QtQuick.Controls.Basic
 Item {
     id: strip
 
-    property var sessions: []
+    property var tabs: []
     property int currentIndex: -1
     property real baseSafeTop: 40
     property real leadingInset: 0
@@ -19,11 +19,11 @@ Item {
     readonly property real followingRowWidth: Math.max(0, width - trailingInset - 16)
     readonly property int firstRowCapacity: Math.max(1, Math.floor((firstRowWidth + tabSpacing) / (minimumTabWidth + tabSpacing)))
     readonly property int followingRowCapacity: Math.max(1, Math.floor((followingRowWidth + tabSpacing) / (minimumTabWidth + tabSpacing)))
-    readonly property int rowCount: sessions.length <= firstRowCapacity ? 1 : 1 + Math.ceil((sessions.length - firstRowCapacity) / followingRowCapacity)
+    readonly property int rowCount: tabs.length <= firstRowCapacity ? 1 : 1 + Math.ceil((tabs.length - firstRowCapacity) / followingRowCapacity)
     readonly property real requiredHeight: Math.max(40, baseSafeTop) + (rowCount - 1) * rowHeight
 
     signal activateRequested(int index)
-    signal closeRequested(var session)
+    signal closeRequested(var workspace)
     signal addRequested
 
     SystemPalette {
@@ -44,7 +44,7 @@ Item {
     function itemCountInRow(row) {
         const firstIndex = firstIndexInRow(row);
         const capacity = row === 0 ? firstRowCapacity : followingRowCapacity;
-        return Math.min(capacity, sessions.length - firstIndex);
+        return Math.min(capacity, tabs.length - firstIndex);
     }
 
     function widthInRow(row) {
@@ -92,7 +92,7 @@ Item {
     }
 
     Repeater {
-        model: strip.sessions
+        model: strip.tabs
 
         delegate: TerminalTabButton {
             required property int index
@@ -102,10 +102,10 @@ Item {
             y: strip.tabY(index)
             width: strip.tabWidth(index)
 
-            session: modelData
+            workspace: modelData
             active: index === strip.currentIndex
             onClicked: strip.activateRequested(index)
-            onCloseRequested: strip.closeRequested(session)
+            onCloseRequested: strip.closeRequested(workspace)
         }
     }
 

@@ -18,22 +18,22 @@ Window {
         sequence: "Ctrl+T"
         context: Qt.WindowShortcut
         autoRepeat: false
-        onActivated: SessionManager.addSession()
+        onActivated: SessionManager.addWorkspace()
     }
 
     Shortcut {
         sequence: "Ctrl+W"
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: SessionManager.activeSession !== null
-        onActivated: SessionManager.closeSession(SessionManager.activeSession)
+        enabled: SessionManager.activeWorkspaceIndex >= 0
+        onActivated: SessionManager.closeWorkspace(SessionManager.workspaces[SessionManager.activeWorkspaceIndex])
     }
 
     Shortcut {
         sequence: "Meta+Tab"
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: SessionManager.sessions.length > 1
+        enabled: SessionManager.workspaces.length > 0
         onActivated: SessionManager.navigateActivationHistory(1)
     }
 
@@ -41,8 +41,40 @@ Window {
         sequence: "Meta+Shift+Tab"
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: SessionManager.sessions.length > 1
+        enabled: SessionManager.workspaces.length > 0
         onActivated: SessionManager.navigateActivationHistory(-1)
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Tab"
+        context: Qt.WindowShortcut
+        autoRepeat: false
+        enabled: SessionManager.workspaces.length > 0
+        onActivated: SessionManager.navigateActivationHistory(1)
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Shift+Tab"
+        context: Qt.WindowShortcut
+        autoRepeat: false
+        enabled: SessionManager.workspaces.length > 0
+        onActivated: SessionManager.navigateActivationHistory(-1)
+    }
+
+    Shortcut {
+        sequence: "Ctrl+D"
+        context: Qt.WindowShortcut
+        autoRepeat: false
+        enabled: SessionManager.activeSession !== null
+        onActivated: SessionManager.splitActive(Qt.Horizontal)
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Shift+D"
+        context: Qt.WindowShortcut
+        autoRepeat: false
+        enabled: SessionManager.activeSession !== null
+        onActivated: SessionManager.splitActive(Qt.Vertical)
     }
 
     // On macOS (Qt >= 6.8, native menu bar) a Menu whose title equals the

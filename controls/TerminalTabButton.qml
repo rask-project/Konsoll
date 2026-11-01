@@ -5,10 +5,10 @@ import QtQuick.Controls.Basic
 TabButton {
     id: tab
 
-    required property var session
+    required property var workspace
     required property bool active
 
-    readonly property string tabTitle: tab.session ? (tab.session.currentDirectory !== "" ? tab.session.currentDirectory : tab.session.title) : "Konsoll"
+    readonly property string tabTitle: tab.workspace ? (tab.workspace.title || "Konsoll") : "Konsoll"
     readonly property color systemAccent: systemPalette.accent
 
     signal closeRequested

@@ -48,14 +48,15 @@ Item {
     // our imperative sets and only reacts to real user drags.
     property bool _syncingScrollBar: false
 
-    onColsChanged: if (session) session.resize(cols, rows)
-    onRowsChanged: if (session) session.resize(cols, rows)
+    onColsChanged: syncSessionSize()
+    onRowsChanged: syncSessionSize()
     onSessionChanged: {
         if (session) {
-            session.resize(cols, rows);
+            syncSessionSize();
             applySystemColors();
         }
     }
+    onVisibleChanged: syncSessionSize()
     onActiveChanged: focusInputIfActive()
 
     Component.onCompleted: focusInputIfActive()
@@ -72,6 +73,11 @@ Item {
     function applySystemColors() {
         if (session)
             session.setSystemColors(systemBackground, systemForeground);
+    }
+
+    function syncSessionSize() {
+        if (session && canvas.width >= cellWidth * 2 && canvas.height >= cellHeight * 2)
+            session.resize(cols, rows);
     }
 
     // Invisible focus target that receives composed text from the macOS text
@@ -99,24 +105,22 @@ Item {
         ]
 
         Keys.onPressed: event => {
-            const hasCmd = (event.modifiers & Qt.ControlModifier) !== 0
+            if (!view.active) {
+                event.accepted = true;
+                return;
+            }
+            const hasCommand = (event.modifiers & Qt.ControlModifier) !== 0
             const hasOption = (event.modifiers & Qt.AltModifier) !== 0
-            const hasCtrl = (event.modifiers & Qt.MetaModifier) !== 0
+            const hasPhysicalControl = (event.modifiers & Qt.MetaModifier) !== 0
             const isSpecialKey = specialKeys.includes(event.key)
-            if (hasCmd || hasOption || hasCtrl || isSpecialKey) {
-                if (hasCmd && event.key === Qt.Key_Tab) {
-                    const direction = (event.modifiers & Qt.ShiftModifier) !== 0 ? -1 : 1;
-                    SessionManager.navigateActivationHistory(direction);
-                    event.accepted = true;
-                    return;
-                }
-                if (hasCmd && event.key === Qt.Key_F) {
+            if (hasCommand || hasOption || hasPhysicalControl || isSpecialKey) {
+                if (hasCommand && event.key === Qt.Key_F) {
                     searchBar.openSearch();
                     event.accepted = true;
                     return;
                 }
                 if (view.session)
-                    view.session.keyPress(event.key, event.text, event.modifiers);
+                    SessionManager.routeKeyPress(view.session, event.key, event.text, event.modifiers);
                 event.accepted = true;
             }
         }
@@ -124,9 +128,15 @@ Item {
         onTextChanged: {
             if (_clearing)
                 return;
+            if (!view.active) {
+                _clearing = true;
+                text = "";
+                _clearing = false;
+                return;
+            }
             if (text.length > 0) {
                 if (view.session)
-                    view.session.writeText(text);
+                    SessionManager.routeTextInput(view.session, text);
                 _clearing = true;
                 text = "";
                 _clearing = false;
@@ -366,6 +376,9 @@ Item {
         }
 
         onPressed: mouse => {
+            if (view.session) {
+                SessionManager.activateSession(view.session);
+            }
             if (view.session.mouseTracking) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 view.session.mousePress(selectionArea.buttonCode(mouse.button), cell[1], cell[0], mouse.modifiers);
@@ -394,6 +407,7 @@ Item {
                     selectionArea._inTriple = false;
                 }
             } else if (mouse.button === Qt.RightButton) {
+                SessionManager.activateSession(view.session);
                 // popup(x, y) positions the menu relative to its parent item,
                 // so map the click into that parent's space (not global screen).
                 const p = selectionArea.mapToItem(view, mouse.x, mouse.y);
@@ -468,6 +482,24 @@ Item {
 
     Controls.Menu {
         id: contextMenu
+
+        Controls.MenuItem {
+            text: qsTr("Split Side by Side")
+            onTriggered: {
+                SessionManager.activateSession(view.session)
+                SessionManager.splitActive(Qt.Horizontal)
+            }
+        }
+
+        Controls.MenuItem {
+            text: qsTr("Split Top and Bottom")
+            onTriggered: {
+                SessionManager.activateSession(view.session)
+                SessionManager.splitActive(Qt.Vertical)
+            }
+        }
+
+        MenuSeparator {}
 
         Controls.MenuItem {
             text: qsTr("Copy")
