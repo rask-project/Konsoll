@@ -145,19 +145,24 @@ Item {
     }
 
     WheelHandler {
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+
         onWheel: event => {
-            const dy = event.angleDelta.y; // positive = up, negative = down
-            if (dy !== 0) {
+            // Trackpads report high-resolution pixel deltas; mouse wheels
+            // generally report angle deltas. Prefer pixels when available.
+            const pixelDelta = event.pixelDelta.y;
+            const delta = pixelDelta !== 0 ? pixelDelta / view.cellHeight : event.angleDelta.y / 40;
+            if (delta !== 0 && view.session) {
                 if (view.session.mouseTracking) {
                     const p = selectionArea.mapFromItem(view, event.x, event.y);
                     const cell = selectionArea.cellAt(p.x, p.y);
-                    view.session.mouseWheel(dy > 0, cell[1], cell[0], event.modifiers);
+                    view.session.mouseWheel(delta > 0, cell[1], cell[0], event.modifiers);
                 } else {
-                    view.scrollAccumulator += dy;
-                    const step = Math.trunc(view.scrollAccumulator / 40);
+                    view.scrollAccumulator += delta;
+                    const step = Math.trunc(view.scrollAccumulator);
                     if (step !== 0) {
                         view.session.scrollBy(step);
-                        view.scrollAccumulator -= step * 40;
+                        view.scrollAccumulator -= step;
                     }
                 }
             }
@@ -563,6 +568,9 @@ Item {
         id: scrollBar
 
         visible: view.session && view.session.maxScrollOffset > 0
+        width: 10
+        policy: ScrollBar.AlwaysOn
+        z: 20
 
         anchors.right: parent.right
         anchors.rightMargin: 5
@@ -579,7 +587,21 @@ Item {
                 view.session.scrollTo(target);
         }
 
-        background: Item {}
+        background: Rectangle {
+            color: Qt.rgba(appPalette.windowText.r, appPalette.windowText.g, appPalette.windowText.b, 0.10)
+            radius: width / 2
+        }
+
+        contentItem: Rectangle {
+            implicitWidth: 6
+            implicitHeight: 24
+            radius: width / 2
+            color: scrollBar.pressed
+                ? Qt.rgba(appPalette.windowText.r, appPalette.windowText.g, appPalette.windowText.b, 0.72)
+                : scrollBar.hovered
+                    ? Qt.rgba(appPalette.windowText.r, appPalette.windowText.g, appPalette.windowText.b, 0.55)
+                    : Qt.rgba(appPalette.windowText.r, appPalette.windowText.g, appPalette.windowText.b, 0.35)
+        }
     }
 
     // Drive the scrollbar size (visible fraction) and position from the view.
