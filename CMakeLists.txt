@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.21.1)
 set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "macOS target architecture")
 set(CMAKE_OSX_DEPLOYMENT_TARGET "14.4" CACHE STRING "Minimum supported macOS version")
 
-project(RaskKonsoll VERSION 1.0.0 LANGUAGES CXX OBJCXX)
+project(RaskKonsoll VERSION 1.0.1 LANGUAGES CXX OBJCXX)
 
 if(APPLE AND CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/dist" CACHE PATH
@@ -97,6 +97,7 @@ set_target_properties(konsoll PROPERTIES
 # The generated QML type-registration TU includes the backend header as
 # <TerminalBackend.h>, so src/ must be on the include path.
 target_include_directories(konsoll PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(konsoll PRIVATE KONSOLL_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(konsoll
     PRIVATE Qt6::Quick Qt6::CanvasPainter Qt6::QuickControls2 Qt6::Svg

@@ -7,7 +7,7 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationDomain(QStringLiteral("com.github.rask-project"));
     QCoreApplication::setOrganizationName(QStringLiteral("rask-project"));
     QCoreApplication::setApplicationName(QStringLiteral("Konsoll"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("1.0.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral(KONSOLL_VERSION));
 
     QGuiApplication app(argc, argv);
     QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/assets/konsoll.png")));
