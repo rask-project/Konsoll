@@ -475,6 +475,11 @@ void TerminalBackend::scrollToBottom()
     scheduleFrame();
 }
 
+void TerminalBackend::clearScreen()
+{
+    keyPress(static_cast<int>(Qt::Key_L), {}, static_cast<int>(Qt::MetaModifier));
+}
+
 void TerminalBackend::clearBuffer()
 {
     if (!m_terminal) {

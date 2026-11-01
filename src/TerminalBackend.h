@@ -61,6 +61,8 @@ public:
     // Jump to the bottom (newest content).
     Q_INVOKABLE void scrollToBottom();
 
+    // Send Ctrl+L to the shell so it clears the visible screen and redraws.
+    Q_INVOKABLE void clearScreen();
     // Clear the screen and the scrollback buffer (Ctrl+L plus Konsole's
     // "Clear Buffer"). Terminal-level action.
     Q_INVOKABLE void clearBuffer();

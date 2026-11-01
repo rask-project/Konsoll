@@ -1,6 +1,14 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.21.1)
+
+set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "macOS target architecture")
+set(CMAKE_OSX_DEPLOYMENT_TARGET "14.4" CACHE STRING "Minimum supported macOS version")
 
 project(RaskKonsoll VERSION 1.0.0 LANGUAGES CXX OBJCXX)
+
+if(APPLE AND CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/dist" CACHE PATH
+        "Directory for the installed macOS application bundle" FORCE)
+endif()
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +24,9 @@ add_compile_options($<$<CONFIG:Debug>:-Wpadded>)
 set(MACOSX_BUNDLE_ICON_FILE konsoll.icns)
 set(app_icon_macos "${CMAKE_CURRENT_SOURCE_DIR}/assets/konsoll.icns")
 set_source_files_properties(${app_icon_macos} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+
+set(KONSOLL_CODESIGN_IDENTITY "" CACHE STRING
+    "Developer ID Application identity used to sign the macOS app bundle")
 
 qt_add_executable(konsoll
     main.cpp
@@ -76,9 +87,9 @@ add_subdirectory(resources/icons)
 # explicit, fixed bundle identifier manually though.
 set_target_properties(konsoll PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME "Konsoll"
-    MACOSX_BUNDLE_GUI_IDENTIFIER com.github.rask-project
+    MACOSX_BUNDLE_GUI_IDENTIFIER com.github.rask-project.konsoll
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     MACOSX_BUNDLE TRUE
     WIN32_EXECUTABLE TRUE
 )
@@ -96,3 +107,27 @@ install(TARGETS konsoll
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+if(APPLE)
+    set(deploy_tool_options_arg)
+    if(KONSOLL_CODESIGN_IDENTITY)
+        qt_policy(SET QTP0007 NEW)
+        list(APPEND deploy_tool_options_arg
+            "-sign-for-notarization=${KONSOLL_CODESIGN_IDENTITY}"
+        )
+    endif()
+
+    qt_generate_deploy_qml_app_script(
+        TARGET konsoll
+        OUTPUT_SCRIPT deploy_script
+        DEPLOY_TOOL_OPTIONS ${deploy_tool_options_arg}
+    )
+    install(SCRIPT ${deploy_script})
+
+    add_custom_target(package-macos
+        COMMAND ${CMAKE_COMMAND} --install ${CMAKE_BINARY_DIR} --config $<CONFIG>
+        DEPENDS konsoll
+        COMMENT "Deploying self-contained Konsoll bundle to ${CMAKE_INSTALL_PREFIX}"
+        VERBATIM
+    )
+endif()

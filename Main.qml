@@ -22,14 +22,6 @@ Window {
     }
 
     Shortcut {
-        sequence: "Ctrl+W"
-        context: Qt.WindowShortcut
-        autoRepeat: false
-        enabled: SessionManager.activeWorkspaceIndex >= 0
-        onActivated: SessionManager.closeWorkspace(SessionManager.workspaces[SessionManager.activeWorkspaceIndex])
-    }
-
-    Shortcut {
         sequence: "Meta+Tab"
         context: Qt.WindowShortcut
         autoRepeat: false
@@ -61,20 +53,76 @@ Window {
         onActivated: SessionManager.navigateActivationHistory(-1)
     }
 
-    Shortcut {
-        sequence: "Ctrl+D"
-        context: Qt.WindowShortcut
-        autoRepeat: false
+    Action {
+        id: splitHorizontallyAction
+
+        text: qsTr("Split Horizontally")
+        shortcut: "Ctrl+D"
         enabled: SessionManager.activeSession !== null
-        onActivated: SessionManager.splitActive(Qt.Horizontal)
+        onTriggered: SessionManager.splitActive(Qt.Horizontal)
     }
 
-    Shortcut {
-        sequence: "Ctrl+Shift+D"
-        context: Qt.WindowShortcut
-        autoRepeat: false
+    Action {
+        id: splitVerticallyAction
+
+        text: qsTr("Split Vertically")
+        shortcut: "Ctrl+Shift+D"
         enabled: SessionManager.activeSession !== null
-        onActivated: SessionManager.splitActive(Qt.Vertical)
+        onTriggered: SessionManager.splitActive(Qt.Vertical)
+    }
+
+    Action {
+        id: closeSessionAction
+
+        text: qsTr("Close Session")
+        shortcut: "Ctrl+W"
+        enabled: SessionManager.activeSession !== null
+        onTriggered: SessionManager.closeSession(SessionManager.activeSession)
+    }
+
+    Action {
+        id: clearScreenAction
+
+        text: qsTr("Clear")
+        shortcut: "Meta+L"
+        enabled: SessionManager.activeSession !== null
+        onTriggered: SessionManager.activeSession.clearScreen()
+    }
+
+    Action {
+        id: clearBufferAction
+
+        text: qsTr("Clear Buffer")
+        shortcut: "Meta+K"
+        enabled: SessionManager.activeSession !== null
+        onTriggered: SessionManager.activeSession.clearBuffer()
+    }
+
+    Action {
+        id: copyAction
+
+        text: qsTr("Copy")
+        shortcut: StandardKey.Copy
+        enabled: SessionManager.activeSession !== null
+        onTriggered: SessionManager.activeSession.copySelection()
+    }
+
+    Action {
+        id: pasteAction
+
+        text: qsTr("Paste")
+        shortcut: StandardKey.Paste
+        enabled: SessionManager.activeSession !== null
+        onTriggered: SessionManager.activeSession.paste()
+    }
+
+    Action {
+        id: selectAllAction
+
+        text: qsTr("Select All")
+        shortcut: StandardKey.SelectAll
+        enabled: SessionManager.activeSession !== null
+        onTriggered: SessionManager.activeSession.selectAll()
     }
 
     // On macOS (Qt >= 6.8, native menu bar) a Menu whose title equals the
@@ -91,6 +139,56 @@ Window {
             MenuItem {
                 text: qsTr("About Qt")
                 onTriggered: aboutDialog.openAboutQt()
+            }
+        }
+
+        Menu {
+            title: qsTr("Shell")
+
+            MenuItem {
+                action: splitHorizontallyAction
+            }
+
+            MenuItem {
+                action: splitVerticallyAction
+            }
+
+            MenuSeparator {}
+
+            MenuItem {
+                action: clearScreenAction
+            }
+
+            MenuItem {
+                action: clearBufferAction
+            }
+
+            MenuSeparator {}
+
+            MenuItem {
+                action: closeSessionAction
+            }
+
+            MenuItem {
+                text: qsTr("Close Workspace")
+                enabled: SessionManager.activeWorkspaceIndex >= 0
+                onTriggered: SessionManager.closeWorkspace(SessionManager.workspaces[SessionManager.activeWorkspaceIndex])
+            }
+        }
+
+        Menu {
+            title: qsTr("Edit")
+
+            MenuItem {
+                action: copyAction
+            }
+
+            MenuItem {
+                action: pasteAction
+            }
+
+            MenuItem {
+                action: selectAllAction
             }
         }
     }

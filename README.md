@@ -11,7 +11,7 @@ window.
 
 - macOS (Apple Silicon)
 - Qt 6.12 (Qt Quick, Qt CanvasPainter)
-- CMake 3.16+
+- CMake 3.21.1+
 - A C++23 compiler (AppleClang / Xcode command-line tools)
 
 ## Build
@@ -28,6 +28,24 @@ cmake --build build --target konsoll
 
 The app is produced at `build/konsoll.app`. (Qt Creator works too — it
 generates the build directory itself.)
+
+### Release bundle
+
+The full build, signing, notarization, and packaging process is documented in
+[`docs/RELEASE.md`](docs/RELEASE.md). To build the self-contained Release app:
+
+```sh
+cmake -S . -B build/release -G Ninja \
+    -DCMAKE_PREFIX_PATH=/path/to/Qt/6.12.0/macos-arm64/lib/cmake \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_OSX_ARCHITECTURES=arm64
+cmake --build build/release --config Release --target package-macos
+```
+
+The complete, self-contained app bundle is
+`build/release/dist/konsoll.app`. The build-tree app at
+`build/release/konsoll.app` may still rely on the local Qt installation and
+is not the distribution artifact.
 
 ## Run
 
