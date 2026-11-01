@@ -14,6 +14,21 @@ Window {
     flags: Qt.Window | Qt.ExpandedClientAreaHint | Qt.NoTitleBarBackgroundHint
     color: "transparent"
 
+    Shortcut {
+        sequence: "Ctrl+T"
+        context: Qt.WindowShortcut
+        autoRepeat: false
+        onActivated: SessionManager.addSession()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+W"
+        context: Qt.WindowShortcut
+        autoRepeat: false
+        enabled: SessionManager.activeSession !== null
+        onActivated: SessionManager.closeSession(SessionManager.activeSession)
+    }
+
     // On macOS (Qt >= 6.8, native menu bar) a Menu whose title equals the
     // application name is moved to the app menu (the bold first menu).
     MenuBar {
