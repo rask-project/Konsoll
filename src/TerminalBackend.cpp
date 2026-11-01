@@ -965,9 +965,18 @@ void TerminalBackend::paste()
     if (!m_pty) {
         return;
     }
-    const QString text = QGuiApplication::clipboard()->text();
-    if (!text.isEmpty()) {
-        m_pty->write(text.toUtf8());
+    const QClipboard *const clipboard = QGuiApplication::clipboard();
+    if (!clipboard->image().isNull()) {
+        // Image-aware terminal applications (including Codex CLI) handle Ctrl+V
+        // themselves and read the native macOS clipboard. A PTY cannot carry an
+        // image object, so forward the application's image-paste key instead of
+        // converting the image to a temporary path.
+        m_pty->write(QByteArray(1, '\x16'));
+    } else {
+        const QString text = clipboard->text();
+        if (!text.isEmpty()) {
+            m_pty->write(text.toUtf8());
+        }
     }
     clearTextSelectionAndHighlight();
 }

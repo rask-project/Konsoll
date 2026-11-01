@@ -300,7 +300,9 @@ implemented in the repository:
 
 - Text selection by drag, double-click word selection, triple-click line
   selection, and Select All
-- Clipboard copy/paste, context menu, and Clear Buffer
+- Clipboard copy/paste (text is sent to the PTY; when an image is copied,
+  Ctrl+V is forwarded so image-aware CLI apps can read the native clipboard),
+  context menu, and Clear Buffer
 - Scrollback navigation by wheel and scrollbar
 - Scrollback search with literal or regular-expression queries and
   next/previous match navigation
