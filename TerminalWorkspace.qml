@@ -10,6 +10,7 @@ Item {
     property real safeTop: 0
     property real safeLeft: 0
     property real safeRight: 0
+    property var windowTranslucency: null
     readonly property real titleBarHeight: tabStrip.requiredHeight
 
     Controls.TerminalTabStrip {
@@ -22,10 +23,12 @@ Item {
         baseSafeTop: workspace.safeTop
         leadingInset: Math.max(84, workspace.safeLeft)
         trailingInset: workspace.safeRight
+        windowTranslucency: workspace.windowTranslucency
         tabs: SessionManager.workspaces
         currentIndex: SessionManager.activeWorkspaceIndex
         onActivateRequested: index => SessionManager.setActiveWorkspace(index)
         onCloseRequested: workspace => SessionManager.closeWorkspace(workspace)
+        onReorderRequested: (fromIndex, toIndex) => SessionManager.moveWorkspace(fromIndex, toIndex)
         onAddRequested: SessionManager.addWorkspace()
     }
 

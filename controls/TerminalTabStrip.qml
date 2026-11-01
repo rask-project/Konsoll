@@ -13,6 +13,19 @@ Item {
     property real leadingInset: 0
     property real trailingInset: 0
     property real minimumTabWidth: 88
+    property var windowTranslucency: null
+    property bool tabPointerPressed: false
+    property int dragSourceIndex: -1
+    property int dragTargetIndex: -1
+    property var dragWorkspace: null
+    property bool dragWorkspaceActive: false
+    property real dragPointerX: 0
+    property real dragPointerY: 0
+    property real dragGrabOffsetX: 0
+    property real dragGrabOffsetY: 0
+
+    onWindowTranslucencyChanged: updateWindowMovable()
+    Component.onCompleted: updateWindowMovable()
 
     readonly property real rowHeight: 34
     readonly property real tabSpacing: 6
@@ -22,9 +35,11 @@ Item {
     readonly property int followingRowCapacity: Math.max(1, Math.floor((followingRowWidth + tabSpacing) / (minimumTabWidth + tabSpacing)))
     readonly property int rowCount: tabs.length <= firstRowCapacity ? 1 : 1 + Math.ceil((tabs.length - firstRowCapacity) / followingRowCapacity)
     readonly property real requiredHeight: Math.max(40, baseSafeTop) + (rowCount - 1) * rowHeight
+    readonly property int visualCurrentIndex: dragSourceIndex < 0 ? currentIndex : visualIndex(currentIndex)
 
     signal activateRequested(int index)
     signal closeRequested(var workspace)
+    signal reorderRequested(int fromIndex, int toIndex)
     signal addRequested
 
     SystemPalette {
@@ -62,12 +77,12 @@ Item {
         let preferredExcessSum = 0;
 
         for (let rowIndex = firstIndex; rowIndex < firstIndex + count; ++rowIndex) {
-            const preferredWidth = rowIndex === currentIndex ? 250 : 150;
+            const preferredWidth = rowIndex === visualCurrentIndex ? 250 : 150;
             preferredWidthSum += preferredWidth;
             preferredExcessSum += preferredWidth - minimumWidth;
         }
 
-        const preferredWidth = index === currentIndex ? 250 : 150;
+        const preferredWidth = index === visualCurrentIndex ? 250 : 150;
         if (preferredWidthSum <= rowWidth)
             return preferredWidth;
 
@@ -92,22 +107,151 @@ Item {
         return firstRowY + tabRow(index) * rowHeight;
     }
 
+    function visualIndex(modelIndex) {
+        if (dragSourceIndex < 0)
+            return modelIndex;
+        const order = [];
+        for (let index = 0; index < tabs.length; ++index) {
+            if (index !== dragSourceIndex)
+                order.push(index);
+        }
+        order.splice(dragTargetIndex, 0, dragSourceIndex);
+        return order.indexOf(modelIndex);
+    }
+
+    function nearestTabIndex(x, y) {
+        let nearest = -1;
+        let nearestDistance = Number.POSITIVE_INFINITY;
+        for (let index = 0; index < tabs.length; ++index) {
+            const dx = x - tabX(index) - tabWidth(index) / 2;
+            const dy = y - tabY(index) - rowHeight / 2;
+            const distance = dx * dx + dy * dy;
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearest = index;
+            }
+        }
+        return nearest;
+    }
+
+    function updateWindowMovable() {
+        let overTab = false;
+        for (let index = 0; index < tabRepeater.count; ++index) {
+            const tab = tabRepeater.itemAt(index);
+            if (tab && tab.pointerOverTab) {
+                overTab = true;
+                break;
+            }
+        }
+        if (windowTranslucency)
+            windowTranslucency.setWindowMovable(dragSourceIndex < 0 && !tabPointerPressed && !overTab);
+    }
+
+    function beginTabDrag(index, sceneX, sceneY) {
+        if (windowTranslucency)
+            windowTranslucency.setWindowMovable(false);
+        const point = strip.mapFromItem(null, sceneX, sceneY);
+        dragTargetIndex = index;
+        dragSourceIndex = index;
+        dragWorkspace = tabs[index];
+        dragWorkspaceActive = index === currentIndex;
+        dragPointerX = point.x;
+        dragPointerY = point.y;
+        dragGrabOffsetX = point.x - tabX(index);
+        dragGrabOffsetY = point.y - tabY(index);
+        updateWindowMovable();
+    }
+
+    function moveTabDrag(sceneX, sceneY) {
+        const point = strip.mapFromItem(null, sceneX, sceneY);
+        dragPointerX = point.x;
+        dragPointerY = point.y;
+        const targetIndex = nearestTabIndex(point.x, point.y);
+        if (targetIndex >= 0 && targetIndex !== dragTargetIndex)
+            dragTargetIndex = targetIndex;
+    }
+
+    function finishTabDrag(sceneX, sceneY) {
+        if (dragSourceIndex < 0)
+            return;
+        const point = strip.mapFromItem(null, sceneX, sceneY);
+        const fromIndex = dragSourceIndex;
+        const toIndex = nearestTabIndex(point.x, point.y);
+        dragSourceIndex = -1;
+        dragTargetIndex = -1;
+        dragWorkspace = null;
+        updateWindowMovable();
+        if (toIndex >= 0)
+            reorderRequested(fromIndex, toIndex);
+    }
+
+    function cancelTabDrag() {
+        dragSourceIndex = -1;
+        dragTargetIndex = -1;
+        dragWorkspace = null;
+        updateWindowMovable();
+    }
+
     Repeater {
+        id: tabRepeater
         model: strip.tabs
 
         delegate: TerminalTabButton {
+            id: tabButton
             required property int index
             required property var modelData
 
-            x: strip.tabX(index)
-            y: strip.tabY(index)
-            width: strip.tabWidth(index)
+            readonly property int layoutIndex: strip.visualIndex(index)
+
+            x: strip.tabX(layoutIndex)
+            y: strip.tabY(layoutIndex)
+            width: strip.tabWidth(layoutIndex)
+            opacity: index === strip.dragSourceIndex ? 0 : 1
+
+            Behavior on x {
+                NumberAnimation {
+                    duration: 100
+                    easing.type: Easing.OutCubic
+                }
+            }
+            Behavior on y {
+                NumberAnimation {
+                    duration: 100
+                    easing.type: Easing.OutCubic
+                }
+            }
 
             workspace: modelData
             active: index === strip.currentIndex
-            onClicked: strip.activateRequested(index)
+            tabStrip: strip
+
+            onClicked: {
+                if (!dragged)
+                    strip.activateRequested(index);
+            }
             onCloseRequested: strip.closeRequested(workspace)
+            onDragStarted: (sceneX, sceneY) => strip.beginTabDrag(index, sceneX, sceneY)
+            onDragMoved: (sceneX, sceneY) => strip.moveTabDrag(sceneX, sceneY)
+            onDragFinished: (sceneX, sceneY) => strip.finishTabDrag(sceneX, sceneY)
+            onDragCanceled: strip.cancelTabDrag()
         }
+    }
+
+    TerminalTabButton {
+        visible: strip.dragSourceIndex >= 0
+        enabled: false
+
+        x: strip.dragPointerX - strip.dragGrabOffsetX
+        y: strip.dragPointerY - strip.dragGrabOffsetY
+        z: 2
+
+        width: strip.dragTargetIndex >= 0 ? strip.tabWidth(strip.dragTargetIndex) : 0
+        opacity: 0.9
+
+        workspace: strip.dragWorkspace
+        active: strip.dragWorkspaceActive
+        dragging: false
+        dragged: false
     }
 
     Controls.ToolButton {

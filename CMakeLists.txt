@@ -51,8 +51,8 @@ qt_add_qml_module(konsoll
         src/term/Screen.h
         src/term/Terminal.cpp
         src/term/Terminal.h
-        src/macs_translucent.mm
-        src/macs_translucent.h
+        src/MacOSTranslucency.mm
+        src/MacOSTranslucency.h
         src/WindowTranslucency.cpp
         src/WindowTranslucency.h
 )

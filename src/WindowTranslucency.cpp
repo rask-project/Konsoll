@@ -1,5 +1,5 @@
 #include "WindowTranslucency.h"
-#include "macs_translucent.h"
+#include "MacOSTranslucency.h"
 
 #include <QColor>
 #include <QTimer>
@@ -40,6 +40,15 @@ void WindowTranslucency::setAlpha(qreal alpha)
     m_alpha = alpha;
     emit alphaChanged();
     apply();
+}
+
+void WindowTranslucency::setWindowMovable(bool movable)
+{
+    auto const *window = qobject_cast<QWindow *>(m_window);
+    if (window == nullptr || !window->winId()) {
+        return;
+    }
+    setNativeWindowMovable(window->winId(), movable);
 }
 
 void WindowTranslucency::apply() const

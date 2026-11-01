@@ -8,3 +8,4 @@
 // through while the terminal stays readable. The whole window (content + title
 // bar) is tinted see-through — that is the iTerm2 look. macOS-specific.
 void makeWindowTranslucent(WId winId, const QColor &color, qreal alpha);
+void setNativeWindowMovable(WId winId, bool movable);

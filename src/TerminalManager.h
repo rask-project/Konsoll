@@ -94,6 +94,7 @@ public:
     Q_INVOKABLE void start();
     Q_INVOKABLE void addWorkspace();
     Q_INVOKABLE void closeWorkspace(QObject *workspace);
+    Q_INVOKABLE void moveWorkspace(int fromIndex, int toIndex);
     Q_INVOKABLE void closeSession(QObject *session);
     Q_INVOKABLE void activateSession(QObject *session);
     Q_INVOKABLE void setActiveWorkspace(int index);

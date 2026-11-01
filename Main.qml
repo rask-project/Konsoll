@@ -109,6 +109,7 @@ Window {
 
     TerminalWorkspace {
         anchors.fill: parent
+        windowTranslucency: translucency
 
         safeTop: appWindow.SafeArea.margins.top
         safeLeft: appWindow.SafeArea.margins.left

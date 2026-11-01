@@ -24,6 +24,8 @@ public:
     qreal alpha() const { return m_alpha; }
     void setAlpha(qreal alpha);
 
+    Q_INVOKABLE void setWindowMovable(bool movable);
+
 signals:
     void windowChanged();
     void colorChanged();
@@ -33,8 +35,8 @@ private:
     void apply() const;
 
     QObject *m_window = nullptr;
-    uint m_color = 0xff141414;
     qreal m_alpha = 0.85;
+    uint m_color = 0xff141414;
 };
 
 } // namespace konsoll

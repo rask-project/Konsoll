@@ -77,7 +77,7 @@ WindowTranslucency {
   `Backend.backgroundColor` so it follows the terminal's background.
 - `alpha` — the see-through level (0.85 ≈ the accepted `opacity: 0.85` look).
 
-The native side is Objective-C++ (`src/macs_translucent.mm`): it makes the
+The native side is Objective-C++ (`src/MacOSTranslucency.mm`): it makes the
 `NSWindow` non-opaque and sets its background to the tint color at the given
 alpha. The QML `Window` must keep `color: "transparent"` so the backing
 surface is transparent and the native tint shows through.
@@ -100,7 +100,7 @@ konsoll/
     │   ├── Cell.h               # cell struct
     │   ├── Terminal.h/.cpp      # ANSI parser + screen model
     │   └── Screen.h/.cpp        # grid, scrollback, cursor
-    ├── macs_translucent.h/.mm   # native NSWindow see-through (Obj-C++)
+    ├── MacOSTranslucency.h/.mm  # native NSWindow see-through (Obj-C++)
     └── WindowTranslucency.h/.cpp# QML type: configurable window translucency
 ```
 

@@ -120,6 +120,23 @@ void TerminalManager::addWorkspace()
     session->start();
 }
 
+void TerminalManager::moveWorkspace(int fromIndex, int toIndex)
+{
+    const int count = static_cast<int>(m_workspaces.size());
+    if (fromIndex < 0 || fromIndex >= count || toIndex < 0 || toIndex >= count || fromIndex == toIndex) {
+        return;
+    }
+
+    const auto first = m_workspaces.begin();
+    if (fromIndex < toIndex) {
+        std::rotate(first + fromIndex, first + fromIndex + 1, first + toIndex + 1);
+    } else {
+        std::rotate(first + toIndex, first + fromIndex, first + fromIndex + 1);
+    }
+    emit workspacesChanged();
+    emit activeWorkspaceChanged();
+}
+
 TerminalBackend *TerminalManager::createSession()
 {
     auto session = std::make_unique<TerminalBackend>();
