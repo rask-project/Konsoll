@@ -1,7 +1,7 @@
 # Konsoll — Action Plan
 
 > Terminal for macOS built in QML (Qt 6.12, Apple Silicon)
-> Last updated: 2026-10-21
+> Last updated: 2026-11-01
 
 ## 1. Overview
 
@@ -9,8 +9,11 @@ Konsoll is a native terminal for macOS built in QML. Core idea: a clean
 macOS window with a real terminal surface (PTY) running the user's default
 shell — no KDE/Plasma dependencies.
 
-**Current state:** freshly created Qt 6.12 project with a placeholder
-`ApplicationWindow` and no C++ terminal backend yet.
+**Current state:** the end-to-end terminal MVP is implemented. The repository
+also contains several post-MVP interaction features (selection, clipboard,
+search, mouse reporting, and scroll controls). Manual acceptance criteria
+below remain a checklist; implementation presence alone does not record that
+each scenario has been run and verified.
 
 ## 2. MVP goal
 
@@ -54,13 +57,14 @@ A working end-to-end terminal:
 - `Canvas2D` rendering (Qt 6.12, GPU) with ~60 fps coalescing
 - Keyboard input (key-to-bytes mapping, IME/dead keys)
 - Window title via `OSC 0/2`
-- Scrollback (1000 lines, no mouse scrolling — the screen just "pushes")
+- Scrollback with reflow on resize and user scrolling (current buffer is
+  unlimited; there is no 1000-line cap)
 
-### Out (post-MVP backlog, §14)
+### Out (remaining post-MVP backlog, §15)
 
-Tabs, splits, search, selection/clipboard, mouse reporting, bracketed
-paste, color profiles/themes, ligatures, autocomplete, Figma design-system
-integration.
+Tabs, splits, bracketed paste, color profiles/themes, proper multi-cell
+grapheme rendering, autocomplete, and Figma design-system integration. Search,
+selection/clipboard, and mouse reporting are already implemented (see §14).
 
 ## 4. Architecture
 
@@ -171,8 +175,10 @@ Screen model:
 - Grid of `Cell { QChar ch; uint fg, bg; flags bold|underline|dim|strike }`.
 - Cursor with position + insert/overstrike modes.
 - Scroll regions (`DECSTBM`) honored.
-- **Character width:** `wcwidth` (known limitation: emoji = 2 cols but
-  `wcwidth` counts 1 → known MVP limitation).
+- **Character width:** each Unicode code point occupies one cell. This keeps
+  supplementary-plane Nerd Font icons aligned, but wide glyphs and grapheme
+  clusters (for example emoji and ZWJ sequences) are not measured/rendered as
+  multi-cell characters yet.
 - Alternate screen: separate buffer, restore the main one on exit
   (vim/less).
 
@@ -239,24 +245,26 @@ konsoll/
 
 ## 11. Execution phases
 
-| # | Phase | Deliverable | Acceptance criteria |
+| # | Phase | Deliverable | Implementation status |
 |---|---|---|---|
-| 0 | Foundation | `src/` in CMake, empty `TerminalBackend` registered in QML, green build | App compiles and the window opens |
-| 1 | Shell detection | `detectDefaultShell()` + console log | `qDebug` prints the detected shell; matches `dscl` |
-| 2 | PTY | Full `PtyProcess` (forkpty, thread, resize, exit) | Smoke test: `echo` in the pty returns bytes |
-| 3 | ANSI parser | `Terminal` + `Screen` with the §7 table | Unit tests: CUA, ED, SGR, alt-screen, scroll regions |
-| 4 | QML rendering | `TerminalView` with `Canvas2D`, 60 fps coalescing | Shell text appears in the window |
-| 5 | Keyboard | §9 mapping + IME | Typing `echo olá ç` runs and prints correctly |
-| 6 | Resize + scroll | `TIOCSWINSZ` + 1000-line scrollback | `stty size` changes with the window; long `ls` scrolls |
-| 7 | Final acceptance | §2 checklist + polish (title, focus, Cmd+Q) | Every item in §2 checked |
+| 0 | Foundation | CMake/QML module, registered backend and native window behavior | Implemented |
+| 1 | Shell detection | `getpwuid_r()` detection with executable fallback | Implemented |
+| 2 | PTY | `forkpty`, nonblocking `QSocketNotifier` reads, writes, resize and exit handling | Implemented |
+| 3 | ANSI parser | `Terminal` + `Screen`, including SGR, cursor, erase, scroll regions, alternate screen, OSC title, DA/DSR and color queries | Implemented; see §7 scope and limitations |
+| 4 | QML rendering | `TerminalView` with Canvas2D, snapshots and 16 ms frame coalescing | Implemented |
+| 5 | Keyboard | Special/control key mappings, composed text and IME/dead-key input | Implemented |
+| 6 | Resize + scroll | `TIOCSWINSZ`, screen reflow, unlimited scrollback, wheel and scrollbar navigation | Implemented |
+| 7 | Final acceptance | §2 manual scenarios and polish | Not recorded as verified; run the checklist on macOS |
 
-**Order:** 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 (each phase ends with a green
-build; 3 and 4 can be parallelized).
+**Original order:** 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7. Phases 0–6 are
+implemented; phase 7 is the remaining manual acceptance pass. Phases 3 and 4
+were independently implementable.
 
 ## 12. Testing
 
-- **Unit (Qt Test):** ANSI parser — one suite per sequence class (CSI,
-  SGR, OSC, DEC). Fixture: feed bytes, inspect the grid.
+- **Unit (Qt Test):** planned; no test target or `tests/` sources are currently
+  present in the repository. ANSI parser coverage should include each sequence
+  class (CSI, SGR, OSC, DEC).
 - **Smoke (manual, scriptable):** `printf 'ls\n'` into the pty → expect
   output.
 - **UI (manual):** §2 checklist run on a real zsh and a real bash.
@@ -271,18 +279,33 @@ build; 3 and 4 can be parallelized).
 | Emoji width (`wcwidth` counts 1) | Known MVP limitation; document it and handle in the backlog |
 | pt-BR IME/dead keys corrupting bytes | Test explicitly in phase 5 (acceptance criterion) |
 | `Canvas2D` is new in Qt 6.12 (stability) | Fallback to CPU `Canvas` already planned (§8) |
-| Backpressure on massive output | Drop in chunks + keep the last line coherent (§6) |
+| Backpressure on massive output | Nonblocking PTY writes drop the remainder when the master buffer is full; sustained output behavior should be measured |
 | Bad alternate-screen implementation corrupting scroll | Cover with a dedicated unit test |
 
-## 14. Post-MVP backlog (unordered)
+## 14. Implemented beyond the original MVP
+
+The following items were originally listed as post-MVP work and are now
+implemented in the repository:
+
+- Text selection by drag, double-click word selection, triple-click line
+  selection, and Select All
+- Clipboard copy/paste, context menu, and Clear Buffer
+- Scrollback navigation by wheel and scrollbar
+- Scrollback search with literal or regular-expression queries and
+  next/previous match navigation
+- Mouse reporting for DEC modes 1000/1002/1003 and SGR mode 1006
+- OSC 133 shell integration for command block highlighting and block copy in
+  the bundled zsh, bash, and fish startup integrations
+- Native macOS translucent window tint, About dialogs, and application icon
+
+These feature implementations are present; the §2 manual acceptance checklist
+is still the place to record end-to-end verification.
+
+## 15. Post-MVP backlog (unordered)
 
 - Tabs and splits (QML `TabBar`/`StackedLayout` + one PTY per tab)
-- Selection + clipboard (mouse drag, Cmd+C/V)
-- Scrollback search (Cmd+F)
-- Mouse reporting (`?1000h`/`?1006h` modes)
-- Bracketed paste (`?2026h`)
+- Bracketed paste (`?2004h` mode is accepted but paste is not wrapped)
 - Color profiles/themes + configurable font
 - Ligatures + proper `grapheme` clustering (emoji, ZWJ)
-- Wheel scrolling + scrollbar
 - Figma design-system integration (tokens + components)
 - QML tests (`qmltestrunner`) for `TerminalView`
