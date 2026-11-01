@@ -11,6 +11,7 @@ Item {
     property real safeLeft: 0
     property real safeRight: 0
     property var windowTranslucency: null
+    property bool fullScreen: false
     readonly property real titleBarHeight: tabStrip.requiredHeight
 
     Controls.TerminalTabStrip {
@@ -21,7 +22,7 @@ Item {
         width: workspace.width
         height: workspace.titleBarHeight
         baseSafeTop: workspace.safeTop
-        leadingInset: Math.max(84, workspace.safeLeft)
+        leadingInset: workspace.fullScreen ? 0 : Math.max(84, workspace.safeLeft)
         trailingInset: workspace.safeRight
         windowTranslucency: workspace.windowTranslucency
         tabs: SessionManager.workspaces

@@ -110,6 +110,7 @@ Window {
     TerminalWorkspace {
         anchors.fill: parent
         windowTranslucency: translucency
+        fullScreen: appWindow.visibility === Window.FullScreen
 
         safeTop: appWindow.SafeArea.margins.top
         safeLeft: appWindow.SafeArea.margins.left
