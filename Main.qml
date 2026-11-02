@@ -150,10 +150,6 @@ Window {
             }
 
             MenuSeparator {}
-
-            MenuItem {
-                action: saveTextAction
-            }
         }
 
         Menu {
@@ -203,6 +199,12 @@ Window {
 
             MenuItem {
                 action: selectAllAction
+            }
+
+            MenuSeparator {}
+
+            MenuItem {
+                action: saveTextAction
             }
         }
     }
