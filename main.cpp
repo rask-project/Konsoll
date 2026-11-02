@@ -16,6 +16,7 @@ int main(int argc, char *argv[])
     );
 
     QGuiApplication app(argc, argv);
+    app.setQuitOnLastWindowClosed(false);
     QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/assets/konsoll.png")));
 
     QIcon::setThemeSearchPaths({QStringLiteral(":/icons")});
