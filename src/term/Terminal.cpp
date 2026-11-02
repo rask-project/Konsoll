@@ -495,6 +495,26 @@ void Terminal::handleSgr(const std::vector<int> &p) // NOLINT: SGR dispatch is i
 
 void Terminal::handleOsc(const QByteArray &body)
 {
+    // OSC 52;selection;base64 stores text copied by a remote terminal app.
+    // Bound the encoded payload to avoid untrusted PTY output allocating an
+    // arbitrarily large clipboard value.
+    if (body.startsWith("52;")) {
+        const int separator = body.indexOf(';', 3);
+        if (separator < 0 || body.size() - separator - 1 > 1'400'000) {
+            return;
+        }
+        const QByteArray selection = body.mid(3, separator - 3);
+        if (selection.isEmpty() || selection.contains('c') || selection.contains('p')) {
+            const QByteArray encoded = body.mid(separator + 1);
+            const QByteArray decoded = QByteArray::fromBase64(encoded, QByteArray::AbortOnBase64DecodingErrors);
+            if (!encoded.isEmpty() && decoded.size() <= 1'000'000) {
+                m_clipboardText = QString::fromUtf8(decoded);
+                m_clipboardTextDirty = true;
+            }
+        }
+        return;
+    }
+
     if (body.startsWith("7;")) {
         const QUrl url = QUrl::fromEncoded(body.mid(2), QUrl::TolerantMode);
         const QString path = url.scheme() == QStringLiteral("file") ? url.path(QUrl::FullyDecoded) : QString{};

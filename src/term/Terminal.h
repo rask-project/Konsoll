@@ -35,6 +35,9 @@ public:
     QString currentDirectory() const { return m_currentDirectory; }
     bool currentDirectoryDirty() const { return m_currentDirectoryDirty; }
     void clearCurrentDirectoryDirty() { m_currentDirectoryDirty = false; }
+    QString clipboardText() const { return m_clipboardText; }
+    bool clipboardTextDirty() const { return m_clipboardTextDirty; }
+    void clearClipboardTextDirty() { m_clipboardTextDirty = false; }
 
     // Device-attributes reply (so apps like vim/less don't hang waiting).
     bool daPending() const { return m_daPending; }
@@ -96,6 +99,7 @@ private:
     QByteArray m_oscBody;
     QString m_title;
     QString m_currentDirectory;
+    QString m_clipboardText;
     unsigned int m_fg = 0;
     unsigned int m_bg = 0;
     unsigned int m_utf8CodePoint = 0;
@@ -109,6 +113,7 @@ private:
     bool m_csiPrivate = false;
     bool m_titleDirty = false;
     bool m_currentDirectoryDirty = false;
+    bool m_clipboardTextDirty = false;
     bool m_daPending = false;
     bool m_clearPending = false;
     bool m_commandFinished = false;

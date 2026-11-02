@@ -242,6 +242,10 @@ void TerminalBackend::onData(const QByteArray &data)
     const bool wasMouseTracking = mouseTracking();
     const bool wasMouseMotionTracking = mouseMotionTracking();
     m_terminal->write(data);
+    if (m_terminal->clipboardTextDirty()) {
+        QGuiApplication::clipboard()->setText(m_terminal->clipboardText());
+        m_terminal->clearClipboardTextDirty();
+    }
     if (m_terminal->commandFinished()) {
         emit commandFinished();
         m_terminal->clearCommandFinished();
