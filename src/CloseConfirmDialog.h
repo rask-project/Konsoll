@@ -20,6 +20,9 @@ public:
     // Presents the native alert and returns true if the user chose to close
     // anyway, false if they cancelled.
     Q_INVOKABLE bool confirmClose();
+
+    // Presents the native alert before quitting the application.
+    bool confirmQuit();
 };
 
 } // namespace konsoll

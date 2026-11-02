@@ -19,4 +19,17 @@ bool CloseConfirmDialog::confirmClose()
     return confirmed;
 }
 
+bool CloseConfirmDialog::confirmQuit()
+{
+    NSAlert *const alert = [[NSAlert alloc] init];
+    [alert setAlertStyle:NSAlertStyleWarning];
+    [alert setMessageText:@"Quit Konsoll?"];
+    [alert setInformativeText:@"One or more sessions have active processes that will be terminated if you quit."];
+    [alert addButtonWithTitle:@"Quit Anyway"];
+    [alert addButtonWithTitle:@"Cancel"];
+    const bool confirmed = [alert runModal] == NSAlertFirstButtonReturn;
+    [alert release];
+    return confirmed;
+}
+
 } // namespace konsoll
