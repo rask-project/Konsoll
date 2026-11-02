@@ -23,6 +23,8 @@ public:
 
     // Presents the native alert before quitting the application.
     Q_INVOKABLE bool confirmQuit();
+    Q_INVOKABLE void approveQuit();
+    static bool consumeQuitApproval();
 };
 
 } // namespace konsoll

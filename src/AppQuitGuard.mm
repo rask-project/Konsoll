@@ -17,10 +17,16 @@
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender
 {
     Q_UNUSED(sender);
+    if (konsoll::CloseConfirmDialog::consumeQuitApproval()) {
+        return NSTerminateNow;
+    }
     konsoll::TerminalManager *const manager = konsoll::TerminalManager::instance();
-    if ((manager != nullptr) && (manager->anySessionHasActiveProcess() || manager->sessionCount() > 1)) {
+    const bool activeProcess = manager != nullptr && manager->anySessionHasActiveProcess();
+    const int sessions = manager != nullptr ? manager->sessionCount() : -1;
+    if ((manager != nullptr) && (activeProcess || sessions > 1)) {
         konsoll::CloseConfirmDialog dialog;
-        if (!dialog.confirmQuit()) {
+        const bool confirmed = dialog.confirmQuit();
+        if (!confirmed) {
             return NSTerminateCancel;
         }
     }

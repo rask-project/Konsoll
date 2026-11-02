@@ -16,10 +16,12 @@ Window {
     color: "transparent"
 
     function requestQuit() {
-        if ((SessionManager.sessionCount() > 1 || SessionManager.anySessionHasActiveProcess()) &&
-                !CloseConfirmDialog.confirmQuit()) {
+        const count = SessionManager.sessionCount()
+        const activeProcess = SessionManager.anySessionHasActiveProcess()
+        if ((count > 1 || activeProcess) && !CloseConfirmDialog.confirmQuit()) {
             return
         }
+        CloseConfirmDialog.approveQuit()
         Qt.quit()
     }
 

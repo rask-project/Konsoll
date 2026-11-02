@@ -290,7 +290,9 @@ bool PtyProcess::hasForegroundProcess() const
         return false;
     }
     const pid_t foregroundGroup = ::tcgetpgrp(m_masterFd);
-    return foregroundGroup > 0 && foregroundGroup != static_cast<pid_t>(m_pid);
+    const pid_t shellGroup = ::getpgid(static_cast<pid_t>(m_pid));
+    const pid_t expectedShellGroup = shellGroup > 0 ? shellGroup : static_cast<pid_t>(m_pid);
+    return foregroundGroup > 0 && foregroundGroup != expectedShellGroup;
 }
 
 void PtyProcess::onReadable()

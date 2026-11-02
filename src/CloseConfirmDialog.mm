@@ -5,6 +5,11 @@
 namespace konsoll
 {
 
+namespace
+{
+bool s_quitApprovedByQml{};
+}
+
 bool CloseConfirmDialog::confirmClose()
 {
     NSAlert *const alert = [[NSAlert alloc] init];
@@ -30,6 +35,18 @@ bool CloseConfirmDialog::confirmQuit()
     const bool confirmed = [alert runModal] == NSAlertFirstButtonReturn;
     [alert release];
     return confirmed;
+}
+
+void CloseConfirmDialog::approveQuit()
+{
+    s_quitApprovedByQml = true;
+}
+
+bool CloseConfirmDialog::consumeQuitApproval()
+{
+    const bool approved = s_quitApprovedByQml;
+    s_quitApprovedByQml = false;
+    return approved;
 }
 
 } // namespace konsoll
