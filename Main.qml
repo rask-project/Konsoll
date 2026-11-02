@@ -203,6 +203,7 @@ Window {
         window: appWindow
         color: SessionManager.activeSession ? SessionManager.activeSession.backgroundColor : 0xff141414
         alpha: 0.85
+        blurEnabled: true
     }
 
     TerminalWorkspace {

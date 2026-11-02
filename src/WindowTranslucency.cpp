@@ -1,5 +1,5 @@
-#include "WindowTranslucency.h"
 #include "MacOSTranslucency.h"
+#include "WindowTranslucency.h"
 
 #include <QColor>
 #include <QTimer>
@@ -42,10 +42,20 @@ void WindowTranslucency::setAlpha(qreal alpha)
     apply();
 }
 
+void WindowTranslucency::setBlurEnabled(bool enabled)
+{
+    if (m_blurEnabled == enabled) {
+        return;
+    }
+    m_blurEnabled = enabled;
+    emit blurEnabledChanged();
+    apply();
+}
+
 void WindowTranslucency::setWindowMovable(bool movable)
 {
     auto const *window = qobject_cast<QWindow *>(m_window);
-    if (window == nullptr || !window->winId()) {
+    if (window == nullptr || (window->winId() == 0U)) {
         return;
     }
     setNativeWindowMovable(window->winId(), movable);
@@ -54,11 +64,12 @@ void WindowTranslucency::setWindowMovable(bool movable)
 void WindowTranslucency::apply() const
 {
     auto const *w = qobject_cast<QWindow *>(m_window);
-    if (w == nullptr || !w->winId()) {
+    if (w == nullptr || (w->winId() == 0U)) {
         return;
     }
 
     makeWindowTranslucent(w->winId(), QColor::fromRgba(m_color), m_alpha);
+    setWindowBlurEnabled(w->winId(), m_blurEnabled);
 }
 
 } // namespace konsoll

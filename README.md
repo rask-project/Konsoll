@@ -108,12 +108,14 @@ WindowTranslucency {
     window: appWindow
     color: SessionManager.activeSession.backgroundColor   // tint = terminal bg
     alpha: 0.85
+    blurEnabled: true
 }
 ```
 
 - `color` — the tint color, as a `uint` ARGB value (0xAARRGGBB). Bound to the
   active session's `backgroundColor` so it follows the terminal's background.
 - `alpha` — the see-through level (0.85 ≈ the accepted `opacity: 0.85` look).
+- `blurEnabled` — enables the native macOS window blur (enabled by default).
 
 The native side is Objective-C++ (`src/MacOSTranslucency.mm`): it makes the
 `NSWindow` non-opaque and sets its background to the tint color at the given
