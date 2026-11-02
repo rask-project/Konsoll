@@ -7,6 +7,7 @@
 namespace
 {
 char effectViewAssociationKey;
+char toolbarAssociationKey;
 
 NSWindow *windowFromId(WId winId)
 {
@@ -72,5 +73,29 @@ void setNativeWindowMovable(WId winId, bool movable)
     NSWindow *const nsWindow = windowFromId(winId);
     if (nsWindow != nil) {
         [nsWindow setMovable:movable];
+    }
+}
+
+void installEmptyWindowToolbar(WId winId)
+{
+    NSWindow *const nsWindow = windowFromId(winId);
+    if (nsWindow == nil || objc_getAssociatedObject(nsWindow, &toolbarAssociationKey) != nil) {
+        return;
+    }
+
+    NSToolbar *const toolbar = [[NSToolbar alloc] initWithIdentifier:@"KonsollEmptyToolbar"];
+    [toolbar setDisplayMode:NSToolbarDisplayModeIconOnly];
+    [toolbar setSizeMode:NSToolbarSizeModeRegular];
+    [toolbar setShowsBaselineSeparator:NO];
+    objc_setAssociatedObject(nsWindow, &toolbarAssociationKey, toolbar, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [nsWindow setToolbar:toolbar];
+    [toolbar setVisible:YES];
+
+    // QML uses the expanded client area for its own titlebar controls. Keep
+    // the Qt content view above AppKit's toolbar view so it receives input.
+    NSView *const contentView = [nsWindow contentView];
+    NSView *const parentView = [contentView superview];
+    if (parentView != nil) {
+        [parentView addSubview:contentView positioned:NSWindowAbove relativeTo:nil];
     }
 }
