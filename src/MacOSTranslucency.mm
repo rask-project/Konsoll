@@ -29,7 +29,7 @@ void makeWindowTranslucent(WId winId, const QColor &color, qreal alpha)
                                                  alpha:alpha]];
 }
 
-void setWindowBlurEnabled(WId winId, bool enabled)
+void setWindowBlurEnabled(WId winId, bool enabled, qreal alpha)
 {
     NSWindow *const nsWindow = windowFromId(winId);
     if (nsWindow == nil) {
@@ -55,6 +55,7 @@ void setWindowBlurEnabled(WId winId, bool enabled)
             objc_setAssociatedObject(nsWindow, &effectViewAssociationKey, effectView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             [parentView addSubview:effectView positioned:NSWindowBelow relativeTo:contentView];
         }
+        [effectView setAlphaValue:alpha];
     } else if (effectView != nil) {
         [effectView removeFromSuperview];
         objc_setAssociatedObject(nsWindow, &effectViewAssociationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);

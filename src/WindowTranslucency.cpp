@@ -69,7 +69,7 @@ void WindowTranslucency::apply() const
     }
 
     makeWindowTranslucent(w->winId(), QColor::fromRgba(m_color), m_alpha);
-    setWindowBlurEnabled(w->winId(), m_blurEnabled);
+    setWindowBlurEnabled(w->winId(), m_blurEnabled, m_alpha);
 }
 
 } // namespace konsoll

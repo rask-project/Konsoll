@@ -7,22 +7,23 @@ import "controls" as Controls
 Item {
     id: view
 
+    required property font terminalFont
+
     property var session: null
     property bool active: false
 
     // Menlo advance is 0.6em, so 15px -> exactly 9px per column.
-    readonly property int fontSize: 15
-    readonly property real cellWidth: 9
-    readonly property real cellHeight: 18
+    readonly property real terminalFontSize: terminalFont.pixelSize > 0 ? terminalFont.pixelSize : terminalFont.pointSize * (4 / 3)
+    readonly property real cellWidth: terminalFontSize * 0.6
+    readonly property real cellHeight: terminalFontSize * 1.2
     // Primary font for regular text. The Nerd Font is the CSS fallback for
     // supplementary-plane glyphs (Nerd Font icons, U+F0xxx) that the primary
     // font lacks: the CSS font-family list does per-glyph fallback, so icons
     // render from the Nerd Font while regular text stays in the primary font.
     // The "Mono" variant guarantees every glyph (icons included) is one cell
     // wide, so the icon column grid stays aligned.
-    readonly property string primaryFont: "monospace"
     readonly property string nerdFont: "'JetBrainsMono Nerd Font Mono'"
-    readonly property string fontFamily: primaryFont + ", " + nerdFont
+    readonly property string fontFamily: "'" + terminalFont.family.replace(/'/g, "\\'") + "', " + nerdFont
     readonly property int cols: Math.max(2, Math.floor(canvas.width / cellWidth))
     readonly property int rows: Math.max(2, Math.floor(canvas.height / cellHeight))
 
@@ -50,6 +51,7 @@ Item {
 
     onColsChanged: syncSessionSize()
     onRowsChanged: syncSessionSize()
+    onTerminalFontChanged: canvas.requestPaint()
     onSessionChanged: {
         if (session) {
             syncSessionSize();
@@ -192,7 +194,8 @@ Item {
         if (!text || (flags & 32) !== 0)
             return;
         ctx.fillStyle = Qt.rgba(((fg >> 16) & 255) / 255, ((fg >> 8) & 255) / 255, (fg & 255) / 255, 1);
-        ctx.font = ((flags & 1) ? "bold " : "") + view.fontSize + "px " + view.fontFamily;
+        const weight = (flags & 1) ? Math.max(700, view.terminalFont.weight) : view.terminalFont.weight;
+        ctx.font = (view.terminalFont.italic ? "italic " : "") + weight + " " + view.terminalFontSize + "px " + view.fontFamily;
         ctx.fillText(text, startCol * view.cellWidth, y);
         if (flags & 4)
             ctx.fillRect(startCol * view.cellWidth, y + view.cellHeight - 1, cells * view.cellWidth, 1);
@@ -234,7 +237,7 @@ Item {
             const selectedForeground = (Math.round(selectedText.r * 255) << 16) | (Math.round(selectedText.g * 255) << 8) | Math.round(selectedText.b * 255);
             ctx.textAlign = "left";
             ctx.textBaseline = "top";
-            ctx.font = view.fontSize + "px " + view.fontFamily;
+            ctx.font = view.terminalFontSize + "px " + view.fontFamily;
 
             // The snapshot is a flat, row-major cell list:
             // cell(r, c) === data[r * cols + c].
@@ -312,12 +315,10 @@ Item {
                     ++bufCells;
                 }
                 view.drawRun(ctx, buf, start, y, selected ? selectedForeground : fg, flags, bufCells);
-                if (selectionArea._linkModifierDown && selectionArea._hoverRow === r &&
-                        selectionArea._hoverLinkStart >= 0 && selectionArea._hoverLinkEnd > selectionArea._hoverLinkStart) {
+                if (selectionArea._linkModifierDown && selectionArea._hoverRow === r && selectionArea._hoverLinkStart >= 0 && selectionArea._hoverLinkEnd > selectionArea._hoverLinkStart) {
                     const accent = appPalette.accent;
                     ctx.fillStyle = Qt.rgba(accent.r, accent.g, accent.b, 1);
-                    ctx.fillRect(selectionArea._hoverLinkStart * cw, y + ch - 2,
-                                 (selectionArea._hoverLinkEnd - selectionArea._hoverLinkStart) * cw, 1);
+                    ctx.fillRect(selectionArea._hoverLinkStart * cw, y + ch - 2, (selectionArea._hoverLinkEnd - selectionArea._hoverLinkStart) * cw, 1);
                 }
             }
 
@@ -333,7 +334,8 @@ Item {
                 // behavior) so it stays readable against the light block.
                 const curCell = data[curRow * cols + curCol];
                 if (curCell["ch"] && curCell["ch"] !== " " && (curCell["flags"] & 32) === 0) {
-                    ctx.font = ((curCell["flags"] & 1) ? "bold " : "") + view.fontSize + "px " + view.fontFamily;
+                    const weight = (curCell["flags"] & 1) ? Math.max(700, view.terminalFont.weight) : view.terminalFont.weight;
+                    ctx.font = (view.terminalFont.italic ? "italic " : "") + weight + " " + view.terminalFontSize + "px " + view.fontFamily;
                     ctx.fillStyle = Qt.rgba(((bg >> 16) & 255) / 255, ((bg >> 8) & 255) / 255, (bg & 255) / 255, 1);
                     ctx.fillText(curCell["ch"], curCol * cw, curRow * ch);
                 }
@@ -465,8 +467,7 @@ Item {
                 mouse.accepted = true;
                 return;
             }
-            if (mouse.button === Qt.LeftButton &&
-                    (mouse.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0) {
+            if (mouse.button === Qt.LeftButton && (mouse.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 if (view.session.openLinkAt(cell[1], cell[0])) {
                     mouse.accepted = true;
@@ -687,11 +688,7 @@ Item {
             implicitWidth: 6
             implicitHeight: 24
             radius: width / 2
-            color: scrollBar.pressed
-                ? Qt.rgba(appPalette.windowText.r, appPalette.windowText.g, appPalette.windowText.b, 0.72)
-                : scrollBar.hovered
-                    ? Qt.rgba(appPalette.windowText.r, appPalette.windowText.g, appPalette.windowText.b, 0.55)
-                    : Qt.rgba(appPalette.windowText.r, appPalette.windowText.g, appPalette.windowText.b, 0.35)
+            color: scrollBar.pressed ? Qt.rgba(appPalette.windowText.r, appPalette.windowText.g, appPalette.windowText.b, 0.72) : scrollBar.hovered ? Qt.rgba(appPalette.windowText.r, appPalette.windowText.g, appPalette.windowText.b, 0.55) : Qt.rgba(appPalette.windowText.r, appPalette.windowText.g, appPalette.windowText.b, 0.35)
         }
     }
 

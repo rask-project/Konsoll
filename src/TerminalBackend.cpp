@@ -201,6 +201,7 @@ TerminalBackend::TerminalBackend(QObject *parent) : QObject(parent)
 {
     m_frameTimer.setTimerType(Qt::CoarseTimer);
     m_frameTimer.setInterval(16ms);
+    m_frameTimer.setSingleShot(true);
     connect(&m_frameTimer, &QTimer::timeout, this, &TerminalBackend::onFrameTimer);
 
     const QPalette palette = QGuiApplication::palette();

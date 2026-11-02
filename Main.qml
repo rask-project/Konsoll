@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtCore
 
 Window {
     id: appWindow
@@ -14,11 +15,37 @@ Window {
     flags: Qt.Window | Qt.ExpandedClientAreaHint | Qt.NoTitleBarBackgroundHint
     color: "transparent"
 
+    Settings {
+        id: appPreferences
+
+        category: "General"
+
+        property real fontPointSize: 15
+        property string fontFamily: "Menlo"
+        property int fontWeight: 400
+        property bool fontItalic: false
+        property real windowAlpha: 0.85
+        property bool blurEnabled: true
+    }
+
+    readonly property font terminalFont: Qt.font({
+        family: appPreferences.fontFamily,
+        pointSize: appPreferences.fontPointSize,
+        weight: appPreferences.fontWeight,
+        italic: appPreferences.fontItalic
+    })
+
     Shortcut {
         sequence: "Ctrl+T"
         context: Qt.WindowShortcut
         autoRepeat: false
         onActivated: SessionManager.addWorkspace()
+    }
+
+    Shortcut {
+        sequence: "Meta+,"
+        context: Qt.WindowShortcut
+        onActivated: settingsDialog.open()
     }
 
     Shortcut {
@@ -150,6 +177,13 @@ Window {
             }
 
             MenuSeparator {}
+
+            MenuItem {
+                text: qsTr("Settings…")
+                onTriggered: settingsDialog.open()
+            }
+
+            MenuSeparator {}
         }
 
         Menu {
@@ -217,19 +251,26 @@ Window {
         id: saveTextDialog
     }
 
+    SettingsDialog {
+        id: settingsDialog
+        preferences: appPreferences
+        translucency: translucency
+    }
+
     WindowTranslucency {
         id: translucency
 
         window: appWindow
         color: SessionManager.activeSession ? SessionManager.activeSession.backgroundColor : 0xff141414
-        alpha: 0.85
-        blurEnabled: true
+        alpha: appPreferences.windowAlpha
+        blurEnabled: appPreferences.blurEnabled
     }
 
     TerminalWorkspace {
         anchors.fill: parent
         windowTranslucency: translucency
         fullScreen: appWindow.visibility === Window.FullScreen
+        terminalFont: appWindow.terminalFont
 
         safeTop: appWindow.SafeArea.margins.top
         safeLeft: appWindow.SafeArea.margins.left

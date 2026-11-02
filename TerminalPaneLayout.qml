@@ -9,6 +9,7 @@ Item {
     id: pane
 
     required property var node
+    required property font terminalFont
 
     Loader {
         id: contentLoader
@@ -93,6 +94,7 @@ Item {
                     height: Math.max(0, parent.height - 42)
                     session: leafItem.session
                     active: leafItem.active
+                    terminalFont: pane.terminalFont
                 }
             }
         }

@@ -7,6 +7,8 @@ import "controls" as Controls
 Item {
     id: workspace
 
+    required property font terminalFont
+
     property real safeTop: 0
     property real safeLeft: 0
     property real safeRight: 0
@@ -47,6 +49,7 @@ Item {
                 TerminalPaneLayout {
                     anchors.fill: parent
                     node: modelData.rootNode
+                    terminalFont: workspace.terminalFont
                 }
             }
         }
