@@ -22,7 +22,7 @@ public:
     Q_INVOKABLE bool confirmClose();
 
     // Presents the native alert before quitting the application.
-    bool confirmQuit();
+    Q_INVOKABLE bool confirmQuit();
 };
 
 } // namespace konsoll
