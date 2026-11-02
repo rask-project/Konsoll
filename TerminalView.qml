@@ -217,6 +217,11 @@ Item {
             const ctx = getContext("2d");
             if (!view.session)
                 return;
+            // Canvas2D retains pixels between paints. Clear the previous
+            // frame first so cells that became blank (or changed from a
+            // colored background to the default background) don't leave
+            // stale text behind when a pager redraws the screen.
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             const data = view.session.snapshot();
             const cw = view.cellWidth;
             const ch = view.cellHeight;

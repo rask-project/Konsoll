@@ -138,7 +138,7 @@ QByteArray ctrlKeyByte(const QString &text, bool shift)
 
 // Map a plain (unmodified) special key to its byte sequence, or an empty
 // byte array if the key has no special meaning.
-QByteArray specialKeyByte(int key)
+QByteArray specialKeyByte(int key, bool applicationCursorKeys)
 {
     switch (key) {
     case static_cast<int>(Qt::Key_Return):
@@ -151,13 +151,13 @@ QByteArray specialKeyByte(int key)
     case static_cast<int>(Qt::Key_Escape):
         return QByteArray(1, static_cast<char>(0x1b));
     case static_cast<int>(Qt::Key_Up):
-        return "\x1b[A";
+        return applicationCursorKeys ? QByteArray("\x1bOA") : QByteArray("\x1b[A");
     case static_cast<int>(Qt::Key_Down):
-        return "\x1b[B";
+        return applicationCursorKeys ? QByteArray("\x1bOB") : QByteArray("\x1b[B");
     case static_cast<int>(Qt::Key_Right):
-        return "\x1b[C";
+        return applicationCursorKeys ? QByteArray("\x1bOC") : QByteArray("\x1b[C");
     case static_cast<int>(Qt::Key_Left):
-        return "\x1b[D";
+        return applicationCursorKeys ? QByteArray("\x1bOD") : QByteArray("\x1b[D");
     case static_cast<int>(Qt::Key_Home):
         return "\x1bOH";
     case static_cast<int>(Qt::Key_End):
@@ -340,7 +340,9 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
     clearTextSelectionAndHighlight();
 
     // Typing while scrolled up snaps the view back to the live cursor.
-    if (m_terminal && m_terminal->screen().scrollOffset() > 0) {
+    const bool pageNavigation = key == static_cast<int>(Qt::Key_PageUp)
+        || key == static_cast<int>(Qt::Key_PageDown);
+    if (!pageNavigation && m_terminal && m_terminal->screen().scrollOffset() > 0) {
         scrollToBottom();
     }
 
@@ -366,7 +368,7 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
         }
         out = ctrlKeyByte(ctrlText, shift);
     } else {
-        out = specialKeyByte(key);
+        out = specialKeyByte(key, m_terminal && m_terminal->applicationCursorKeys());
         if (option) {
             // Option-modified keys: word-by-word movement and deletion,
             // handled by the shell line editor (zsh/bash: \eb/\ef ->

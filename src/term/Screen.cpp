@@ -198,9 +198,6 @@ void Screen::tab()
 
 void Screen::reverseIndex()
 {
-    if (m_inAlt) {
-        return;
-    }
     if (m_cursorRow <= m_scrollTop) {
         scrollDownOne(m_scrollTop, m_scrollBottom);
     } else {

@@ -362,6 +362,9 @@ void Terminal::handleDec(char final, const std::vector<int> &params)
     const bool set = (final == 'h');
     for (const int mode : params) {
         switch (mode) {
+        case 1:
+            m_applicationCursorKeys = set;
+            break;
         case 25:
             m_screen.showCursor(set);
             break;
@@ -607,6 +610,7 @@ void Terminal::handleEsc(char c)
         m_fg = 0;
         m_bg = 0;
         m_flags = CellFlag::None;
+        m_applicationCursorKeys = false;
         break;
     default:
         break;

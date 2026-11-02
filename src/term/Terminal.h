@@ -62,6 +62,7 @@ public:
     bool mouseMotionTracking() const { return (m_mouseModes & 0x06u) != 0; }
     bool sgrMouse() const { return m_sgrMouse; }
     bool kittyKeyboardEnabled() const { return m_kittyKeyboardEnabled; }
+    bool applicationCursorKeys() const { return m_applicationCursorKeys; }
     bool keyboardProtocolQueryPending() const { return m_keyboardProtocolQueryPending; }
     void clearKeyboardProtocolQueryPending() { m_keyboardProtocolQueryPending = false; }
     QByteArray mouseReport(int button, int row, int col, int event, unsigned int modifiers) const;
@@ -121,6 +122,7 @@ private:
     unsigned char m_colorQuery = 0;
     unsigned char m_mouseModes = 0;
     bool m_sgrMouse = false;
+    bool m_applicationCursorKeys = false;
     bool m_kittyKeyboardEnabled = false;
     bool m_keyboardProtocolQueryPending = false;
 };
