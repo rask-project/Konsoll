@@ -18,7 +18,7 @@
 {
     Q_UNUSED(sender);
     konsoll::TerminalManager *const manager = konsoll::TerminalManager::instance();
-    if ((manager != nullptr) && (manager->anySessionHasRunningCommand() || manager->sessionCount() > 1)) {
+    if ((manager != nullptr) && (manager->anySessionHasActiveProcess() || manager->sessionCount() > 1)) {
         konsoll::CloseConfirmDialog dialog;
         if (!dialog.confirmQuit()) {
             return NSTerminateCancel;

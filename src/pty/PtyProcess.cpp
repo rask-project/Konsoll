@@ -284,6 +284,15 @@ void PtyProcess::terminate() const
     }
 }
 
+bool PtyProcess::hasForegroundProcess() const
+{
+    if (m_masterFd < 0 || m_pid <= 0) {
+        return false;
+    }
+    const pid_t foregroundGroup = ::tcgetpgrp(m_masterFd);
+    return foregroundGroup > 0 && foregroundGroup != static_cast<pid_t>(m_pid);
+}
+
 void PtyProcess::onReadable()
 {
     std::array<char, 8192> buf;

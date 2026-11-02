@@ -131,6 +131,7 @@ public:
     bool mouseTracking() const { return m_terminal && m_terminal->mouseTracking(); }
     bool mouseMotionTracking() const { return m_terminal && m_terminal->mouseMotionTracking(); }
     bool commandRunning() const { return m_terminal && m_terminal->commandRunning(); }
+    bool hasForegroundProcess() const { return m_pty && m_pty->hasForegroundProcess(); }
     unsigned int backgroundColor() const { return m_defaultBg; }
     unsigned int foregroundColor() const { return m_defaultFg; }
 

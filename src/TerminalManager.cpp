@@ -295,6 +295,13 @@ bool TerminalManager::anySessionHasRunningCommand() const
     });
 }
 
+bool TerminalManager::anySessionHasActiveProcess() const
+{
+    return std::ranges::any_of(m_sessions, [](const auto &session) {
+        return session->commandRunning() || session->hasForegroundProcess();
+    });
+}
+
 int TerminalManager::sessionCount() const
 {
     return static_cast<int>(m_sessions.size());

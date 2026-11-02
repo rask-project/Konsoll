@@ -104,6 +104,7 @@ public:
     Q_INVOKABLE void closeWorkspace(QObject *workspace);
     Q_INVOKABLE bool workspaceHasRunningCommand(QObject *workspace) const;
     Q_INVOKABLE bool anySessionHasRunningCommand() const;
+    Q_INVOKABLE bool anySessionHasActiveProcess() const;
     Q_INVOKABLE int sessionCount() const;
     Q_INVOKABLE void moveWorkspace(int fromIndex, int toIndex);
     Q_INVOKABLE void closeSession(QObject *session);

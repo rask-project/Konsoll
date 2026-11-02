@@ -24,6 +24,7 @@ public:
     void write(const QByteArray &data) const;
     void resize(int cols, int rows) const;
     void terminate() const;
+    bool hasForegroundProcess() const;
 
     int pid() const { return m_pid; }
 

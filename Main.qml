@@ -16,7 +16,7 @@ Window {
     color: "transparent"
 
     function requestQuit() {
-        if ((SessionManager.sessionCount() > 1 || SessionManager.anySessionHasRunningCommand()) &&
+        if ((SessionManager.sessionCount() > 1 || SessionManager.anySessionHasActiveProcess()) &&
                 !CloseConfirmDialog.confirmQuit()) {
             return
         }
