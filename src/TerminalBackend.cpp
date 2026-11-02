@@ -4,8 +4,10 @@
 #include <QColor>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QUrl>
 #include <QProcess>
 #include <QtGui>
 
@@ -981,29 +983,8 @@ void TerminalBackend::copySelection()
         return;
     }
 
-    // A highlighted command block takes priority over a text selection.
-    if (m_highlightStart >= 0) {
-        QString text;
-        const Screen &screen = m_terminal->screen();
-        const auto lines = std::views::iota(m_highlightStart, m_highlightEnd + 1);
-        std::ranges::for_each(lines, [this, &screen, &text](int line) {
-            const Line &cells = screen.lineAt(line);
-            const auto reversedCells = std::views::reverse(cells);
-            const auto lastContent = std::ranges::find_if(reversedCells, [](const Cell &cell) {
-                return cell.ch != ' ';
-            });
-            const int end = lastContent == reversedCells.end()
-                                ? -1
-                                : static_cast<int>(std::distance(cells.begin(), lastContent.base())) - 1;
-            std::ranges::for_each(std::views::iota(0, end + 1), [&cells, &text](int col) {
-                const char32_t cp = static_cast<char32_t>(cells[col].ch);
-                text.append(QString::fromUcs4(&cp, 1));
-            });
-            if (line < m_highlightEnd) {
-                text.append('\n');
-            }
-        });
-        QGuiApplication::clipboard()->setText(text);
+    if (m_highlightStart >= 0 || selectionActive()) {
+        QGuiApplication::clipboard()->setText(selectionText());
         clearTextSelectionAndHighlight();
         return;
     }
@@ -1061,6 +1042,97 @@ void TerminalBackend::copySelection()
     }
     QGuiApplication::clipboard()->setText(text);
     clearTextSelectionAndHighlight();
+}
+
+QString TerminalBackend::selectionText() const
+{
+    if (!m_terminal) {
+        return {};
+    }
+    const Screen &screen = m_terminal->screen();
+    QString text;
+    if (m_highlightStart >= 0) {
+        std::ranges::for_each(std::views::iota(m_highlightStart, m_highlightEnd + 1), [&](int line) {
+            const Line &cells = screen.lineAt(line);
+            const auto reversedCells = std::views::reverse(cells);
+            const auto lastContent = std::ranges::find_if(reversedCells, [](const Cell &cell) { return cell.ch != ' '; });
+            const int end = lastContent == reversedCells.end() ? -1 : static_cast<int>(std::distance(cells.begin(), lastContent.base())) - 1;
+            std::ranges::for_each(std::views::iota(0, end + 1), [&](int col) {
+                const char32_t cp = static_cast<char32_t>(cells[col].ch);
+                text.append(QString::fromUcs4(&cp, 1));
+            });
+            if (line < m_highlightEnd)
+                text.append('\n');
+        });
+        return text;
+    }
+    if (m_selAnchor.line < 0)
+        return {};
+
+    const int top = std::min(m_selAnchor.line, m_selCurrent.line);
+    const int bot = std::max(m_selAnchor.line, m_selCurrent.line);
+    const int topCol = (m_selAnchor.line == top) ? m_selAnchor.col : m_selCurrent.col;
+    const int botCol = (m_selCurrent.line == bot) ? m_selCurrent.col : m_selAnchor.col;
+    std::ranges::for_each(std::views::iota(top, bot + 1), [&](int line) {
+        const Line &cells = screen.lineAt(line);
+        int first = 0;
+        int end = 0;
+        if (top == bot) {
+            first = std::min(m_selAnchor.col, m_selCurrent.col);
+            end = std::max(m_selAnchor.col, m_selCurrent.col) + 1;
+        } else if (line == top) {
+            first = topCol;
+            end = lineTextEnd(line) + 1;
+        } else if (line == bot) {
+            end = botCol + 1;
+        } else {
+            end = lineTextEnd(line) + 1;
+        }
+        first = std::min(first, static_cast<int>(cells.size()));
+        end = std::max(first, std::min(end, static_cast<int>(cells.size())));
+        const auto selectedCells = std::ranges::subrange(cells.begin() + first, cells.begin() + end);
+        const auto lastContent = std::ranges::find_last_if(selectedCells, [](const Cell &cell) { return cell.ch != ' '; });
+        end = lastContent.empty() ? first : first + static_cast<int>(std::distance(selectedCells.begin(), lastContent.end()));
+        std::ranges::for_each(std::views::iota(first, end), [&](int col) {
+            const char32_t cp = static_cast<char32_t>(cells[col].ch);
+            text.append(QString::fromUcs4(&cp, 1));
+        });
+        if (line < bot && !screen.isWrappedContinuation(line + 1))
+            text.append('\n');
+    });
+    return text;
+}
+
+QString TerminalBackend::bufferText() const
+{
+    if (!m_terminal)
+        return {};
+    const Screen &screen = m_terminal->screen();
+    QString text;
+    const int totalLines = screen.totalLines();
+    std::ranges::for_each(std::views::iota(0, totalLines), [&](int line) {
+        const Line &cells = screen.lineAt(line);
+        const auto reversedCells = std::views::reverse(cells);
+        const auto lastContent = std::ranges::find_if(reversedCells, [](const Cell &cell) { return cell.ch != ' '; });
+        const int end = lastContent == reversedCells.end() ? 0 : static_cast<int>(std::distance(cells.begin(), lastContent.base()));
+        std::ranges::for_each(std::views::iota(0, end), [&](int col) {
+            const char32_t cp = static_cast<char32_t>(cells[col].ch);
+            text.append(QString::fromUcs4(&cp, 1));
+        });
+        if (line + 1 < totalLines && !screen.isWrappedContinuation(line + 1))
+            text.append('\n');
+    });
+    return text;
+}
+
+bool TerminalBackend::saveTextToFile(const QUrl &url, bool selectionOnly) const
+{
+    QFile file(url.toLocalFile());
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return false;
+    const QString content = selectionOnly ? selectionText() : bufferText();
+    const QByteArray encoded = content.toUtf8();
+    return file.write(encoded) == encoded.size();
 }
 
 void TerminalBackend::paste()

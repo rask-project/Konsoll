@@ -125,6 +125,14 @@ Window {
         onTriggered: SessionManager.activeSession.selectAll()
     }
 
+    Action {
+        id: saveTextAction
+
+        text: qsTr("Save Buffer or Selection…")
+        enabled: SessionManager.activeSession !== null
+        onTriggered: saveTextDialog.openFor(SessionManager.activeSession, appWindow.activeFocusItem)
+    }
+
     // On macOS (Qt >= 6.8, native menu bar) a Menu whose title equals the
     // application name is moved to the app menu (the bold first menu).
     MenuBar {
@@ -139,6 +147,12 @@ Window {
             MenuItem {
                 text: qsTr("About Qt")
                 onTriggered: aboutDialog.openAboutQt()
+            }
+
+            MenuSeparator {}
+
+            MenuItem {
+                action: saveTextAction
             }
         }
 
@@ -195,6 +209,10 @@ Window {
 
     AboutDialog {
         id: aboutDialog
+    }
+
+    SaveTextDialog {
+        id: saveTextDialog
     }
 
     WindowTranslucency {

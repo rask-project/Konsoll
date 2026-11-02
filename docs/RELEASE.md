@@ -8,7 +8,7 @@ creates an archive for distribution.
 
 - macOS with Xcode Command Line Tools and `xcrun`.
 - CMake 3.21.1+, Ninja, and the Qt 6.12 macOS arm64 kit, including Qt Quick,
-  CanvasPainter, and Quick Controls.
+  CanvasPainter, Quick Controls, and Quick Dialogs.
 - For public distribution: an Apple Developer Program account and a
   **Developer ID Application** certificate installed in the login keychain.
 - For notarization: an app-specific password for an Apple ID associated with
@@ -93,7 +93,7 @@ Use `ditto` to preserve the app bundle's macOS metadata:
 
 ```sh
 APP_BUNDLE="build/release/dist/konsoll.app"
-SUBMISSION_ZIP="build/release/Konsoll-1.3.2-arm64.zip"
+SUBMISSION_ZIP="build/release/Konsoll-1.5.0-arm64.zip"
 
 ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$SUBMISSION_ZIP"
 xcrun notarytool submit "$SUBMISSION_ZIP" \
@@ -127,7 +127,7 @@ ZIP files cannot be stapled directly. Recreate the final ZIP after stapling the
 app, then distribute this final archive:
 
 ```sh
-FINAL_ZIP="build/release/Konsoll-1.3.2-arm64-notarized.zip"
+FINAL_ZIP="build/release/Konsoll-1.5.0-arm64-notarized.zip"
 ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$FINAL_ZIP"
 ```
 
@@ -145,7 +145,7 @@ hdiutil create \
   -volname "Konsoll" \
   -srcfolder "$APP_BUNDLE" \
   -ov -format UDZO \
-  build/release/Konsoll-1.3.2-arm64.dmg
+  build/release/Konsoll-1.5.0-arm64.dmg
 ```
 
 If distributing the DMG, submit that DMG to `notarytool` as well, then run

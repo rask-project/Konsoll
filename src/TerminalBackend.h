@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QTimer>
 #include <QRegularExpression>
+#include <QUrl>
 #include <QVariantList>
 #include <QtQml>
 
@@ -109,6 +110,9 @@ public:
     // Clipboard.
     Q_INVOKABLE void copySelection();
     Q_INVOKABLE void paste();
+    Q_INVOKABLE bool saveTextToFile(const QUrl &url, bool selectionOnly) const;
+    QString bufferText() const;
+    QString selectionText() const;
 
     // One-frame snapshot of the visible grid for the QML renderer.
     Q_INVOKABLE QVariantList snapshot() const;

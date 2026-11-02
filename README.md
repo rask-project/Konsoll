@@ -10,7 +10,7 @@ window.
 ## Requirements
 
 - macOS (Apple Silicon)
-- Qt 6.12 (Qt Quick, Qt CanvasPainter)
+- Qt 6.12 (Qt Quick, Qt CanvasPainter, Qt Quick Controls, Qt Quick Dialogs)
 - CMake 3.21.1+
 - A C++23 compiler (AppleClang / Xcode command-line tools)
 
@@ -65,6 +65,14 @@ menu item copies its text. Other shells continue to run normally and retain
 single-line highlighting. This matches iTerm2's automatic integration for
 supported shells.
 
+### Saving terminal text
+
+Choose **Save Buffer or Selection…** from the application menu or a terminal's
+context menu. With a mouse selection active, Konsoll saves that selected text
+(including selected words and lines); otherwise, it saves the complete
+scrollback and visible buffer. The file dialog lets you choose the filename
+and destination and opens in Downloads by default.
+
 ## Features
 
 ### Core terminal
@@ -94,6 +102,7 @@ supported shells.
 - Clipboard copy/paste (text to the PTY; images forwarded via `Ctrl+V` for
   image-aware CLI apps), context menu, Clear Screen (`Cmd+L`) and
   Clear Buffer (`Cmd+K`)
+- Save the full terminal buffer or current selection to a UTF-8 text file
 - Scrollback navigation by wheel and scrollbar
 - Scrollback search (literal or regular expression, next/previous match)
 - Mouse reporting (DEC 1000/1002/1003, SGR 1006)

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.21.1)
 set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "macOS target architecture")
 set(CMAKE_OSX_DEPLOYMENT_TARGET "14.4" CACHE STRING "Minimum supported macOS version")
 
-project(RaskKonsoll VERSION 1.4.0 LANGUAGES CXX OBJCXX)
+project(RaskKonsoll VERSION 1.5.0 LANGUAGES CXX OBJCXX)
 
 execute_process(
     COMMAND git rev-parse --short=7 HEAD
@@ -24,7 +24,7 @@ endif()
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.12 REQUIRED COMPONENTS Quick CanvasPainter QuickControls2 Svg)
+find_package(Qt6 6.12 REQUIRED COMPONENTS Quick CanvasPainter QuickControls2 QuickDialogs2 Svg)
 
 qt_standard_project_setup(REQUIRES 6.12)
 
@@ -50,6 +50,7 @@ qt_add_qml_module(konsoll
     NAMESPACE konsoll
     QML_FILES
         Main.qml
+        SaveTextDialog.qml
         TerminalWorkspace.qml
         TerminalPaneLayout.qml
         TerminalView.qml
@@ -114,7 +115,7 @@ target_compile_definitions(konsoll PRIVATE
 )
 
 target_link_libraries(konsoll
-    PRIVATE Qt6::Quick Qt6::CanvasPainter Qt6::QuickControls2 Qt6::Svg
+    PRIVATE Qt6::Quick Qt6::CanvasPainter Qt6::QuickControls2 Qt6::QuickDialogs2 Qt6::Svg
 )
 
 install(TARGETS konsoll

@@ -602,6 +602,13 @@ Item {
         MenuSeparator {}
 
         Controls.MenuItem {
+            text: qsTr("Save Buffer or Selection…")
+            onTriggered: saveTextDialog.openFor(view.session, input)
+        }
+
+        MenuSeparator {}
+
+        Controls.MenuItem {
             text: qsTr("Copy")
             onTriggered: view.session.copySelection()
         }
@@ -620,6 +627,10 @@ Item {
             text: qsTr("Clear Buffer")
             onTriggered: view.session.clearBuffer()
         }
+    }
+
+    SaveTextDialog {
+        id: saveTextDialog
     }
 
     Controls.SearchBar {
