@@ -5,6 +5,17 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "14.4" CACHE STRING "Minimum supported macOS ver
 
 project(RaskKonsoll VERSION 1.3.1 LANGUAGES CXX OBJCXX)
 
+execute_process(
+    COMMAND git rev-parse --short=7 HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE KONSOLL_GIT_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT KONSOLL_GIT_COMMIT)
+    set(KONSOLL_GIT_COMMIT "unknown")
+endif()
+
 if(APPLE AND CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/dist" CACHE PATH
         "Directory for the installed macOS application bundle" FORCE)
@@ -97,7 +108,10 @@ set_target_properties(konsoll PROPERTIES
 # The generated QML type-registration TU includes the backend header as
 # <TerminalBackend.h>, so src/ must be on the include path.
 target_include_directories(konsoll PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_definitions(konsoll PRIVATE KONSOLL_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(konsoll PRIVATE
+    KONSOLL_VERSION="${PROJECT_VERSION}"
+    KONSOLL_GIT_COMMIT="${KONSOLL_GIT_COMMIT}"
+)
 
 target_link_libraries(konsoll
     PRIVATE Qt6::Quick Qt6::CanvasPainter Qt6::QuickControls2 Qt6::Svg
