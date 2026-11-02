@@ -178,6 +178,14 @@ Window {
         onTriggered: saveTextDialog.openFor(SessionManager.activeSession, appWindow.activeFocusItem)
     }
 
+    Action {
+        id: quitAction
+
+        text: qsTr("Quit Konsoll")
+        shortcut: StandardKey.Quit
+        onTriggered: appWindow.requestQuit()
+    }
+
     // On macOS (Qt >= 6.8, native menu bar) a Menu whose title equals the
     // application name is moved to the app menu (the bold first menu).
     MenuBar {
@@ -204,9 +212,7 @@ Window {
             MenuSeparator {}
 
             MenuItem {
-                text: qsTr("Quit Konsoll")
-                shortcut: StandardKey.Quit
-                onTriggered: appWindow.requestQuit()
+                action: quitAction
             }
         }
 
