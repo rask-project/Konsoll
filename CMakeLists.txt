@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.21.1)
 set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "macOS target architecture")
 set(CMAKE_OSX_DEPLOYMENT_TARGET "14.4" CACHE STRING "Minimum supported macOS version")
 
-project(RaskKonsoll VERSION 1.7.6 LANGUAGES CXX OBJCXX)
+project(RaskKonsoll VERSION 1.7.7 LANGUAGES CXX OBJCXX)
 
 execute_process(
     COMMAND git rev-parse --short=7 HEAD
@@ -83,6 +83,8 @@ qt_add_qml_module(konsoll
         src/MacOSTranslucency.h
         src/WindowTranslucency.cpp
         src/WindowTranslucency.h
+        src/WindowScreen.cpp
+        src/WindowScreen.h
 )
 
 qt_add_resources(konsoll "/"

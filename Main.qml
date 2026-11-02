@@ -5,10 +5,10 @@ import QtCore
 Window {
     id: appWindow
 
-    visible: true
+    visibility: Window.Hidden
 
-    width: 1024
-    height: 768
+    width: appPreferences.windowWidth
+    height: appPreferences.windowHeight
     minimumWidth: 200
     minimumHeight: 250
 
@@ -41,6 +41,44 @@ Window {
         property bool fontItalic: false
         property real windowAlpha: 0.85
         property bool blurEnabled: true
+        property int windowWidth: 1024
+        property int windowHeight: 768
+        property string windowState: "windowed"
+        property string windowScreenName: ""
+    }
+
+    // Save only the normal window geometry. Maximized and fullscreen sizes are
+    // monitor geometry and must not replace the user's restorable dimensions.
+    onWidthChanged: {
+        if (visibility === Window.Windowed)
+            appPreferences.windowWidth = width
+    }
+    onHeightChanged: {
+        if (visibility === Window.Windowed)
+            appPreferences.windowHeight = height
+    }
+
+    onVisibilityChanged: {
+        if (visibility === Window.FullScreen) {
+            appPreferences.windowState = "fullscreen"
+        } else if (visibility === Window.Maximized) {
+            appPreferences.windowState = "maximized"
+        } else if (visibility === Window.Windowed) {
+            appPreferences.windowState = "windowed"
+        }
+    }
+
+    onScreenChanged: appPreferences.windowScreenName = windowScreen.currentScreenName()
+
+    Component.onCompleted: {
+        windowScreen.restoreScreen(appPreferences.windowScreenName)
+        if (appPreferences.windowState === "fullscreen")
+            visibility = Window.FullScreen
+        else if (appPreferences.windowState === "maximized")
+            visibility = Window.Maximized
+        else
+            visibility = Window.Windowed
+        SessionManager.start()
     }
 
     readonly property font terminalFont: Qt.font({
@@ -304,6 +342,11 @@ Window {
         blurEnabled: appPreferences.blurEnabled
     }
 
+    WindowScreen {
+        id: windowScreen
+        window: appWindow
+    }
+
     TerminalWorkspace {
         anchors.fill: parent
         windowTranslucency: translucency
@@ -314,8 +357,6 @@ Window {
         safeLeft: appWindow.SafeArea.margins.left
         safeRight: appWindow.SafeArea.margins.right
     }
-
-    Component.onCompleted: SessionManager.start()
 
     Connections {
         target: SessionManager
