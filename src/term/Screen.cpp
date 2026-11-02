@@ -266,6 +266,59 @@ void Screen::scrollDown(int count)
     }
 }
 
+void Screen::insertLines(int count)
+{
+    if (m_cursorRow < m_scrollTop || m_cursorRow > m_scrollBottom) {
+        return;
+    }
+
+    const int lineCount = std::min(count, m_scrollBottom - m_cursorRow + 1);
+    if (lineCount <= 0) {
+        return;
+    }
+
+    auto &g = grid();
+    const auto first = g.begin() + m_cursorRow;
+    const auto middle = g.begin() + m_scrollBottom - lineCount + 1;
+    const auto last = g.begin() + m_scrollBottom + 1;
+    std::move_backward(first, middle, last);
+    std::fill(g.begin() + m_cursorRow, g.begin() + m_cursorRow + lineCount, Line(m_cols, blankCell()));
+
+    if (!m_inAlt) {
+        const auto wrappedFirst = m_mainWrapped.begin() + m_cursorRow;
+        const auto wrappedMiddle = m_mainWrapped.begin() + m_scrollBottom - lineCount + 1;
+        const auto wrappedLast = m_mainWrapped.begin() + m_scrollBottom + 1;
+        std::move_backward(wrappedFirst, wrappedMiddle, wrappedLast);
+        std::fill(m_mainWrapped.begin() + m_cursorRow, m_mainWrapped.begin() + m_cursorRow + lineCount, false);
+    }
+    m_pendingWrap = false;
+}
+
+void Screen::deleteLines(int count)
+{
+    if (m_cursorRow < m_scrollTop || m_cursorRow > m_scrollBottom) {
+        return;
+    }
+
+    const int lineCount = std::min(count, m_scrollBottom - m_cursorRow + 1);
+    if (lineCount <= 0) {
+        return;
+    }
+
+    auto &g = grid();
+    std::move(g.begin() + m_cursorRow + lineCount, g.begin() + m_scrollBottom + 1, g.begin() + m_cursorRow);
+    std::fill(g.begin() + m_scrollBottom - lineCount + 1, g.begin() + m_scrollBottom + 1,
+              Line(m_cols, blankCell()));
+
+    if (!m_inAlt) {
+        std::move(m_mainWrapped.begin() + m_cursorRow + lineCount, m_mainWrapped.begin() + m_scrollBottom + 1,
+                  m_mainWrapped.begin() + m_cursorRow);
+        std::fill(m_mainWrapped.begin() + m_scrollBottom - lineCount + 1, m_mainWrapped.begin() + m_scrollBottom + 1,
+                  false);
+    }
+    m_pendingWrap = false;
+}
+
 void Screen::setScrollRegion(int top, int bottom) // NOLINT: top/bottom are inherently swappable
 {
     // 1-based inclusive; clamp to the grid.

@@ -206,6 +206,7 @@ Item {
         anchors.fill: parent
         anchors.margins: 5
         fillColor: "transparent"
+        alphaBlending: true
 
         Component.onCompleted: requestPaint()
 

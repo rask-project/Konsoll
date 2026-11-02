@@ -52,6 +52,8 @@ public:
     // Scrolling within the current region.
     void scrollUp(int count);
     void scrollDown(int count);
+    void insertLines(int count);
+    void deleteLines(int count);
     void setScrollRegion(int top, int bottom); // 1-based inclusive
     void resetScrollRegion();
 

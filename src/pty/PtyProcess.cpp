@@ -16,6 +16,7 @@
 #include <ranges>
 #include <signal.h>
 #include <sys/ioctl.h>
+#include <termios.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <util.h>
@@ -189,6 +190,14 @@ bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QStri
 
     if (pid == 0) {
         // Child: exec the shell as a login shell (argv[0] = "-<name>").
+        // forkpty leaves software flow control enabled by default. Disable
+        // it on the slave before the shell starts, so Ctrl+Q reaches Neovim
+        // instead of being consumed by the tty line discipline.
+        struct termios terminalSettings {};
+        if (::tcgetattr(STDIN_FILENO, &terminalSettings) == 0) {
+            terminalSettings.c_iflag &= static_cast<tcflag_t>(~(IXON | IXOFF));
+            ::tcsetattr(STDIN_FILENO, TCSANOW, &terminalSettings);
+        }
         // GUI apps can inherit `/` (or another launcher's working directory).
         // Start in the inherited session directory, falling back to the user's home.
         if (!initialDirectory.isEmpty() && ::chdir(initialDirectory.constData()) < 0

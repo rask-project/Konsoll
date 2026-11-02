@@ -58,6 +58,9 @@ public:
     bool mouseTracking() const { return m_mouseModes != 0; }
     bool mouseMotionTracking() const { return (m_mouseModes & 0x06u) != 0; }
     bool sgrMouse() const { return m_sgrMouse; }
+    bool kittyKeyboardEnabled() const { return m_kittyKeyboardEnabled; }
+    bool keyboardProtocolQueryPending() const { return m_keyboardProtocolQueryPending; }
+    void clearKeyboardProtocolQueryPending() { m_keyboardProtocolQueryPending = false; }
     QByteArray mouseReport(int button, int row, int col, int event, unsigned int modifiers) const;
 
     // OSC 10/11 foreground/background color queries from full-screen apps.
@@ -113,6 +116,8 @@ private:
     unsigned char m_colorQuery = 0;
     unsigned char m_mouseModes = 0;
     bool m_sgrMouse = false;
+    bool m_kittyKeyboardEnabled = false;
+    bool m_keyboardProtocolQueryPending = false;
 };
 
 } // namespace konsoll

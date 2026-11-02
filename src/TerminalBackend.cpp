@@ -249,6 +249,10 @@ void TerminalBackend::onData(const QByteArray &data)
     if (wasMouseTracking != mouseTracking() || wasMouseMotionTracking != mouseMotionTracking()) {
         emit mouseTrackingChanged();
     }
+    if (m_terminal->keyboardProtocolQueryPending()) {
+        m_pty->write("\x1b[?1u");
+        m_terminal->clearKeyboardProtocolQueryPending();
+    }
     if (m_terminal->daPending()) {
         m_pty->write(Terminal::daResponse());
         m_terminal->clearDaPending();
@@ -311,9 +315,9 @@ void TerminalBackend::scheduleFrame()
 void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
 {
     const unsigned int mods = static_cast<unsigned int>(modifiers);
-    // On macOS, the Qt/QML shortcut spelling `Ctrl` maps to Command, while
-    // the physical Control key arrives here as MetaModifier in this app's
-    // key-event path. Keep shell control bytes distinct from app shortcuts.
+    // In this QML key-event path on macOS, ControlModifier is used for app
+    // shortcuts (Command), while MetaModifier carries the physical Control
+    // key. Keep shell control bytes distinct from app shortcuts.
     const bool command = (mods & static_cast<unsigned int>(Qt::ControlModifier)) != 0;
     const bool control = (mods & static_cast<unsigned int>(Qt::MetaModifier)) != 0;
     const bool option = (mods & static_cast<unsigned int>(Qt::AltModifier)) != 0;
@@ -335,7 +339,12 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
     }
 
     QByteArray out;
-    if (control) {
+    if (shift && !control && (key == static_cast<int>(Qt::Key_Return) || key == static_cast<int>(Qt::Key_Enter))) {
+        // Codex and other terminal TUIs commonly bind LF (Ctrl+J) to insert
+        // a draft newline. TUIs using Kitty keyboard mode need the distinct
+        // modified Enter event instead.
+        out = m_terminal && m_terminal->kittyKeyboardEnabled() ? QByteArray("\x1b[13;2u") : QByteArray("\n");
+    } else if (control) {
         // Physical Ctrl+K: clear the scrollback buffer (terminal-level action,
         // like Konsole's "Clear Buffer"). Not sent to the shell.
         if (key == static_cast<int>(Qt::Key_K)) {

@@ -256,6 +256,26 @@ int Terminal::paramAt(const std::vector<int> &p, int i, int def) // NOLINT: i/de
 
 void Terminal::handleCsi(char final, bool privateMode)
 {
+    if (privateMode && final == 'u') {
+        // Kitty keyboard protocol query: CSI ? u. Report support for
+        // disambiguated key presses, including Shift+Enter.
+        m_keyboardProtocolQueryPending = true;
+        return;
+    }
+
+    // Kitty keyboard protocol push/pop requests: CSI > flags u / CSI < u.
+    if (!privateMode && final == 'u') {
+        if (m_csiBody.startsWith('>')) {
+            const std::vector<int> keyboardParams = parseParams(m_csiBody.mid(1));
+            m_kittyKeyboardEnabled = !keyboardParams.empty() && keyboardParams.front() != 0;
+            return;
+        }
+        if (m_csiBody.startsWith('<')) {
+            m_kittyKeyboardEnabled = false;
+            return;
+        }
+    }
+
     if (privateMode) {
         handleDec(final, parseParams(m_csiBody));
         return;
@@ -304,15 +324,22 @@ void Terminal::handleCsi(char final, bool privateMode)
     case '@':
         m_screen.insertColumns(paramAt(p, 0, 1));
         break;
-    case 'r':
-        if (p.size() >= 2) {
-            m_screen.setScrollRegion(paramAt(p, 0, 1), paramAt(p, 1, m_screen.rows()));
-        } else {
-            m_screen.scrollUp(paramAt(p, 0, 1));
-        }
+    case 'L':
+        m_screen.insertLines(paramAt(p, 0, 1));
         break;
     case 'M':
+        m_screen.deleteLines(paramAt(p, 0, 1));
+        break;
+    case 'S':
+        m_screen.scrollUp(paramAt(p, 0, 1));
+        break;
+    case 'T':
         m_screen.scrollDown(paramAt(p, 0, 1));
+        break;
+    case 'r':
+        // DECSTBM always sets the scroll region; omitted parameters restore
+        // the full-screen region. CSI r without parameters is not SU.
+        m_screen.setScrollRegion(paramAt(p, 0, 1), paramAt(p, 1, m_screen.rows()));
         break;
     case 'c':
         m_daPending = true;
