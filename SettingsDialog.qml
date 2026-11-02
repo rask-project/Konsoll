@@ -118,17 +118,19 @@ T.Dialog {
 
                 Label {
                     Layout.fillWidth: true
-                    text: control.preferences.fontFamily
-                    elide: Text.ElideRight
-                    opacity: 0.75
+
+                    text: qsTr("Font family")
+                    font.bold: true
                 }
 
                 RowLayout {
+                    Layout.fillWidth: true
+
                     Label {
                         Layout.fillWidth: true
-
-                        text: qsTr("Font family")
-                        font.bold: true
+                        text: `${control.preferences.fontFamily}, ${control.preferences.fontPointSize}pt, ${control.preferences.fontWeight}`
+                        elide: Text.ElideRight
+                        opacity: 0.75
                     }
 
                     Button {
@@ -143,13 +145,6 @@ T.Dialog {
                             fontDialog.open();
                         }
                     }
-                }
-
-                Label {
-                    text: qsTr("Current size: %1 pt. Change the size in the macOS font panel.").arg(control.preferences.fontPointSize)
-                    color: systemPalette.windowText
-                    opacity: 0.7
-                    wrapMode: Text.Wrap
                 }
 
                 Item {
