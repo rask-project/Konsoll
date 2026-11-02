@@ -11,7 +11,7 @@ char effectViewAssociationKey;
 NSWindow *windowFromId(WId winId)
 {
     NSView *const nsView = reinterpret_cast<NSView *>(winId);
-    return nsView ? [nsView window] : nil;
+    return (nsView != nullptr) ? [nsView window] : nil;
 }
 } // namespace
 
@@ -52,7 +52,12 @@ void setWindowBlurEnabled(WId winId, bool enabled, qreal alpha)
             [effectView setBlendingMode:NSVisualEffectBlendingModeBehindWindow];
             [effectView setMaterial:NSVisualEffectMaterialUnderWindowBackground];
             [effectView setState:NSVisualEffectStateActive];
-            objc_setAssociatedObject(nsWindow, &effectViewAssociationKey, effectView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(
+                nsWindow,
+                &effectViewAssociationKey,
+                effectView,
+                OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            );
             [parentView addSubview:effectView positioned:NSWindowBelow relativeTo:contentView];
         }
         [effectView setAlphaValue:alpha];

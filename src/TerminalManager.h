@@ -91,6 +91,9 @@ class TerminalManager final : public QObject
 
 public:
     explicit TerminalManager(QObject *parent = nullptr);
+    ~TerminalManager();
+
+    static TerminalManager *instance();
 
     QVariantList workspaces() const;
     QObject *activeSession() const { return m_activeSession; }
@@ -99,6 +102,9 @@ public:
     Q_INVOKABLE void start();
     Q_INVOKABLE void addWorkspace();
     Q_INVOKABLE void closeWorkspace(QObject *workspace);
+    Q_INVOKABLE bool workspaceHasRunningCommand(QObject *workspace) const;
+    Q_INVOKABLE bool anySessionHasRunningCommand() const;
+    Q_INVOKABLE int sessionCount() const;
     Q_INVOKABLE void moveWorkspace(int fromIndex, int toIndex);
     Q_INVOKABLE void closeSession(QObject *session);
     Q_INVOKABLE void activateSession(QObject *session);
@@ -131,6 +137,7 @@ private:
     std::vector<std::unique_ptr<TerminalWorkspaceModel>> m_workspaces;
     std::vector<TerminalBackend *> m_activationHistory;
     TerminalBackend *m_activeSession{};
+    static TerminalManager *s_instance;
     qsizetype m_activationHistoryCursor{};
     qsizetype m_nextWorkspaceNumber{1};
 

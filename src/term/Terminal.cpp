@@ -81,8 +81,8 @@ QByteArray Terminal::mouseReport(int button, int row, int col, int event, unsign
     const int x = std::clamp(col + 1, 1, m_screen.cols());
     const int y = std::clamp(row + 1, 1, m_screen.rows());
     if (m_sgrMouse) {
-        QByteArray report = "\x1b[<" + QByteArray::number(code) + ";" + QByteArray::number(x) + ";" +
-                            QByteArray::number(y);
+        QByteArray report =
+            "\x1b[<" + QByteArray::number(code) + ";" + QByteArray::number(x) + ";" + QByteArray::number(y);
         report.append(release ? 'm' : 'M');
         return report;
     }
@@ -393,7 +393,7 @@ void Terminal::handleDec(char final, const std::vector<int> &params)
             break;
         case 2004:
             break; // Bracketed paste: accepted, unused in the MVP.
-        case 6: // Origin mode: ignored.
+        case 6:    // Origin mode: ignored.
         default:
             break;
         }
@@ -569,14 +569,16 @@ void Terminal::handleCommandMark(char mark)
     case 'C':
         // C marks the start of execution. Use it as a fallback when a shell
         // emits execution/finish markers but omits the command-start marker.
+        m_commandRunning = true;
         if (m_commandStartLine < 0) {
             m_commandStartLine = std::max(0, line - (m_screen.cursorCol() == 0 ? 1 : 0));
         }
         break;
     case 'D':
+        m_commandRunning = false;
         if (m_commandStartLine >= 0) {
             const int endLine = std::max(m_commandStartLine, line - (m_screen.cursorCol() == 0 ? 1 : 0));
-            m_commandBlocks.push_back({m_commandStartLine, endLine});
+            m_commandBlocks.push_back({.startLine=m_commandStartLine, .endLine=endLine});
             m_commandStartLine = -1;
         }
         break;

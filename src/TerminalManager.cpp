@@ -14,12 +14,14 @@ namespace konsoll
 
 TerminalLayoutNode::TerminalLayoutNode(TerminalBackend *session) : m_session(session) {}
 
-TerminalLayoutNode::TerminalLayoutNode(Qt::Orientation orientation,
-                                       std::unique_ptr<TerminalLayoutNode> first,
-                                       std::unique_ptr<TerminalLayoutNode> second)
-    : m_first(std::move(first)),
-      m_second(std::move(second)),
-      m_orientation(static_cast<quintptr>(orientation))
+TerminalLayoutNode::TerminalLayoutNode(
+    Qt::Orientation orientation,
+    std::unique_ptr<TerminalLayoutNode> first,
+    std::unique_ptr<TerminalLayoutNode> second
+)
+    : m_first(std::move(first))
+    , m_second(std::move(second))
+    , m_orientation(static_cast<quintptr>(orientation))
 {}
 
 void TerminalLayoutNode::notifyTreeChanged()
@@ -34,12 +36,13 @@ void TerminalLayoutNode::notifyTreeChanged()
 }
 
 TerminalWorkspaceModel::TerminalWorkspaceModel(QString title, std::unique_ptr<TerminalLayoutNode> root)
-    : m_root(std::move(root)), m_title(std::move(title))
+    : m_root(std::move(root))
+    , m_title(std::move(title))
 {}
 
 QString TerminalWorkspaceModel::title() const
 {
-    if (!m_lastActiveSession) {
+    if (m_lastActiveSession == nullptr) {
         return m_title;
     }
     const QString directory = m_lastActiveSession->currentDirectory();
@@ -48,7 +51,9 @@ QString TerminalWorkspaceModel::title() const
 
 void TerminalWorkspaceModel::setAlerting(bool value)
 {
-    if (m_alerting == value) return;
+    if (m_alerting == value) {
+        return;
+    }
     m_alerting = value;
     emit alertingChanged();
 }
@@ -69,10 +74,25 @@ void TerminalWorkspaceModel::notifySessionTitleChanged(TerminalBackend *session)
     }
 }
 
+TerminalManager *TerminalManager::s_instance = nullptr;
+
+TerminalManager *TerminalManager::instance()
+{
+    return s_instance;
+}
+
 TerminalManager::TerminalManager(QObject *parent) : QObject(parent)
 {
+    s_instance = this;
     if (QCoreApplication *application = QCoreApplication::instance()) {
         application->installEventFilter(this);
+    }
+}
+
+TerminalManager::~TerminalManager()
+{
+    if (s_instance == this) {
+        s_instance = nullptr;
     }
 }
 
@@ -100,7 +120,7 @@ QVariantList TerminalManager::workspaces() const
 int TerminalManager::activeWorkspaceIndex() const
 {
     for (std::size_t index = 0; index < m_workspaces.size(); ++index) {
-        if (findLeaf(static_cast<TerminalLayoutNode *>(m_workspaces[index]->rootNode()), m_activeSession)) {
+        if (findLeaf(static_cast<TerminalLayoutNode *>(m_workspaces[index]->rootNode()), m_activeSession) != nullptr) {
             return static_cast<int>(index);
         }
     }
@@ -116,11 +136,12 @@ void TerminalManager::start()
 
 void TerminalManager::addWorkspace()
 {
-    const QString workingDirectory = m_activeSession ? m_activeSession->currentDirectory() : QString{};
+    const QString workingDirectory = (m_activeSession != nullptr) ? m_activeSession->currentDirectory() : QString{};
     TerminalBackend *session = createSession();
     auto workspace = std::make_unique<TerminalWorkspaceModel>(
         QStringLiteral("Workspace %1").arg(m_nextWorkspaceNumber++),
-        std::make_unique<TerminalLayoutNode>(session));
+        std::make_unique<TerminalLayoutNode>(session)
+    );
     m_workspaces.push_back(std::move(workspace));
     emit workspacesChanged();
     emit activeWorkspaceChanged();
@@ -174,8 +195,8 @@ TerminalBackend *TerminalManager::createSession()
 
 void TerminalManager::splitActive(int orientation)
 {
-    if (!m_activeSession || (orientation != static_cast<int>(Qt::Horizontal)
-                             && orientation != static_cast<int>(Qt::Vertical))) {
+    if ((m_activeSession == nullptr) ||
+        (orientation != static_cast<int>(Qt::Horizontal) && orientation != static_cast<int>(Qt::Vertical))) {
         return;
     }
     const int workspaceIndex = activeWorkspaceIndex();
@@ -185,7 +206,7 @@ void TerminalManager::splitActive(int orientation)
 
     auto &root = m_workspaces[static_cast<std::size_t>(workspaceIndex)]->root();
     auto *leafSlot = findNodeSlot(root, m_activeSession);
-    if (!leafSlot) {
+    if (leafSlot == nullptr) {
         return;
     }
 
@@ -193,8 +214,11 @@ void TerminalManager::splitActive(int orientation)
     auto newSession = createSession();
     auto oldLeaf = std::move(*leafSlot);
     auto newLeaf = std::make_unique<TerminalLayoutNode>(newSession);
-    *leafSlot = std::make_unique<TerminalLayoutNode>(static_cast<Qt::Orientation>(orientation),
-                                                     std::move(oldLeaf), std::move(newLeaf));
+    *leafSlot = std::make_unique<TerminalLayoutNode>(
+        static_cast<Qt::Orientation>(orientation),
+        std::move(oldLeaf),
+        std::move(newLeaf)
+    );
     auto &workspace = m_workspaces[static_cast<std::size_t>(workspaceIndex)];
     workspace->root()->notifyTreeChanged();
     emit workspace->layoutChanged();
@@ -207,15 +231,14 @@ void TerminalManager::splitActive(int orientation)
 void TerminalManager::closeWorkspace(QObject *workspaceObject)
 {
     auto *workspace = qobject_cast<TerminalWorkspaceModel *>(workspaceObject);
-    const auto it = std::ranges::find_if(m_workspaces, [workspace](const auto &candidate) {
-        return candidate.get() == workspace;
-    });
-    if (!workspace || it == m_workspaces.end()) {
+    const auto it =
+        std::ranges::find_if(m_workspaces, [workspace](const auto &candidate) { return candidate.get() == workspace; });
+    if ((workspace == nullptr) || it == m_workspaces.end()) {
         return;
     }
     if (m_workspaces.size() == 1 && m_sessions.size() > 1) {
         auto *root = workspace->root().get();
-        auto *session = findLeaf(root, m_activeSession) ? m_activeSession : firstSession(root);
+        auto *session = (findLeaf(root, m_activeSession) != nullptr) ? m_activeSession : firstSession(root);
         closeSession(session);
         return;
     }
@@ -235,7 +258,7 @@ void TerminalManager::closeWorkspace(QObject *workspaceObject)
     m_workspaces.erase(it);
     if (wasActive && !m_workspaces.empty()) {
         TerminalBackend *nextSession = mostRecentlyActiveSession();
-        if (!nextSession) {
+        if (nextSession == nullptr) {
             const auto nextWorkspace = std::ranges::find_if(m_workspaces, [this](const auto &candidate) {
                 return findLeaf(candidate->root().get(), candidate->lastActiveSession()) != nullptr;
             });
@@ -254,13 +277,35 @@ void TerminalManager::closeWorkspace(QObject *workspaceObject)
     }
 }
 
+bool TerminalManager::workspaceHasRunningCommand(QObject *workspaceObject) const
+{
+    auto *workspace = qobject_cast<TerminalWorkspaceModel *>(workspaceObject);
+    if (workspace == nullptr) {
+        return false;
+    }
+    return std::ranges::any_of(m_sessions, [this, workspace](const auto &session) {
+        return session->commandRunning() && findLeaf(workspace->root().get(), session.get()) != nullptr;
+    });
+}
+
+bool TerminalManager::anySessionHasRunningCommand() const
+{
+    return std::ranges::any_of(m_sessions, [](const auto &session) {
+        return session->commandRunning();
+    });
+}
+
+int TerminalManager::sessionCount() const
+{
+    return static_cast<int>(m_sessions.size());
+}
+
 void TerminalManager::closeSession(QObject *sessionObject)
 {
     auto *session = qobject_cast<TerminalBackend *>(sessionObject);
-    const auto it = std::ranges::find_if(m_sessions, [session](const auto &candidate) {
-        return candidate.get() == session;
-    });
-    if (!session || it == m_sessions.end()) {
+    const auto it =
+        std::ranges::find_if(m_sessions, [session](const auto &candidate) { return candidate.get() == session; });
+    if ((session == nullptr) || it == m_sessions.end()) {
         return;
     }
     const bool wasActive = m_activeSession == session;
@@ -276,13 +321,13 @@ void TerminalManager::closeSession(QObject *sessionObject)
 
     if (wasActive) {
         TerminalBackend *next = mostRecentlyActiveSession();
-        if (!next) {
+        if (next == nullptr) {
             for (const auto &workspace : m_workspaces) {
                 next = workspace->lastActiveSession();
-                if (!findLeaf(workspace->root().get(), next)) {
+                if (findLeaf(workspace->root().get(), next) == nullptr) {
                     next = firstSession(workspace->root().get());
                 }
-                if (next) {
+                if (next != nullptr) {
                     break;
                 }
             }
@@ -299,9 +344,8 @@ void TerminalManager::closeSession(QObject *sessionObject)
 void TerminalManager::activateSession(QObject *sessionObject)
 {
     auto *session = qobject_cast<TerminalBackend *>(sessionObject);
-    if (session && std::ranges::any_of(m_sessions, [session](const auto &item) {
-            return item.get() == session;
-        })) {
+    if ((session != nullptr) &&
+        std::ranges::any_of(m_sessions, [session](const auto &item) { return item.get() == session; })) {
         setActiveSession(session, true);
     }
 }
@@ -314,10 +358,10 @@ void TerminalManager::setActiveWorkspace(int index)
     auto *workspace = m_workspaces[static_cast<std::size_t>(index)].get();
     workspace->setAlerting(false);
     TerminalBackend *session = workspace->lastActiveSession();
-    if (!findLeaf(workspace->root().get(), session)) {
+    if (findLeaf(workspace->root().get(), session) == nullptr) {
         session = firstSession(workspace->root().get());
     }
-    if (session) {
+    if (session != nullptr) {
         setActiveSession(session, true);
     }
 }
@@ -336,7 +380,7 @@ void TerminalManager::navigateActivationHistory(int direction)
 void TerminalManager::routeKeyPress(QObject *sessionObject, int key, const QString &text, int modifiers)
 {
     auto *session = qobject_cast<TerminalBackend *>(sessionObject);
-    if (session && session == m_activeSession) {
+    if ((session != nullptr) && session == m_activeSession) {
         session->keyPress(key, text, modifiers);
     }
 }
@@ -344,14 +388,14 @@ void TerminalManager::routeKeyPress(QObject *sessionObject, int key, const QStri
 void TerminalManager::routeTextInput(QObject *sessionObject, const QString &text)
 {
     auto *session = qobject_cast<TerminalBackend *>(sessionObject);
-    if (session && session == m_activeSession) {
+    if ((session != nullptr) && session == m_activeSession) {
         session->writeText(text);
     }
 }
 
 TerminalLayoutNode *TerminalManager::findLeaf(TerminalLayoutNode *node, TerminalBackend *session) const
 {
-    if (!node || !session) {
+    if ((node == nullptr) || (session == nullptr)) {
         return nullptr;
     }
     if (node->isLeaf()) {
@@ -365,7 +409,7 @@ TerminalLayoutNode *TerminalManager::findLeaf(TerminalLayoutNode *node, Terminal
 
 TerminalBackend *TerminalManager::firstSession(TerminalLayoutNode *node) const
 {
-    if (!node) {
+    if (node == nullptr) {
         return nullptr;
     }
     if (node->isLeaf()) {
@@ -380,15 +424,13 @@ TerminalBackend *TerminalManager::firstSession(TerminalLayoutNode *node) const
 TerminalBackend *TerminalManager::mostRecentlyActiveSession() const
 {
     const auto it = std::ranges::find_if(m_activationHistory, [this](const TerminalBackend *session) {
-        return std::ranges::any_of(m_sessions, [session](const auto &candidate) {
-            return candidate.get() == session;
-        });
+        return std::ranges::any_of(m_sessions, [session](const auto &candidate) { return candidate.get() == session; });
     });
     return it == m_activationHistory.end() ? nullptr : *it;
 }
 
-std::unique_ptr<TerminalLayoutNode> *TerminalManager::findNodeSlot(
-    std::unique_ptr<TerminalLayoutNode> &node, TerminalBackend *session) const
+std::unique_ptr<TerminalLayoutNode> *
+TerminalManager::findNodeSlot(std::unique_ptr<TerminalLayoutNode> &node, TerminalBackend *session) const
 {
     if (!node) {
         return nullptr;
@@ -411,13 +453,13 @@ void TerminalManager::setActiveSession(TerminalBackend *session, bool record)
         }
     });
     if (m_activeSession == session) {
-        if (record && session) {
+        if (record && (session != nullptr)) {
             recordActivation(session);
         }
         return;
     }
     m_activeSession = session;
-    if (record && session) {
+    if (record && (session != nullptr)) {
         recordActivation(session);
     }
     emit activeSessionChanged();
@@ -473,8 +515,8 @@ void TerminalManager::removeSessionFromLayouts(TerminalBackend *session)
 
 void TerminalManager::commitActivationHistory()
 {
-    if (m_activationHistoryCursor > 0
-        && m_activationHistoryCursor < static_cast<qsizetype>(m_activationHistory.size())) {
+    if (m_activationHistoryCursor > 0 &&
+        m_activationHistoryCursor < static_cast<qsizetype>(m_activationHistory.size())) {
         recordActivation(m_activationHistory.at(static_cast<std::size_t>(m_activationHistoryCursor)));
     }
 }

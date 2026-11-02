@@ -69,10 +69,9 @@ void Screen::resize(int rows, int cols)
         ensureRows(m_mainSaved, rows, oldCols);
         ensureWrappedFlags(m_mainSavedWrapped, m_mainSaved.size());
     } else {
-        const bool emptyScreen = m_scrollback.empty()
-            && std::ranges::all_of(m_main, [](const Line &line) {
-                   return std::ranges::all_of(line, [](const Cell &cell) { return cell.ch == ' '; });
-               });
+        const bool emptyScreen = m_scrollback.empty() && std::ranges::all_of(m_main, [](const Line &line) {
+                                     return std::ranges::all_of(line, [](const Cell &cell) { return cell.ch == ' '; });
+                                 });
         if (emptyScreen) {
             // A smaller pane must not turn unused blank screen rows into
             // scrollback; that makes an idle terminal appear scrollable.
@@ -135,8 +134,8 @@ const Cell &Screen::cellAt(int row, int col) const
     return grid()[row][col];
 }
 
-void Screen::putChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned char flags) // NOLINT: fg/bg are inherently
-                                                                                      // swappable
+void Screen::putChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned char flags) // NOLINT: fg/bg are
+                                                                                             // inherently swappable
 {
     if (m_pendingWrap) {
         m_cursorCol = 0;
@@ -304,14 +303,19 @@ void Screen::deleteLines(int count)
 
     auto &g = grid();
     std::move(g.begin() + m_cursorRow + lineCount, g.begin() + m_scrollBottom + 1, g.begin() + m_cursorRow);
-    std::fill(g.begin() + m_scrollBottom - lineCount + 1, g.begin() + m_scrollBottom + 1,
-              Line(m_cols, blankCell()));
+    std::fill(g.begin() + m_scrollBottom - lineCount + 1, g.begin() + m_scrollBottom + 1, Line(m_cols, blankCell()));
 
     if (!m_inAlt) {
-        std::move(m_mainWrapped.begin() + m_cursorRow + lineCount, m_mainWrapped.begin() + m_scrollBottom + 1,
-                  m_mainWrapped.begin() + m_cursorRow);
-        std::fill(m_mainWrapped.begin() + m_scrollBottom - lineCount + 1, m_mainWrapped.begin() + m_scrollBottom + 1,
-                  false);
+        std::move(
+            m_mainWrapped.begin() + m_cursorRow + lineCount,
+            m_mainWrapped.begin() + m_scrollBottom + 1,
+            m_mainWrapped.begin() + m_cursorRow
+        );
+        std::fill(
+            m_mainWrapped.begin() + m_scrollBottom - lineCount + 1,
+            m_mainWrapped.begin() + m_scrollBottom + 1,
+            false
+        );
     }
     m_pendingWrap = false;
 }
@@ -646,7 +650,7 @@ void Screen::reflow()
             }
         }
         if (logicalIndex == cursorLogical) {
-            cursorNewPhys = logicalStart + cursorLogicalCol / static_cast<size_t>(m_cols);
+            cursorNewPhys = logicalStart + (cursorLogicalCol / static_cast<size_t>(m_cols));
             cursorNewCol = cursorLogicalCol % static_cast<size_t>(m_cols);
         }
     }

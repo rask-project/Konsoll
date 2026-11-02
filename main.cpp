@@ -1,6 +1,9 @@
 #include <QGuiApplication>
 #include <QIcon>
 #include <QQmlApplicationEngine>
+#include <QTimer>
+
+#include "AppQuitGuard.h"
 
 int main(int argc, char *argv[])
 {
@@ -28,6 +31,7 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection
     );
     engine.loadFromModule("konsoll", "Main");
+    QTimer::singleShot(0, [] { konsoll::installQuitGuard(); });
 
     return QGuiApplication::exec();
 }

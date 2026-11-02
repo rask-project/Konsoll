@@ -104,7 +104,12 @@ Window {
         text: qsTr("Close Session")
         shortcut: "Ctrl+W"
         enabled: SessionManager.activeSession !== null
-        onTriggered: SessionManager.closeSession(SessionManager.activeSession)
+        onTriggered: {
+            if (SessionManager.activeSession.commandRunning && !CloseConfirmDialog.confirmClose()) {
+                return
+            }
+            SessionManager.closeSession(SessionManager.activeSession)
+        }
     }
 
     Action {
@@ -216,7 +221,13 @@ Window {
             MenuItem {
                 text: qsTr("Close Workspace")
                 enabled: SessionManager.activeWorkspaceIndex >= 0
-                onTriggered: SessionManager.closeWorkspace(SessionManager.workspaces[SessionManager.activeWorkspaceIndex])
+                onTriggered: {
+                    const workspace = SessionManager.workspaces[SessionManager.activeWorkspaceIndex]
+                    if (SessionManager.workspaceHasRunningCommand(workspace) && !CloseConfirmDialog.confirmClose()) {
+                        return
+                    }
+                    SessionManager.closeWorkspace(workspace)
+                }
             }
         }
 

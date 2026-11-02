@@ -73,7 +73,12 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
 
                             icon.name: "close"
-                            onClicked: SessionManager.closeSession(leafItem.session)
+                            onClicked: {
+                                if (leafItem.session.commandRunning && !CloseConfirmDialog.confirmClose()) {
+                                    return
+                                }
+                                SessionManager.closeSession(leafItem.session)
+                            }
                         }
 
                         Text {

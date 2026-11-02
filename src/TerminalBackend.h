@@ -5,8 +5,8 @@
 
 #include <QColor>
 #include <QObject>
-#include <QTimer>
 #include <QRegularExpression>
+#include <QTimer>
 #include <QUrl>
 #include <QVariantList>
 #include <QtQml>
@@ -34,6 +34,7 @@ class TerminalBackend : public QObject
     Q_PROPERTY(int highlightEndRow READ highlightEndRow NOTIFY highlightChanged)
     Q_PROPERTY(bool mouseTracking READ mouseTracking NOTIFY mouseTrackingChanged)
     Q_PROPERTY(bool mouseMotionTracking READ mouseMotionTracking NOTIFY mouseTrackingChanged)
+    Q_PROPERTY(bool commandRunning READ commandRunning NOTIFY commandRunningChanged)
     Q_PROPERTY(unsigned int backgroundColor READ backgroundColor NOTIFY colorSchemeChanged)
     Q_PROPERTY(unsigned int foregroundColor READ foregroundColor NOTIFY colorSchemeChanged)
 
@@ -52,7 +53,7 @@ public:
     Q_INVOKABLE void mouseMove(int button, int row, int col, int modifiers);
     Q_INVOKABLE void mouseWheel(bool up, int row, int col, int modifiers);
     Q_INVOKABLE QVariantMap linkAt(int row, int col) const;
-    Q_INVOKABLE bool openLinkAt(int row, int col);
+    Q_INVOKABLE bool openLinkAt(int row, int col) const;
 
     // Resize the terminal (cols x rows), driven by the QML view.
     Q_INVOKABLE void resize(int cols, int rows);
@@ -129,6 +130,7 @@ public:
     bool selectionActive() const { return m_selAnchor.line >= 0; }
     bool mouseTracking() const { return m_terminal && m_terminal->mouseTracking(); }
     bool mouseMotionTracking() const { return m_terminal && m_terminal->mouseMotionTracking(); }
+    bool commandRunning() const { return m_terminal && m_terminal->commandRunning(); }
     unsigned int backgroundColor() const { return m_defaultBg; }
     unsigned int foregroundColor() const { return m_defaultFg; }
 
@@ -143,6 +145,7 @@ signals:
     void selectionChanged();
     void highlightChanged();
     void mouseTrackingChanged();
+    void commandRunningChanged();
     void quitRequested();
     void commandFinished();
 
@@ -173,7 +176,11 @@ private:
         int col{0};
     };
 
-    struct SearchMatch { int line; int start; int end; };
+    struct SearchMatch {
+        int line;
+        int start;
+        int end;
+    };
 
     std::unique_ptr<PtyProcess> m_pty;
     std::unique_ptr<Terminal> m_terminal;

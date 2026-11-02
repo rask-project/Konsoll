@@ -7,8 +7,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
-#include <QUrl>
 #include <QProcess>
+#include <QUrl>
 #include <QtGui>
 
 #include <pwd.h>
@@ -244,6 +244,7 @@ void TerminalBackend::onData(const QByteArray &data)
 {
     const bool wasMouseTracking = mouseTracking();
     const bool wasMouseMotionTracking = mouseMotionTracking();
+    const bool wasCommandRunning = commandRunning();
     m_terminal->write(data);
     if (m_terminal->clipboardTextDirty()) {
         QGuiApplication::clipboard()->setText(m_terminal->clipboardText());
@@ -255,6 +256,9 @@ void TerminalBackend::onData(const QByteArray &data)
     }
     if (wasMouseTracking != mouseTracking() || wasMouseMotionTracking != mouseMotionTracking()) {
         emit mouseTrackingChanged();
+    }
+    if (wasCommandRunning != commandRunning()) {
+        emit commandRunningChanged();
     }
     if (m_terminal->keyboardProtocolQueryPending()) {
         m_pty->write("\x1b[?1u");
@@ -341,8 +345,7 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
     clearTextSelectionAndHighlight();
 
     // Typing while scrolled up snaps the view back to the live cursor.
-    const bool pageNavigation = key == static_cast<int>(Qt::Key_PageUp)
-        || key == static_cast<int>(Qt::Key_PageDown);
+    const bool pageNavigation = key == static_cast<int>(Qt::Key_PageUp) || key == static_cast<int>(Qt::Key_PageDown);
     if (!pageNavigation && m_terminal && m_terminal->screen().scrollOffset() > 0) {
         scrollToBottom();
     }
@@ -461,9 +464,11 @@ QVariantMap TerminalBackend::linkAt(int row, int col) const
             if (url.isLocalFile() && !QFileInfo::exists(url.toLocalFile())) {
                 return {};
             }
-            return {{QStringLiteral("target"), url.toString()},
-                    {QStringLiteral("start"), match.capturedStart()},
-                    {QStringLiteral("end"), match.capturedStart() + targetLength}};
+            return {
+                {QStringLiteral("target"), url.toString()},
+                {QStringLiteral("start"), match.capturedStart()},
+                {QStringLiteral("end"), match.capturedStart() + targetLength}
+            };
         }
 
         if (target.startsWith(QLatin1Char('~'))) {
@@ -475,14 +480,16 @@ QVariantMap TerminalBackend::linkAt(int row, int col) const
         if (!fileInfo.exists()) {
             return {};
         }
-        return {{QStringLiteral("target"), QUrl::fromLocalFile(fileInfo.absoluteFilePath()).toString()},
-                {QStringLiteral("start"), match.capturedStart()},
-                {QStringLiteral("end"), match.capturedStart() + targetLength}};
+        return {
+            {QStringLiteral("target"), QUrl::fromLocalFile(fileInfo.absoluteFilePath()).toString()},
+            {QStringLiteral("start"), match.capturedStart()},
+            {QStringLiteral("end"), match.capturedStart() + targetLength}
+        };
     }
     return {};
 }
 
-bool TerminalBackend::openLinkAt(int row, int col)
+bool TerminalBackend::openLinkAt(int row, int col) const
 {
     const QVariantMap link = linkAt(row, col);
     if (link.isEmpty()) {
@@ -492,9 +499,10 @@ bool TerminalBackend::openLinkAt(int row, int col)
     if (url.isLocalFile()) {
         const QFileInfo fileInfo(url.toLocalFile());
         if (fileInfo.isDir()) {
-            return QProcess::startDetached(QStringLiteral("/usr/bin/open"),
-                                          {QStringLiteral("-a"), QStringLiteral("Finder"),
-                                           fileInfo.absoluteFilePath()});
+            return QProcess::startDetached(
+                QStringLiteral("/usr/bin/open"),
+                {QStringLiteral("-a"), QStringLiteral("Finder"), fileInfo.absoluteFilePath()}
+            );
         }
     }
     return QDesktopServices::openUrl(url);
@@ -645,7 +653,9 @@ int TerminalBackend::search(const QString &query, bool regex)
             const Cell &cell = line.at(static_cast<std::size_t>(cellIndex));
             const char32_t cp = static_cast<char32_t>(cell.ch);
             const QString glyph = QString::fromUcs4(&cp, 1);
-            for (qsizetype unit = 0; unit < glyph.size(); ++unit) offsetToCell.append(cellIndex);
+            for (qsizetype unit = 0; unit < glyph.size(); ++unit) {
+                offsetToCell.append(cellIndex);
+            }
             text.append(glyph);
         }
         offsetToCell.append(static_cast<int>(line.size()));
@@ -655,7 +665,9 @@ int TerminalBackend::search(const QString &query, bool regex)
             if (match.capturedLength() > 0) {
                 const int start = offsetToCell.at(match.capturedStart());
                 const int end = offsetToCell.at(match.capturedStart() + match.capturedLength());
-                if (end > start) m_searchMatches.append({lineIndex, start, end});
+                if (end > start) {
+                    m_searchMatches.append({.line = lineIndex, .start = start, .end = end});
+                }
             }
         }
     }
@@ -671,7 +683,9 @@ int TerminalBackend::search(const QString &query, bool regex)
 
 int TerminalBackend::searchNext(bool backwards)
 {
-    if (m_searchMatches.isEmpty()) return 0;
+    if (m_searchMatches.isEmpty()) {
+        return 0;
+    }
     const int count = m_searchMatches.size();
     m_searchIndex = (m_searchIndex + (backwards ? count - 1 : 1)) % count;
     const auto &match = m_searchMatches.at(m_searchIndex);
@@ -695,14 +709,18 @@ void TerminalBackend::clearSearch()
 
 int TerminalBackend::searchRowLeft(int visibleRow) const
 {
-    if (m_searchIndex < 0 || m_searchIndex >= m_searchMatches.size()) return -1;
+    if (m_searchIndex < 0 || m_searchIndex >= m_searchMatches.size()) {
+        return -1;
+    }
     const auto &match = m_searchMatches.at(m_searchIndex);
     return match.line == visibleStart() + visibleRow ? match.start : -1;
 }
 
 int TerminalBackend::searchRowRight(int visibleRow) const
 {
-    if (m_searchIndex < 0 || m_searchIndex >= m_searchMatches.size()) return -1;
+    if (m_searchIndex < 0 || m_searchIndex >= m_searchMatches.size()) {
+        return -1;
+    }
     const auto &match = m_searchMatches.at(m_searchIndex);
     return match.line == visibleStart() + visibleRow ? match.end - 1 : -1;
 }
@@ -1058,19 +1076,24 @@ QString TerminalBackend::selectionText() const
         std::ranges::for_each(std::views::iota(m_highlightStart, m_highlightEnd + 1), [&](int line) {
             const Line &cells = screen.lineAt(line);
             const auto reversedCells = std::views::reverse(cells);
-            const auto lastContent = std::ranges::find_if(reversedCells, [](const Cell &cell) { return cell.ch != ' '; });
-            const int end = lastContent == reversedCells.end() ? -1 : static_cast<int>(std::distance(cells.begin(), lastContent.base())) - 1;
+            const auto lastContent =
+                std::ranges::find_if(reversedCells, [](const Cell &cell) { return cell.ch != ' '; });
+            const int end = lastContent == reversedCells.end()
+                                ? -1
+                                : static_cast<int>(std::distance(cells.begin(), lastContent.base())) - 1;
             std::ranges::for_each(std::views::iota(0, end + 1), [&](int col) {
                 const char32_t cp = static_cast<char32_t>(cells[col].ch);
                 text.append(QString::fromUcs4(&cp, 1));
             });
-            if (line < m_highlightEnd)
+            if (line < m_highlightEnd) {
                 text.append('\n');
+            }
         });
         return text;
     }
-    if (m_selAnchor.line < 0)
+    if (m_selAnchor.line < 0) {
         return {};
+    }
 
     const int top = std::min(m_selAnchor.line, m_selCurrent.line);
     const int bot = std::max(m_selAnchor.line, m_selCurrent.line);
@@ -1094,22 +1117,26 @@ QString TerminalBackend::selectionText() const
         first = std::min(first, static_cast<int>(cells.size()));
         end = std::max(first, std::min(end, static_cast<int>(cells.size())));
         const auto selectedCells = std::ranges::subrange(cells.begin() + first, cells.begin() + end);
-        const auto lastContent = std::ranges::find_last_if(selectedCells, [](const Cell &cell) { return cell.ch != ' '; });
-        end = lastContent.empty() ? first : first + static_cast<int>(std::distance(selectedCells.begin(), lastContent.end()));
+        const auto lastContent =
+            std::ranges::find_last_if(selectedCells, [](const Cell &cell) { return cell.ch != ' '; });
+        end = lastContent.empty() ? first
+                                  : first + static_cast<int>(std::distance(selectedCells.begin(), lastContent.end()));
         std::ranges::for_each(std::views::iota(first, end), [&](int col) {
             const char32_t cp = static_cast<char32_t>(cells[col].ch);
             text.append(QString::fromUcs4(&cp, 1));
         });
-        if (line < bot && !screen.isWrappedContinuation(line + 1))
+        if (line < bot && !screen.isWrappedContinuation(line + 1)) {
             text.append('\n');
+        }
     });
     return text;
 }
 
 QString TerminalBackend::bufferText() const
 {
-    if (!m_terminal)
+    if (!m_terminal) {
         return {};
+    }
     const Screen &screen = m_terminal->screen();
     QString text;
     const int totalLines = screen.totalLines();
@@ -1117,13 +1144,15 @@ QString TerminalBackend::bufferText() const
         const Line &cells = screen.lineAt(line);
         const auto reversedCells = std::views::reverse(cells);
         const auto lastContent = std::ranges::find_if(reversedCells, [](const Cell &cell) { return cell.ch != ' '; });
-        const int end = lastContent == reversedCells.end() ? 0 : static_cast<int>(std::distance(cells.begin(), lastContent.base()));
+        const int end =
+            lastContent == reversedCells.end() ? 0 : static_cast<int>(std::distance(cells.begin(), lastContent.base()));
         std::ranges::for_each(std::views::iota(0, end), [&](int col) {
             const char32_t cp = static_cast<char32_t>(cells[col].ch);
             text.append(QString::fromUcs4(&cp, 1));
         });
-        if (line + 1 < totalLines && !screen.isWrappedContinuation(line + 1))
+        if (line + 1 < totalLines && !screen.isWrappedContinuation(line + 1)) {
             text.append('\n');
+        }
     });
     return text;
 }
@@ -1131,8 +1160,9 @@ QString TerminalBackend::bufferText() const
 bool TerminalBackend::saveTextToFile(const QUrl &url, bool selectionOnly) const
 {
     QFile file(url.toLocalFile());
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return false;
+    }
     const QString content = selectionOnly ? selectionText() : bufferText();
     const QByteArray encoded = content.toUtf8();
     return file.write(encoded) == encoded.size();

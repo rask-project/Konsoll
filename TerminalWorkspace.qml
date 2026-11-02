@@ -30,7 +30,12 @@ Item {
         tabs: SessionManager.workspaces
         currentIndex: SessionManager.activeWorkspaceIndex
         onActivateRequested: index => SessionManager.setActiveWorkspace(index)
-        onCloseRequested: workspace => SessionManager.closeWorkspace(workspace)
+        onCloseRequested: workspace => {
+            if (SessionManager.workspaceHasRunningCommand(workspace) && !CloseConfirmDialog.confirmClose()) {
+                return
+            }
+            SessionManager.closeWorkspace(workspace)
+        }
         onReorderRequested: (fromIndex, toIndex) => SessionManager.moveWorkspace(fromIndex, toIndex)
         onAddRequested: SessionManager.addWorkspace()
     }
