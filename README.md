@@ -65,7 +65,9 @@ menu item copies its text. Other shells continue to run normally and retain
 single-line highlighting. This matches iTerm2's automatic integration for
 supported shells.
 
-## Features (MVP)
+## Features
+
+### Core terminal
 
 - Real PTY via `forkpty()` running your login shell
 - Default shell detection via `getpwuid_r` (fallback `/bin/zsh` → `/bin/sh`)
@@ -74,10 +76,28 @@ supported shells.
 - `Canvas2D` (GPU) rendering with ~60 fps coalescing
 - Keyboard input with IME / dead keys (pt-BR accents)
 - Window resize reflected into the PTY (`TIOCSWINSZ`)
-- 1000-line scrollback
+- Unlimited scrollback with reflow on resize
 - **iTerm2-style see-through window** — the whole window (content + title bar)
   is translucent, tinted with the terminal's background color at reduced
   alpha, so the desktop shows through while the terminal stays readable.
+
+### Tabs and split panes
+
+- Multiple tabs, each an independent shell session (`Cmd+T` / `Cmd+W`,
+  `Cmd+Tab` / `Cmd+Shift+Tab` to move through activation history)
+- Nested horizontal/vertical split panes (`Cmd+D` / `Cmd+Shift+D`), each
+  pane an independent session with its own title bar and close control
+
+### Interaction
+
+- Text selection (drag, double-click word, triple-click line, Select All)
+- Clipboard copy/paste (text to the PTY; images forwarded via `Ctrl+V` for
+  image-aware CLI apps), context menu, Clear Screen (`Cmd+L`) and
+  Clear Buffer (`Cmd+K`)
+- Scrollback navigation by wheel and scrollbar
+- Scrollback search (literal or regular expression, next/previous match)
+- Mouse reporting (DEC 1000/1002/1003, SGR 1006)
+- Native macOS menu bar (App / Shell / Edit) and About dialog
 
 ### Window translucency
 
@@ -86,13 +106,13 @@ The see-through look is driven by a configurable QML component:
 ```qml
 WindowTranslucency {
     window: appWindow
-    color: Backend.backgroundColor   // tint = terminal bg (uint ARGB)
+    color: SessionManager.activeSession.backgroundColor   // tint = terminal bg
     alpha: 0.85
 }
 ```
 
-- `color` — the tint color, as a `uint` ARGB value (0xAARRGGBB). Bound to
-  `Backend.backgroundColor` so it follows the terminal's background.
+- `color` — the tint color, as a `uint` ARGB value (0xAARRGGBB). Bound to the
+  active session's `backgroundColor` so it follows the terminal's background.
 - `alpha` — the see-through level (0.85 ≈ the accepted `opacity: 0.85` look).
 
 The native side is Objective-C++ (`src/MacOSTranslucency.mm`): it makes the
@@ -106,12 +126,20 @@ surface is transparent and the native tint shows through.
 konsoll/
 ├── CMakeLists.txt
 ├── main.cpp
-├── Main.qml                 # window + TerminalView + WindowTranslucency
-├── TerminalView.qml         # Canvas2D renderer + keyboard capture
+├── Main.qml                  # window, menu bar, shortcuts, translucency
+├── TerminalWorkspace.qml     # per-tab workspace (split tree) + tab strip
+├── TerminalPaneLayout.qml    # binary split layout for a workspace
+├── TerminalView.qml          # Canvas2D renderer + keyboard capture
+├── controls/                 # tab strip, menu, search bar, tool buttons
+├── shell-integration/        # OSC 133 snippets (zsh/bash/fish)
+├── resources/icons/          # SVG icon theme (add, arrows, close)
+├── assets/                   # app icon (icns/png)
 ├── docs/
-│   └── PLAN.md              # MVP scope, architecture, phases
+│   ├── PLAN.md               # MVP scope, architecture, phases
+│   └── RELEASE.md            # signing, notarization, packaging
 └── src/
-    ├── TerminalBackend.h/.cpp   # QML<->C++ bridge (QObject, signals, props)
+    ├── TerminalBackend.h/.cpp   # QML<->C++ bridge per session
+    ├── TerminalManager.h/.cpp   # owns one backend per tab/session
     ├── pty/
     │   └── PtyProcess.h/.cpp    # forkpty, read loop, resize, exit
     ├── term/
@@ -119,12 +147,15 @@ konsoll/
     │   ├── Terminal.h/.cpp      # ANSI parser + screen model
     │   └── Screen.h/.cpp        # grid, scrollback, cursor
     ├── MacOSTranslucency.h/.mm  # native NSWindow see-through (Obj-C++)
-    └── WindowTranslucency.h/.cpp# QML type: configurable window translucency
+    ├── WindowTranslucency.h/.cpp# QML type: configurable window translucency
+    └── AboutDialog.h/.mm       # native About panel (Obj-C++)
 ```
 
 ## Scope
 
 The MVP scope, architecture, and phases are defined in
-[`docs/PLAN.md`](docs/PLAN.md). Post-MVP features (tabs, splits, search,
-selection, mouse reporting) are in the PLAN backlog and intentionally out of
-scope for the MVP.
+[`docs/PLAN.md`](docs/PLAN.md). Tabs, split panes, selection/clipboard,
+scrollback search, mouse reporting, and OSC 133 shell integration are
+implemented on top of the MVP. The remaining post-MVP backlog (bracketed
+paste, color profiles/themes, grapheme clustering, Figma design-system
+integration, QML tests) is in PLAN §16.
