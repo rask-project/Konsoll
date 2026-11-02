@@ -15,6 +15,19 @@ Window {
     flags: Qt.Window | Qt.ExpandedClientAreaHint | Qt.NoTitleBarBackgroundHint
     color: "transparent"
 
+    function requestQuit() {
+        if ((SessionManager.sessionCount() > 1 || SessionManager.anySessionHasRunningCommand()) &&
+                !CloseConfirmDialog.confirmQuit()) {
+            return
+        }
+        Qt.quit()
+    }
+
+    onClosing: close => {
+        close.accepted = false
+        appWindow.requestQuit()
+    }
+
     Settings {
         id: appPreferences
 
@@ -189,6 +202,12 @@ Window {
             }
 
             MenuSeparator {}
+
+            MenuItem {
+                text: qsTr("Quit Konsoll")
+                shortcut: StandardKey.Quit
+                onTriggered: appWindow.requestQuit()
+            }
         }
 
         Menu {
