@@ -80,8 +80,8 @@ TabButton {
         radius: height / 2
         color: tab.active ? Qt.rgba(tab.systemAccent.r, tab.systemAccent.g, tab.systemAccent.b, 0.05) : Qt.rgba(systemPalette.window.r, systemPalette.window.g, systemPalette.window.b, 0.5)
 
+        border.color: tab.workspace && tab.workspace.alerting ? "#ffb020" : (tab.active ? Qt.rgba(tab.systemAccent.r, tab.systemAccent.g, tab.systemAccent.b, 0.8) : Qt.rgba(systemPalette.windowText.r, systemPalette.windowText.g, systemPalette.windowText.b, 0.05))
         border.width: 1
-        border.color: tab.active ? Qt.rgba(tab.systemAccent.r, tab.systemAccent.g, tab.systemAccent.b, 0.8) : Qt.rgba(systemPalette.windowText.r, systemPalette.windowText.g, systemPalette.windowText.b, 0.05)
     }
 
     contentItem: Row {
@@ -106,6 +106,12 @@ TabButton {
             onClicked: tab.closeRequested()
         }
 
+        Item {
+            visible: !closeButton.visible
+            width: parent.spacing
+            height: closeButton.height
+        }
+
         Text {
             id: tabLabel
 
@@ -121,14 +127,14 @@ TabButton {
             MouseArea {
                 id: dragArea
 
-                anchors.fill: parent
-                acceptedButtons: Qt.LeftButton
-                preventStealing: true
-
                 property real pressSceneX: 0
                 property real pressSceneY: 0
                 property bool movedBeforeHold: false
                 property bool holdActivated: false
+
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton
+                preventStealing: true
 
                 onPressed: mouse => {
                     const point = dragArea.mapToItem(null, mouse.x, mouse.y);

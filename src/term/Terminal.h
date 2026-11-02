@@ -47,6 +47,8 @@ public:
     const std::vector<CommandBlock> &commandBlocks() const { return m_commandBlocks; }
     int activeCommandStartLine() const { return m_commandStartLine; }
     void clearCommandBlocks();
+    bool commandFinished() const { return m_commandFinished; }
+    void clearCommandFinished() { m_commandFinished = false; }
 
     // Set when a full-screen erase (ESC[2J) is processed, so the backend can
     // drop any selection that now sits over blank lines.
@@ -106,6 +108,7 @@ private:
     bool m_currentDirectoryDirty = false;
     bool m_daPending = false;
     bool m_clearPending = false;
+    bool m_commandFinished = false;
     unsigned char m_dsrQuery = 0;
     unsigned char m_colorQuery = 0;
     unsigned char m_mouseModes = 0;

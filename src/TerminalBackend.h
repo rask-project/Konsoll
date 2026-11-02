@@ -140,6 +140,7 @@ signals:
     void highlightChanged();
     void mouseTrackingChanged();
     void quitRequested();
+    void commandFinished();
 
 private:
     void onData(const QByteArray &data);

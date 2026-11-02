@@ -242,6 +242,10 @@ void TerminalBackend::onData(const QByteArray &data)
     const bool wasMouseTracking = mouseTracking();
     const bool wasMouseMotionTracking = mouseMotionTracking();
     m_terminal->write(data);
+    if (m_terminal->commandFinished()) {
+        emit commandFinished();
+        m_terminal->clearCommandFinished();
+    }
     if (wasMouseTracking != mouseTracking() || wasMouseMotionTracking != mouseMotionTracking()) {
         emit mouseTrackingChanged();
     }

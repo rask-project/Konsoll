@@ -51,12 +51,15 @@ class TerminalWorkspaceModel final : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
+    Q_PROPERTY(bool alerting READ alerting NOTIFY alertingChanged)
     Q_PROPERTY(QObject *rootNode READ rootNode NOTIFY layoutChanged)
 
 public:
     TerminalWorkspaceModel(QString title, std::unique_ptr<TerminalLayoutNode> root);
 
     QString title() const;
+    bool alerting() const { return m_alerting; }
+    void setAlerting(bool value);
     QObject *rootNode() const { return m_root.get(); }
     std::unique_ptr<TerminalLayoutNode> &root() { return m_root; }
     TerminalBackend *lastActiveSession() const { return m_lastActiveSession; }
@@ -66,11 +69,13 @@ public:
 signals:
     void layoutChanged();
     void titleChanged();
+    void alertingChanged();
 
 private:
     std::unique_ptr<TerminalLayoutNode> m_root;
     TerminalBackend *m_lastActiveSession{};
     QString m_title;
+    bool m_alerting{};
 };
 
 class TerminalManager final : public QObject

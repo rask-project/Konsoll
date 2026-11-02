@@ -46,6 +46,13 @@ QString TerminalWorkspaceModel::title() const
     return directory.isEmpty() ? m_lastActiveSession->title() : directory;
 }
 
+void TerminalWorkspaceModel::setAlerting(bool value)
+{
+    if (m_alerting == value) return;
+    m_alerting = value;
+    emit alertingChanged();
+}
+
 void TerminalWorkspaceModel::setLastActiveSession(TerminalBackend *session)
 {
     if (m_lastActiveSession == session) {
@@ -144,6 +151,15 @@ TerminalBackend *TerminalManager::createSession()
     auto *sessionPtr = session.get();
     connect(sessionPtr, &TerminalBackend::processExited, this, [this, sessionPtr](int) {
         QTimer::singleShot(0, this, [this, sessionPtr]() { closeSession(sessionPtr); });
+    });
+    connect(sessionPtr, &TerminalBackend::commandFinished, this, [this, sessionPtr]() {
+        const auto workspace = std::ranges::find_if(m_workspaces, [this, sessionPtr](const auto &item) {
+            return findLeaf(item->root().get(), sessionPtr) != nullptr;
+        });
+        if (workspace != m_workspaces.end()) {
+            const int workspaceIndex = static_cast<int>(std::distance(m_workspaces.begin(), workspace));
+            (*workspace)->setAlerting(activeWorkspaceIndex() != workspaceIndex);
+        }
     });
     const auto notifyWorkspaceTitle = [this, sessionPtr]() {
         std::ranges::for_each(m_workspaces, [sessionPtr](const auto &workspace) {
@@ -296,6 +312,7 @@ void TerminalManager::setActiveWorkspace(int index)
         return;
     }
     auto *workspace = m_workspaces[static_cast<std::size_t>(index)].get();
+    workspace->setAlerting(false);
     TerminalBackend *session = workspace->lastActiveSession();
     if (!findLeaf(workspace->root().get(), session)) {
         session = firstSession(workspace->root().get());
@@ -389,6 +406,7 @@ void TerminalManager::setActiveSession(TerminalBackend *session, bool record)
 {
     std::ranges::for_each(m_workspaces, [this, session](const auto &workspace) {
         if (findLeaf(workspace->root().get(), session)) {
+            workspace->setAlerting(false);
             workspace->setLastActiveSession(session);
         }
     });

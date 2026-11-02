@@ -480,6 +480,9 @@ void Terminal::handleOsc(const QByteArray &body)
 
     if (body.startsWith("133;") && body.size() > 4) {
         handleCommandMark(body.at(4));
+        if (body.at(4) == 'D') {
+            m_commandFinished = true;
+        }
         return;
     }
 
