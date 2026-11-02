@@ -1,6 +1,9 @@
 #import <AppKit/AppKit.h>
 #import <objc/runtime.h>
 
+#include <array>
+#include <algorithm>
+
 #include <QDebug>
 #include "MacOSTranslucency.h"
 
@@ -76,20 +79,27 @@ void setNativeWindowMovable(WId winId, bool movable)
     }
 }
 
-void installEmptyWindowToolbar(WId winId)
+void installEmptyWindowToolbar(WId winId, bool visible)
 {
     NSWindow *const nsWindow = windowFromId(winId);
-    if (nsWindow == nil || objc_getAssociatedObject(nsWindow, &toolbarAssociationKey) != nil) {
+    if (nsWindow == nil) {
         return;
     }
 
-    NSToolbar *const toolbar = [[NSToolbar alloc] initWithIdentifier:@"KonsollEmptyToolbar"];
-    [toolbar setDisplayMode:NSToolbarDisplayModeIconOnly];
-    [toolbar setSizeMode:NSToolbarSizeModeRegular];
-    [toolbar setShowsBaselineSeparator:NO];
-    objc_setAssociatedObject(nsWindow, &toolbarAssociationKey, toolbar, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [nsWindow setToolbar:toolbar];
-    [toolbar setVisible:YES];
+    NSToolbar *toolbar = objc_getAssociatedObject(nsWindow, &toolbarAssociationKey);
+    if (toolbar == nil) {
+        toolbar = [[NSToolbar alloc] initWithIdentifier:@"KonsollEmptyToolbar"];
+        [toolbar setDisplayMode:NSToolbarDisplayModeIconOnly];
+        [toolbar setSizeMode:NSToolbarSizeModeRegular];
+        [toolbar setShowsBaselineSeparator:NO];
+        objc_setAssociatedObject(nsWindow, &toolbarAssociationKey, toolbar, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [nsWindow setToolbar:toolbar];
+    }
+    [toolbar setVisible:visible];
+
+    if (!visible) {
+        return;
+    }
 
     // QML uses the expanded client area for its own titlebar controls. Keep
     // the Qt content view above AppKit's toolbar view so it receives input.
@@ -97,5 +107,21 @@ void installEmptyWindowToolbar(WId winId)
     NSView *const parentView = [contentView superview];
     if (parentView != nil) {
         [parentView addSubview:contentView positioned:NSWindowAbove relativeTo:nil];
+
+        constexpr std::array buttonTypes{
+            NSWindowCloseButton,
+            NSWindowMiniaturizeButton,
+            NSWindowZoomButton,
+        };
+        std::ranges::for_each(buttonTypes, [nsWindow, parentView](NSWindowButton buttonType) {
+            NSButton *const button = [nsWindow standardWindowButton:buttonType];
+            NSView *buttonContainer = button;
+            while ([buttonContainer superview] != nil && [buttonContainer superview] != parentView) {
+                buttonContainer = [buttonContainer superview];
+            }
+            if ([buttonContainer superview] == parentView) {
+                [parentView addSubview:buttonContainer positioned:NSWindowAbove relativeTo:nil];
+            }
+        });
     }
 }

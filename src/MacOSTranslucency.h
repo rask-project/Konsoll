@@ -10,4 +10,4 @@
 void makeWindowTranslucent(WId winId, const QColor &color, qreal alpha);
 void setWindowBlurEnabled(WId winId, bool enabled, qreal alpha);
 void setNativeWindowMovable(WId winId, bool movable);
-void installEmptyWindowToolbar(WId winId);
+void installEmptyWindowToolbar(WId winId, bool visible);

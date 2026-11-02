@@ -340,6 +340,7 @@ Window {
         color: SessionManager.activeSession ? SessionManager.activeSession.backgroundColor : 0xff141414
         alpha: appPreferences.windowAlpha
         blurEnabled: appPreferences.blurEnabled
+        fullScreen: appWindow.visibility === Window.FullScreen
     }
 
     WindowScreen {

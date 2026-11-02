@@ -52,6 +52,16 @@ void WindowTranslucency::setBlurEnabled(bool enabled)
     apply();
 }
 
+void WindowTranslucency::setFullScreen(bool fullScreen)
+{
+    if (m_fullScreen == fullScreen) {
+        return;
+    }
+    m_fullScreen = fullScreen;
+    emit fullScreenChanged();
+    apply();
+}
+
 void WindowTranslucency::setWindowMovable(bool movable)
 {
     auto const *window = qobject_cast<QWindow *>(m_window);
@@ -70,7 +80,7 @@ void WindowTranslucency::apply() const
 
     makeWindowTranslucent(w->winId(), QColor::fromRgba(m_color), m_alpha);
     setWindowBlurEnabled(w->winId(), m_blurEnabled, m_alpha);
-    installEmptyWindowToolbar(w->winId());
+    installEmptyWindowToolbar(w->winId(), !m_fullScreen);
 }
 
 } // namespace konsoll
