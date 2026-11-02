@@ -2,8 +2,11 @@
 
 #include <QClipboard>
 #include <QColor>
+#include <QDesktopServices>
+#include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QProcess>
 #include <QtGui>
 
 #include <pwd.h>
@@ -390,6 +393,89 @@ void TerminalBackend::mouseMove(int button, int row, int col, int modifiers)
 void TerminalBackend::mouseWheel(bool up, int row, int col, int modifiers)
 {
     sendMouseReport(up ? 64 : 65, row, col, up ? 3 : 4, modifiers);
+}
+
+QVariantMap TerminalBackend::linkAt(int row, int col) const
+{
+    if (!m_terminal || row < 0 || row >= m_rows || col < 0 || col >= m_cols) {
+        return {};
+    }
+
+    const Screen &screen = m_terminal->screen();
+    const Line &cells = screen.lineAt(visibleStart() + row);
+    QString line;
+    std::ranges::for_each(std::views::iota(0, static_cast<int>(cells.size())), [&cells, &line](int index) {
+        const char32_t codePoint = static_cast<char32_t>(cells.at(static_cast<std::size_t>(index)).ch);
+        line.append(QString::fromUcs4(&codePoint, 1));
+    });
+
+    static const QRegularExpression linkPattern(
+        QStringLiteral(R"((?:https?|ftp|file)://[^\s<>"']+|mailto:[^\s<>"']+|www\.[^\s<>"']+|(?:~?/|\.\.?/)[^\s<>"']+)")
+    );
+    auto matches = linkPattern.globalMatch(line);
+    while (matches.hasNext()) {
+        const QRegularExpressionMatch match = matches.next();
+        if (col < match.capturedStart() || col >= match.capturedEnd()) {
+            continue;
+        }
+
+        QString target = match.captured();
+        while (!target.isEmpty() && QStringLiteral(".,;:!?) ]}").contains(target.back())) {
+            target.chop(1);
+        }
+        if (target.isEmpty()) {
+            return {};
+        }
+        const int targetLength = target.size();
+        if (col >= match.capturedStart() + targetLength) {
+            return {};
+        }
+
+        if (target.startsWith(QStringLiteral("www."), Qt::CaseInsensitive)) {
+            target.prepend(QStringLiteral("https://"));
+        }
+        const QUrl url(target);
+        if (url.isValid() && !url.scheme().isEmpty()) {
+            if (url.isLocalFile() && !QFileInfo::exists(url.toLocalFile())) {
+                return {};
+            }
+            return {{QStringLiteral("target"), url.toString()},
+                    {QStringLiteral("start"), match.capturedStart()},
+                    {QStringLiteral("end"), match.capturedStart() + targetLength}};
+        }
+
+        if (target.startsWith(QLatin1Char('~'))) {
+            target.replace(0, 1, QDir::homePath());
+        } else if (!QDir::isAbsolutePath(target)) {
+            target = QDir(m_currentDirectory).filePath(target);
+        }
+        const QFileInfo fileInfo(QDir::cleanPath(target));
+        if (!fileInfo.exists()) {
+            return {};
+        }
+        return {{QStringLiteral("target"), QUrl::fromLocalFile(fileInfo.absoluteFilePath()).toString()},
+                {QStringLiteral("start"), match.capturedStart()},
+                {QStringLiteral("end"), match.capturedStart() + targetLength}};
+    }
+    return {};
+}
+
+bool TerminalBackend::openLinkAt(int row, int col)
+{
+    const QVariantMap link = linkAt(row, col);
+    if (link.isEmpty()) {
+        return false;
+    }
+    const QUrl url(link.value(QStringLiteral("target")).toString());
+    if (url.isLocalFile()) {
+        const QFileInfo fileInfo(url.toLocalFile());
+        if (fileInfo.isDir()) {
+            return QProcess::startDetached(QStringLiteral("/usr/bin/open"),
+                                          {QStringLiteral("-a"), QStringLiteral("Finder"),
+                                           fileInfo.absoluteFilePath()});
+        }
+    }
+    return QDesktopServices::openUrl(url);
 }
 
 void TerminalBackend::sendMouseReport(int button, int row, int col, int event, int modifiers)

@@ -105,6 +105,12 @@ Item {
         readonly property var specialKeys: [Qt.Key_Return, Qt.Key_Enter, Qt.Key_Backspace, Qt.Key_Tab, Qt.Key_Escape, Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right, Qt.Key_Home, Qt.Key_End, Qt.Key_Delete, Qt.Key_PageUp, Qt.Key_PageDown]
 
         Keys.onPressed: event => {
+            let linkModifiers = event.modifiers;
+            if (event.key === Qt.Key_Control)
+                linkModifiers |= Qt.ControlModifier;
+            if (event.key === Qt.Key_Meta)
+                linkModifiers |= Qt.MetaModifier;
+            selectionArea.updateLinkHover(linkModifiers);
             if (!view.active) {
                 event.accepted = true;
                 return;
@@ -123,6 +129,15 @@ Item {
                     SessionManager.routeKeyPress(view.session, event.key, event.text, event.modifiers);
                 event.accepted = true;
             }
+        }
+
+        Keys.onReleased: event => {
+            let linkModifiers = event.modifiers;
+            if (event.key === Qt.Key_Control)
+                linkModifiers &= ~Qt.ControlModifier;
+            if (event.key === Qt.Key_Meta)
+                linkModifiers &= ~Qt.MetaModifier;
+            selectionArea.updateLinkHover(linkModifiers);
         }
 
         onTextChanged: {
@@ -291,6 +306,13 @@ Item {
                     ++bufCells;
                 }
                 view.drawRun(ctx, buf, start, y, selected ? selectedForeground : fg, flags, bufCells);
+                if (selectionArea._linkModifierDown && selectionArea._hoverRow === r &&
+                        selectionArea._hoverLinkStart >= 0 && selectionArea._hoverLinkEnd > selectionArea._hoverLinkStart) {
+                    const accent = appPalette.accent;
+                    ctx.fillStyle = Qt.rgba(accent.r, accent.g, accent.b, 1);
+                    ctx.fillRect(selectionArea._hoverLinkStart * cw, y + ch - 2,
+                                 (selectionArea._hoverLinkEnd - selectionArea._hoverLinkStart) * cw, 1);
+                }
             }
 
             // The cursor is at the live position (bottom of the main screen),
@@ -328,7 +350,8 @@ Item {
         id: selectionArea
 
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
-        hoverEnabled: view.session ? view.session.mouseMotionTracking : false
+        hoverEnabled: true
+        cursorShape: _linkModifierDown && _hoverRow >= 0 ? Qt.PointingHandCursor : Qt.IBeamCursor
 
         anchors.top: canvas.top
         anchors.left: canvas.left
@@ -362,6 +385,13 @@ Item {
         property bool _dragging: false
         property bool _cancelOnly: false
         property bool _activationClick: false
+        property bool _pointerInside: false
+        property bool _linkModifierDown: false
+        property int _hoverRow: -1
+        property int _hoverLinkStart: -1
+        property int _hoverLinkEnd: -1
+        property real _pointerX: 0
+        property real _pointerY: 0
         readonly property real _tapInterval: 350
 
         property int _pressRow: -1
@@ -369,6 +399,38 @@ Item {
         property real _pressX: 0
         property real _pressY: 0
         property int _pendingRow: -1
+
+        function updateLinkHover(modifiers) {
+            _linkModifierDown = (modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
+            refreshLinkHover();
+        }
+
+        function refreshLinkHover() {
+            const cell = _pointerInside ? cellAt(_pointerX, _pointerY) : [-1, -1];
+            let link = ({});
+            if (_linkModifierDown && view.session && cell[1] >= 0)
+                link = view.session.linkAt(cell[1], cell[0]);
+
+            const start = link && link.start !== undefined ? link.start : -1;
+            const end = link && link.end !== undefined ? link.end : -1;
+            const row = start >= 0 ? cell[1] : -1;
+            if (_hoverRow !== row || _hoverLinkStart !== start || _hoverLinkEnd !== end) {
+                _hoverRow = row;
+                _hoverLinkStart = start;
+                _hoverLinkEnd = end;
+                canvas.requestPaint();
+            }
+        }
+
+        onEntered: {
+            _pointerInside = true;
+            refreshLinkHover();
+        }
+
+        onExited: {
+            _pointerInside = false;
+            refreshLinkHover();
+        }
 
         Timer {
             id: singleClickTimer
@@ -396,6 +458,14 @@ Item {
                 SessionManager.activateSession(view.session);
                 mouse.accepted = true;
                 return;
+            }
+            if (mouse.button === Qt.LeftButton &&
+                    (mouse.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0) {
+                const cell = selectionArea.cellAt(mouse.x, mouse.y);
+                if (view.session.openLinkAt(cell[1], cell[0])) {
+                    mouse.accepted = true;
+                    return;
+                }
             }
             if (view.session.mouseTracking) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
@@ -434,6 +504,10 @@ Item {
         }
 
         onPositionChanged: mouse => {
+            selectionArea._pointerX = mouse.x;
+            selectionArea._pointerY = mouse.y;
+            selectionArea._pointerInside = true;
+            selectionArea.updateLinkHover(mouse.modifiers);
             if (selectionArea._activationClick)
                 return;
             if (view.session.mouseTracking && (mouse.buttons !== Qt.NoButton || view.session.mouseMotionTracking)) {

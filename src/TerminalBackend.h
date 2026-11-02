@@ -50,6 +50,8 @@ public:
     Q_INVOKABLE void mouseRelease(int button, int row, int col, int modifiers);
     Q_INVOKABLE void mouseMove(int button, int row, int col, int modifiers);
     Q_INVOKABLE void mouseWheel(bool up, int row, int col, int modifiers);
+    Q_INVOKABLE QVariantMap linkAt(int row, int col) const;
+    Q_INVOKABLE bool openLinkAt(int row, int col);
 
     // Resize the terminal (cols x rows), driven by the QML view.
     Q_INVOKABLE void resize(int cols, int rows);

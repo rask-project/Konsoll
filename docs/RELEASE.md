@@ -93,7 +93,7 @@ Use `ditto` to preserve the app bundle's macOS metadata:
 
 ```sh
 APP_BUNDLE="build/release/dist/konsoll.app"
-SUBMISSION_ZIP="build/release/Konsoll-1.1.0-arm64.zip"
+SUBMISSION_ZIP="build/release/Konsoll-1.2.0-arm64.zip"
 
 ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$SUBMISSION_ZIP"
 xcrun notarytool submit "$SUBMISSION_ZIP" \
@@ -127,7 +127,7 @@ ZIP files cannot be stapled directly. Recreate the final ZIP after stapling the
 app, then distribute this final archive:
 
 ```sh
-FINAL_ZIP="build/release/Konsoll-1.1.0-arm64-notarized.zip"
+FINAL_ZIP="build/release/Konsoll-1.2.0-arm64-notarized.zip"
 ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$FINAL_ZIP"
 ```
 
@@ -145,7 +145,7 @@ hdiutil create \
   -volname "Konsoll" \
   -srcfolder "$APP_BUNDLE" \
   -ov -format UDZO \
-  build/release/Konsoll-1.1.0-arm64.dmg
+  build/release/Konsoll-1.2.0-arm64.dmg
 ```
 
 If distributing the DMG, submit that DMG to `notarytool` as well, then run
