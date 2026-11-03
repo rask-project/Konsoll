@@ -8,8 +8,10 @@
 
 namespace konsoll {
 
-// Owns a pseudo-terminal running the user's shell. The master fd is read in
-// the GUI thread via a QSocketNotifier; writes go straight to the master fd.
+// Owns a pseudo-terminal running the user's shell. All descriptor and
+// child-process operations run in the owning thread (the session worker
+// thread): the master fd is read there via a QSocketNotifier and writes go
+// straight to the master fd from that thread.
 class PtyProcess : public QObject {
     Q_OBJECT
     Q_DISABLE_COPY_MOVE(PtyProcess)
@@ -23,7 +25,21 @@ public:
 
     void write(const QByteArray &data) const;
     void resize(int cols, int rows) const;
+    // Close the master descriptor (idempotent); the kernel sends SIGHUP to
+    // the slave's foreground process group.
+    void close();
+    // Send SIGHUP / SIGKILL to the shell's process group.
     void terminate() const;
+    void kill() const;
+    // Reap the child and return its exit code (-1 when there is no child or
+    // it was already reaped).
+    int waitForExit();
+    // Non-blocking reap; returns true once the child has been reaped.
+    bool tryReap();
+    bool hasExited() const { return m_pid < 0; }
+    // Pause / resume notifier-driven reads (output backpressure).
+    void pauseReading();
+    void resumeReading();
     bool hasForegroundProcess() const;
 
     int pid() const { return m_pid; }
@@ -31,6 +47,8 @@ public:
 signals:
     void dataReceived(const QByteArray &data);
     void processExited(int code);
+    // The master read side reached EOF (the child's write side is closed).
+    void eofReached();
 
 private:
     void onReadable();

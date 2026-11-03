@@ -1,6 +1,9 @@
 # Per-Session Threading Plan
 
-> Status: proposed architecture; not implemented yet.
+> Status: complete (§4–§8.8). Thread-safe process launch (§4), per-session
+> worker threads, bounded shutdown, lifecycle states, and output
+> backpressure (§3, §5–§8) are implemented; multi-session validation
+> (§8.8) is automated by the headless `--selftest` mode.
 > Applies to Konsoll's Qt 6.12 / C++23 macOS implementation.
 
 ## 1. Purpose
@@ -14,17 +17,26 @@ GUI thread. That is a separate possible optimization described in §9.
 
 ## 2. Current implementation
 
-`TerminalManager` creates a `TerminalBackend` per session and starts it on the
-GUI thread. `TerminalBackend::start()` creates a `PtyProcess` and calls
-`forkpty()` synchronously. `PtyProcess` then creates a `QSocketNotifier` in
-the same thread. Its read callback emits data to `TerminalBackend::onData()`,
-which parses the bytes and updates the terminal screen model on the GUI
-thread. Input, resize, and protocol replies also reach the PTY from that
-thread.
+`TerminalManager` owns one `TerminalBackend` per session. Each backend owns
+one `QThread` and `PtyWorker`; the worker creates and owns that session's
+`PtyProcess`, master descriptor, and `QSocketNotifier` after it has moved to
+the session thread. Start, input, resize, and shutdown requests are queued to
+the worker. PTY output and lifecycle signals return to the backend on the GUI
+thread, where `Terminal` parses and stores the screen state.
 
-The notifier uses a non-blocking master descriptor, but this does not move
-work to another thread. In particular, reading and parsing a large amount of
-output can still consume GUI event-loop time.
+The worker applies output backpressure at 1 MiB outstanding GUI data and
+resumes reads below 256 KiB. Session close waits at most three seconds for
+the worker thread in normal session-management paths. If it is still running,
+the backend and worker remain owned; the manager retries removal after the
+thread finishes. During final manager destruction, shutdown is retried until
+threads stop so no running `QThread` or worker is destroyed. A permanently
+stuck worker can therefore still delay application shutdown. Parsing and
+screen updates remain on the GUI thread and may still limit responsiveness
+under very heavy output.
+
+If PTY startup fails, the backend logs and emits `startFailed`; the manager
+closes that session. This failure is not currently presented in a QML error
+dialog.
 
 ## 3. Proposed ownership model
 
@@ -68,30 +80,37 @@ thread. Do not call `PtyProcess` methods directly across thread boundaries.
 Use queued signals/slots (or an equivalent queued invocation mechanism) for
 all cross-thread commands and results.
 
-## 4. Thread-safe process launch is a prerequisite
+## 4. Thread-safe process launch (resolved)
 
 The existing `PtyProcess::start()` calls `forkpty()` and performs work in
-the child before `execvp()`, including `tcgetattr()`, `tcsetattr()`,
-`chdir()`, `setenv()`, and `execvp()`. Once the application has multiple
-threads, only async-signal-safe operations may safely run in the child after
-`fork()` and before `exec()`. Other calls can deadlock on locks inherited
-from threads that do not exist in the child.
+the child before `exec()`: `tcgetattr()`, `tcsetattr()`, `chdir()`, and
+`setenv()`. Once the application has multiple threads, only
+async-signal-safe operations may safely run in the child after `fork()`
+and before `exec()`; other calls can deadlock on locks inherited from
+threads that do not exist in the child.
 
-Therefore, moving `forkpty()` into a `QThread` is not by itself a safe
-solution. Before enabling per-session threads, choose and validate a launch
-strategy that is safe when the parent process is multithreaded. Options to
-investigate include:
+**Decision: keep `forkpty()` and make the child strictly
+async-signal-safe.** Of the child's pre-exec calls, only `setenv()` is not
+async-signal-safe on macOS (it allocates). `tcgetattr`/`tcsetattr`, `chdir`,
+and the `exec*` family are async-signal-safe. So the environment is now
+built in the parent (before `fork()`) from
+`QProcessEnvironment::systemEnvironment()` plus the same overrides
+(`TERM`, `COLUMNS`, `LINES`, `PATH`, and the shell-integration
+variables), and passed to the child via `execve()` instead of `setenv()` +
+`execvp()`. The shell path is always absolute (from
+`detectDefaultShell`), so `execve` needs no `PATH` search.
 
-1. A small helper process that owns PTY creation and shell launch.
-2. A `posix_spawn`-based setup that correctly establishes the controlling
-   terminal, session, process group, file descriptors, and required terminal
-   settings on macOS.
-3. Another platform-supported launch mechanism with equivalent guarantees.
+This keeps everything `forkpty()` establishes (new session, controlling
+terminal, fd duplication, initial window size) and only changes how the
+environment reaches the child. Login-shell behavior (`argv[0] = "-<name>"`),
+environment variables (each `KEY=value` entry), shell integration, working
+directory, window size, signal delivery, and child reaping are preserved.
 
-The choice must preserve login-shell behavior, environment variables, shell
-integration, working directory, window size, signal delivery, and child
-reaping. Do not ship the threaded design until this launch path has been
-validated on supported macOS versions.
+**Validation:** the change compiles, and the app spawns its shell as a
+login shell (`-zsh`) through the new `execve` path. The environment
+construction is a faithful port of the previous `setenv` behavior. Full
+multi-version PTY-semantics validation (env values, integration, signals,
+reaping) is part of the final multi-session validation (§8).
 
 ## 5. Cross-thread protocol
 
@@ -140,17 +159,19 @@ The intended sequence is:
 1. Create the backend, worker, and thread with clear ownership.
 2. Move the worker to its thread and start that thread's event loop.
 3. Request PTY startup through a queued command.
-4. Mark the session running only after startup succeeds; propagate startup
-   errors to the backend and UI/logging path.
+4. Mark the session running only after startup succeeds; report startup
+   errors to the backend, log them, and close the failed session.
 5. On close, stop accepting new input, request worker shutdown, and let the
    worker close the notifier and descriptor and terminate/reap the child.
-6. On shutdown completion, stop and join the thread, then destroy the worker
-   and backend in an order that cannot leave queued callbacks pointing at
-   deleted objects.
+6. On shutdown completion, stop and join the thread before destroying the
+   worker. If the bounded join expires, retain both objects and retry removal
+   when the thread finishes rather than destroying a running worker.
 
-Shutdown must not wait indefinitely on the GUI thread. Define a bounded
-graceful-shutdown period, process-group signaling policy (including
+Normal session shutdown must use a bounded wait on the GUI thread. Define a
+bounded graceful-shutdown period, process-group signaling policy (including
 `SIGHUP`/`SIGKILL` escalation where needed), and final child-reaping path.
+Final application destruction may wait for a stuck worker because Qt does
+not provide a safe way to kill a thread that is still executing.
 The exact policy should preserve the current behavior of closing the shell
 and its foreground process group. Handle races among natural process exit,
 explicit session close, app shutdown, and pending output signals so exit and
@@ -210,8 +231,10 @@ redesign. Do not share mutable `Terminal` or `Screen` state between threads.
 - Closing one session leaves other sessions and their shells running.
 - Natural exit, explicit close, and application shutdown release notifier,
   descriptor, thread, and child-process resources exactly once.
-- Startup and shutdown failures are observable and do not leave orphaned
-  child processes or join the GUI thread indefinitely.
+- Startup failures are logged and the failed session is closed. Ordinary
+  session close uses a bounded join; a worker that never returns can still
+  delay final application destruction because forcibly terminating a thread
+  would risk corrupting process and Qt state.
 - The process-launch strategy is verified to be safe with a multithreaded
   parent process on supported macOS versions.
 

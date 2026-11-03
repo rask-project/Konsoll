@@ -1,26 +1,40 @@
 #pragma once
 
-#include "pty/PtyProcess.h"
+#include "pty/PtyWorker.h"
 #include "term/Terminal.h"
 
 #include <QColor>
 #include <QObject>
 #include <QRegularExpression>
+#include <QThread>
 #include <QTimer>
 #include <QUrl>
 #include <QVariantList>
 #include <QtQml>
 
+#include <cstdint>
 #include <memory>
 
 namespace konsoll
 {
 
-// The QML<->C++ bridge. Owns the PTY and the Terminal (screen model), feeds
-// parsed output, coalesces repaints to ~60fps, and exposes a snapshot to QML.
+// The QML<->C++ bridge. Owns the session worker (PTY) and the Terminal
+// (screen model), feeds parsed output, coalesces repaints to ~60fps, and
+// exposes a snapshot to QML.
 class TerminalBackend : public QObject
 {
     Q_OBJECT
+
+    // Session lifecycle (docs/SESSION-THREADING-PLAN.md §7).
+    enum class SessionState : std::uint8_t
+    {
+        Created,
+        Starting,
+        Running,
+        Failed,
+        Stopping,
+        Stopped
+    };
 
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
     Q_PROPERTY(QString currentDirectory READ currentDirectory NOTIFY currentDirectoryChanged)
@@ -40,9 +54,13 @@ class TerminalBackend : public QObject
 
 public:
     explicit TerminalBackend(QObject *parent = nullptr);
+    ~TerminalBackend();
 
     // Start the terminal with the detected default shell.
     Q_INVOKABLE void start(const QString &workingDirectory = {});
+    // Request session shutdown. Returns false if the worker thread has not
+    // stopped within the bounded wait; objects remain alive until it does.
+    bool close();
     Q_INVOKABLE void setSystemColors(const QColor &background, const QColor &foreground);
 
     // Input from QML.
@@ -131,7 +149,7 @@ public:
     bool mouseTracking() const { return m_terminal && m_terminal->mouseTracking(); }
     bool mouseMotionTracking() const { return m_terminal && m_terminal->mouseMotionTracking(); }
     bool commandRunning() const { return m_terminal && m_terminal->commandRunning(); }
-    bool hasForegroundProcess() const { return m_pty && m_pty->hasForegroundProcess(); }
+    bool hasForegroundProcess() const { return m_hasForeground; }
     unsigned int backgroundColor() const { return m_defaultBg; }
     unsigned int foregroundColor() const { return m_defaultFg; }
 
@@ -141,6 +159,8 @@ signals:
     void currentDirectoryChanged();
     void colorSchemeChanged();
     void processExited(int code);
+    void startFailed(const QString &error);
+    void workerThreadStopped();
     void sizeChanged();
     void scrollOffsetChanged();
     void selectionChanged();
@@ -152,7 +172,11 @@ signals:
 
 private:
     void onData(const QByteArray &data);
+    void onStarted();
     void onExited(int code);
+    void onStartFailed(const QString &error);
+    void onWorkerThreadStopped();
+    void onForegroundChanged(bool hasForeground);
     void onFrameTimer();
     void scheduleFrame();
     void checkScrollOffsetChanged();
@@ -165,6 +189,10 @@ private:
     void editorShortcuts(int key);
     void clearTextSelectionAndHighlight();
     void sendMouseReport(int button, int row, int col, int event, int modifiers);
+    // Route PTY I/O to the session worker via a queued call (never touch the
+    // master descriptor from this thread).
+    void writeToPty(const QByteArray &data);
+    void resizePty(int columns, int rows);
 
     static QString detectDefaultShell();
     static QRgb resolveColor(unsigned int encoded, int defaultColor);
@@ -183,7 +211,8 @@ private:
         int end;
     };
 
-    std::unique_ptr<PtyProcess> m_pty;
+    std::unique_ptr<QThread> m_thread;
+    std::unique_ptr<PtyWorker> m_worker;
     std::unique_ptr<Terminal> m_terminal;
     QVector<SearchMatch> m_searchMatches;
 
@@ -201,6 +230,8 @@ private:
 
     unsigned int m_defaultFg{0xffe0e0e0};
     unsigned int m_defaultBg{0xff141414};
+    bool m_hasForeground{false};
+    SessionState m_state{SessionState::Created};
 };
 
 } // namespace konsoll

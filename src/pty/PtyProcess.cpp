@@ -5,6 +5,7 @@
 #include <QDebug>
 #include <QFileInfo>
 #include <QLoggingCategory>
+#include <QProcessEnvironment>
 #include <QSaveFile>
 #include <QStandardPaths>
 
@@ -180,6 +181,47 @@ bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QStri
     std::ranges::transform(shellArgs, std::back_inserter(argv), [](QByteArray &arg) { return arg.data(); });
     argv.push_back(nullptr);
 
+    // Build the full environment in the parent (before fork) so the child runs
+    // only async-signal-safe calls between fork() and exec(). setenv()
+    // allocates and would deadlock on a heap lock inherited from another
+    // thread once the app is multithreaded; execvpe() sets the environment
+    // atomically at exec time instead.
+    QProcessEnvironment currentEnvironment = QProcessEnvironment::systemEnvironment();
+    std::vector<QByteArray> envp;
+    const QStringList environmentKeys = currentEnvironment.keys();
+    for (const QString &key : environmentKeys) {
+        envp.push_back(key.toLocal8Bit() + '=' + currentEnvironment.value(key).toLocal8Bit());
+    }
+    const auto setEnvironmentVariable = [&envp](const char *key, const QByteArray &value) {
+        const QByteArray keyBytes = key;
+        const QByteArray prefix = keyBytes + '=';
+        std::vector<QByteArray> remaining;
+        remaining.reserve(envp.size());
+        for (const auto &entry : envp) {
+            if (!entry.startsWith(prefix)) {
+                remaining.push_back(entry);
+            }
+        }
+        envp = std::move(remaining);
+        envp.push_back(keyBytes + '=' + value);
+    };
+    setEnvironmentVariable("TERM", "xterm-256color");
+    setEnvironmentVariable("COLUMNS", columns);
+    setEnvironmentVariable("LINES", lines);
+    setEnvironmentVariable("PATH", path);
+    if (!integrationFile.isEmpty()) {
+        setEnvironmentVariable("KONSOLL_SHELL_INTEGRATION", integrationPath);
+        if (isZsh) {
+            setEnvironmentVariable("KONSOLL_USER_ZDOTDIR", originalStartupDir);
+            setEnvironmentVariable("ZDOTDIR", startupPath);
+        } else if (isBash) {
+            setEnvironmentVariable("KONSOLL_ORIGINAL_HOME", originalHome);
+            setEnvironmentVariable("HOME", startupPath);
+        } else if (isFish) {
+            setEnvironmentVariable("KONSOLL_FISH_INTEGRATION", integrationPath);
+        }
+    }
+
     int master = 0;
     // Let forkpty configure the slave's normal terminal defaults. Passing a
     // zero-initialized termios here disables canonical input and echo.
@@ -204,25 +246,15 @@ bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QStri
             && !homePath.isEmpty()) {
             ::chdir(homePath.constData());
         }
-        ::setenv("TERM", "xterm-256color", 1);
-        ::setenv("COLUMNS", columns.constData(), 1);
-        ::setenv("LINES", lines.constData(), 1);
-        ::setenv("PATH", path.constData(), 1);
-
-        if (!integrationFile.isEmpty()) {
-            ::setenv("KONSOLL_SHELL_INTEGRATION", integrationPath.constData(), 1);
-            if (isZsh) {
-                ::setenv("KONSOLL_USER_ZDOTDIR", originalStartupDir.constData(), 1);
-                ::setenv("ZDOTDIR", startupPath.constData(), 1);
-            } else if (isBash) {
-                ::setenv("KONSOLL_ORIGINAL_HOME", originalHome.constData(), 1);
-                ::setenv("HOME", startupPath.constData(), 1);
-            } else if (isFish) {
-                ::setenv("KONSOLL_FISH_INTEGRATION", integrationPath.constData(), 1);
-            }
-        }
-
-        ::execvp(shellBytes.constData(), argv.data());
+        // The environment was built in the parent; pass it through execve so
+        // the child runs only async-signal-safe calls (tcgetattr, tcsetattr,
+        // chdir, execve) between fork() and exec(). The shell path is always
+        // absolute (from detectDefaultShell), so execve needs no PATH search.
+        std::vector<char *> envPtrs;
+        envPtrs.reserve(envp.size() + 1);
+        std::ranges::transform(envp, std::back_inserter(envPtrs), [](QByteArray &entry) { return entry.data(); });
+        envPtrs.push_back(nullptr);
+        ::execve(shellBytes.constData(), argv.data(), envPtrs.data());
         ::_exit(127);
     }
 
@@ -284,6 +316,68 @@ void PtyProcess::terminate() const
     }
 }
 
+void PtyProcess::kill() const
+{
+    if (m_pid > 0) {
+        const pid_t pid = static_cast<pid_t>(m_pid);
+        if (::kill(-pid, SIGKILL) < 0) {
+            ::kill(pid, SIGKILL);
+        }
+    }
+}
+
+int PtyProcess::waitForExit()
+{
+    if (m_pid <= 0) {
+        return -1;
+    }
+    int status = 0;
+    const pid_t pid = static_cast<pid_t>(m_pid);
+    pid_t result = 0;
+    do {
+        result = ::waitpid(pid, &status, 0);
+    } while (result < 0 && errno == EINTR);
+    m_pid = -1;
+    return (result > 0 && WIFEXITED(status)) ? WEXITSTATUS(status) : -1;
+}
+
+bool PtyProcess::tryReap()
+{
+    if (m_pid <= 0) {
+        return true;
+    }
+    int status = 0;
+    const pid_t pid = static_cast<pid_t>(m_pid);
+    pid_t result = ::waitpid(pid, &status, WNOHANG);
+    while (result < 0 && errno == EINTR) {
+        result = ::waitpid(pid, &status, WNOHANG);
+    }
+    if (result > 0) {
+        m_pid = -1;
+        return true;
+    }
+    return false;
+}
+
+void PtyProcess::close()
+{
+    closeMaster();
+}
+
+void PtyProcess::pauseReading()
+{
+    if (m_notifier) {
+        m_notifier->setEnabled(false);
+    }
+}
+
+void PtyProcess::resumeReading()
+{
+    if (m_notifier) {
+        m_notifier->setEnabled(true);
+    }
+}
+
 bool PtyProcess::hasForegroundProcess() const
 {
     if (m_masterFd < 0 || m_pid <= 0) {
@@ -319,16 +413,11 @@ void PtyProcess::onReadable()
     }
 
     if (eof) {
-        int status = 0;
-        const pid_t pid = static_cast<pid_t>(m_pid);
-        pid_t result = 0;
-        do {
-            result = ::waitpid(pid, &status, 0);
-        } while (result < 0 && errno == EINTR);
-        m_pid = -1;
-        const int code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+        // The child's write side is closed. Close the descriptor and let the
+        // worker reap the process (eofReached), so no blocking waitpid runs
+        // in the read path.
         closeMaster();
-        emit processExited(code);
+        emit eofReached();
     }
 }
 

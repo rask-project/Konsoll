@@ -93,7 +93,7 @@ Search, selection/clipboard, and mouse reporting are already implemented (see
 ├───────────────────────────────────────────────────────────┤
 │  PtyProcess                                              │
 │   • forkpty() → master fd + child pid                     │
-│   • read thread (QSocketNotifier) → bytes                 │
+│   • worker thread (QSocketNotifier) → bytes               │
 │   • TIOCSWINSZ on resize; read()==0 → process exit        │
 └──────────────────────┬────────────────────────────────────┘
                        │ slave pty
@@ -153,8 +153,9 @@ Rules:
   (`<util.h>`). Atomic — avoids the `openpty` + `fork` manual race.
 - **Child:** `execvp(shell, {"-zsh", nullptr})` with `TERM`/`COLUMNS`/
   `LINES` in the environment.
-- **Read:** dedicated thread with a `QSocketNotifier` (READ) on the master
-  fd; read buffer → `Terminal::write(bytes)` → marks the screen dirty.
+- **Read:** per-session worker thread with a `QSocketNotifier` (READ) on
+  the master fd; read buffer → `Terminal::write(bytes)` → marks the
+  screen dirty.
 - **Write:** `write(masterFd, data)` directly (called from QML).
 - **Resize:** `ioctl(masterFd, TIOCSWINSZ, &winsize)` + resize the screen
   model. The child gets `SIGWINCH` automatically.
@@ -194,7 +195,7 @@ Screen model:
 - System monospace font: `SF Mono` (fallback `Menlo`), configurable size;
   `letterSpacing` 0.
 - **Coalescing:** `TerminalBackend` emits `frameReady()` at most every
-  16 ms (QTimer in the read thread's event loop) — QML only repaints when
+  16 ms (QTimer in the GUI thread's event loop) — QML only repaints when
   the screen is dirty.
 - Cursor: rect/caret drawn on the canvas; blink via `PropertyAnimation`
   optional (MVP: solid cursor).

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.21.1)
 set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "macOS target architecture")
 set(CMAKE_OSX_DEPLOYMENT_TARGET "14.4" CACHE STRING "Minimum supported macOS version")
 
-project(RaskKonsoll VERSION 1.9.0 LANGUAGES CXX OBJCXX)
+project(RaskKonsoll VERSION 2.0.0 LANGUAGES CXX OBJCXX)
 
 execute_process(
     COMMAND git rev-parse --short=7 HEAD
@@ -74,6 +74,10 @@ qt_add_qml_module(konsoll
         src/TerminalManager.h
         src/pty/PtyProcess.cpp
         src/pty/PtyProcess.h
+        src/pty/PtyWorker.cpp
+        src/pty/PtyWorker.h
+        src/selftest.cpp
+        src/selftest.h
         src/term/Cell.h
         src/term/Screen.cpp
         src/term/Screen.h
@@ -117,7 +121,7 @@ set_target_properties(konsoll PROPERTIES
 # <TerminalBackend.h>, so src/ must be on the include path.
 target_include_directories(konsoll PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(konsoll PRIVATE
-    KONSOLL_VERSION="${PROJECT_VERSION}"
+    KONSOLL_VERSION="${PROJECT_VERSION} Beta"
     KONSOLL_GIT_COMMIT="${KONSOLL_GIT_COMMIT}"
 )
 

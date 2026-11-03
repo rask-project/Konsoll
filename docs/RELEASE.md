@@ -14,9 +14,11 @@ creates an archive for distribution.
 - For notarization: an app-specific password for an Apple ID associated with
   the developer team. An App Store Connect API key can be used instead.
 
-Konsoll currently targets arm64 and macOS 14.4 or later. `CMakeLists.txt`
-contains the bundle identifier and app version. Update the version there before
-building a release. Do not change the bundle identifier between releases.
+Konsoll currently targets arm64 and macOS 14.4 or later. This branch is the
+2.0.0 beta line; the app displays `2.0.0 Beta`, while the macOS bundle version
+remains the numeric `2.0.0`. `CMakeLists.txt` contains the bundle identifier
+and app version. Update the version there before building another release.
+Do not change the bundle identifier between releases.
 
 ## 1. Configure and build the signed bundle
 
@@ -93,7 +95,7 @@ Use `ditto` to preserve the app bundle's macOS metadata:
 
 ```sh
 APP_BUNDLE="build/release/dist/konsoll.app"
-SUBMISSION_ZIP="build/release/Konsoll-1.9.0-arm64.zip"
+SUBMISSION_ZIP="build/release/Konsoll-2.0.0-beta.1-arm64.zip"
 
 ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$SUBMISSION_ZIP"
 xcrun notarytool submit "$SUBMISSION_ZIP" \
@@ -127,7 +129,7 @@ ZIP files cannot be stapled directly. Recreate the final ZIP after stapling the
 app, then distribute this final archive:
 
 ```sh
-FINAL_ZIP="build/release/Konsoll-1.9.0-arm64-notarized.zip"
+FINAL_ZIP="build/release/Konsoll-2.0.0-beta.1-arm64-notarized.zip"
 ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$FINAL_ZIP"
 ```
 
@@ -145,7 +147,7 @@ hdiutil create \
   -volname "Konsoll" \
   -srcfolder "$APP_BUNDLE" \
   -ov -format UDZO \
-  build/release/Konsoll-1.9.0-arm64.dmg
+  build/release/Konsoll-2.0.0-beta.1-arm64.dmg
 ```
 
 If distributing the DMG, submit that DMG to `notarytool` as well, then run

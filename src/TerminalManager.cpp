@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QKeyEvent>
+#include <QThread>
 #include <QTimer>
 
 #include <algorithm>
@@ -91,6 +92,11 @@ TerminalManager::TerminalManager(QObject *parent) : QObject(parent)
 
 TerminalManager::~TerminalManager()
 {
+    std::ranges::for_each(m_sessions, [](const auto &session) {
+        while (!session->close()) {
+            QThread::msleep(25);
+        }
+    });
     if (s_instance == this) {
         s_instance = nullptr;
     }
@@ -173,6 +179,11 @@ TerminalBackend *TerminalManager::createSession()
     connect(sessionPtr, &TerminalBackend::processExited, this, [this, sessionPtr](int) {
         QTimer::singleShot(0, this, [this, sessionPtr]() { closeSession(sessionPtr); });
     });
+    const auto scheduleClose = [this, sessionPtr]() {
+        QTimer::singleShot(0, this, [this, sessionPtr]() { closeSession(sessionPtr); });
+    };
+    connect(sessionPtr, &TerminalBackend::startFailed, this, [scheduleClose](const QString &) { scheduleClose(); });
+    connect(sessionPtr, &TerminalBackend::workerThreadStopped, this, scheduleClose);
     connect(sessionPtr, &TerminalBackend::commandFinished, this, [this, sessionPtr]() {
         const auto workspace = std::ranges::find_if(m_workspaces, [this, sessionPtr](const auto &item) {
             return findLeaf(item->root().get(), sessionPtr) != nullptr;
@@ -250,6 +261,15 @@ void TerminalManager::closeWorkspace(QObject *workspaceObject)
         }
     });
     const bool wasActive = std::ranges::find(removedSessions, m_activeSession) != removedSessions.end();
+    bool allStopped = true;
+    std::ranges::for_each(removedSessions, [&allStopped](TerminalBackend *session) {
+        if (!session->close()) {
+            allStopped = false;
+        }
+    });
+    if (!allStopped) {
+        return;
+    }
     for (TerminalBackend *session : removedSessions) {
         pruneSession(session);
         removeSessionFromLayouts(session);
@@ -309,13 +329,21 @@ int TerminalManager::sessionCount() const
 
 void TerminalManager::closeSession(QObject *sessionObject)
 {
-    auto *session = qobject_cast<TerminalBackend *>(sessionObject);
-    const auto it =
-        std::ranges::find_if(m_sessions, [session](const auto &candidate) { return candidate.get() == session; });
-    if ((session == nullptr) || it == m_sessions.end()) {
+    // Match by raw pointer without qobject_cast: `sessionObject` may be a raw
+    // pointer captured by an earlier queued callback (processExited →
+    // closeSession), so it can dangle after the session is destroyed, and
+    // qobject_cast would read freed memory.
+    const auto it = std::ranges::find_if(m_sessions, [sessionObject](const auto &candidate) {
+        return candidate.get() == sessionObject;
+    });
+    if (it == m_sessions.end()) {
         return;
     }
+    auto *session = it->get();
     const bool wasActive = m_activeSession == session;
+    if (!session->close()) {
+        return;
+    }
     pruneSession(session);
     removeSessionFromLayouts(session);
     std::ranges::for_each(m_workspaces, [this, session](const auto &workspace) {

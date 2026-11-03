@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QMetaObject>
 #include <QProcess>
 #include <QUrl>
 #include <QtGui>
@@ -208,6 +209,11 @@ TerminalBackend::TerminalBackend(QObject *parent) : QObject(parent)
     setSystemColors(palette.color(QPalette::Window), palette.color(QPalette::WindowText));
 }
 
+TerminalBackend::~TerminalBackend()
+{
+    close();
+}
+
 void TerminalBackend::setSystemColors(const QColor &background, const QColor &foreground)
 {
     const unsigned int newBackground = background.rgba();
@@ -226,18 +232,50 @@ void TerminalBackend::setSystemColors(const QColor &background, const QColor &fo
 
 void TerminalBackend::start(const QString &workingDirectory)
 {
-    if (m_pty) {
-        return; // Already running.
+    if (m_state != SessionState::Created) {
+        return; // Already started or closed.
     }
 
     m_terminal = std::make_unique<Terminal>(m_rows, m_cols);
-    m_pty = std::make_unique<PtyProcess>();
-    connect(m_pty.get(), &PtyProcess::dataReceived, this, &TerminalBackend::onData);
-    connect(m_pty.get(), &PtyProcess::processExited, this, &TerminalBackend::onExited);
+    m_worker = std::make_unique<PtyWorker>();
+    m_thread = std::make_unique<QThread>();
+    m_worker->moveToThread(m_thread.get());
+    connect(m_worker.get(), &PtyWorker::outputReceived, this, &TerminalBackend::onData);
+    connect(m_worker.get(), &PtyWorker::started, this, &TerminalBackend::onStarted);
+    connect(m_worker.get(), &PtyWorker::processExited, this, &TerminalBackend::onExited);
+    connect(m_worker.get(), &PtyWorker::startFailed, this, &TerminalBackend::onStartFailed);
+    connect(m_worker.get(), &PtyWorker::foregroundProcessChanged, this, &TerminalBackend::onForegroundChanged);
+    connect(m_worker.get(), &PtyWorker::shutdownComplete, m_thread.get(), &QThread::quit, Qt::DirectConnection);
+    connect(m_thread.get(), &QThread::finished, this, &TerminalBackend::onWorkerThreadStopped);
+    m_thread->start();
     const QString shell = detectDefaultShell();
-    if (!m_pty->start(shell, m_cols, m_rows, workingDirectory)) {
-        qWarning("Konsoll: failed to start the PTY");
+    QMetaObject::invokeMethod(m_worker.get(), &PtyWorker::start, Qt::QueuedConnection, shell, m_cols, m_rows, workingDirectory);
+    m_state = SessionState::Starting;
+}
+
+bool TerminalBackend::close()
+{
+    if (m_state == SessionState::Stopped) {
+        return true;
     }
+    if (m_state != SessionState::Stopping) {
+        m_state = SessionState::Stopping;
+        if (m_worker) {
+            QMetaObject::invokeMethod(m_worker.get(), &PtyWorker::shutdown, Qt::QueuedConnection);
+        } else if (m_thread) {
+            m_thread->quit();
+        }
+    }
+    if (m_thread) {
+        constexpr unsigned long kThreadJoinTimeoutMs = 3000;
+        if (!m_thread->wait(kThreadJoinTimeoutMs)) {
+            qWarning("Konsoll: session worker did not stop within %lu ms; deferring session removal",
+                     kThreadJoinTimeoutMs);
+            return false;
+        }
+    }
+    m_state = SessionState::Stopped;
+    return true;
 }
 
 void TerminalBackend::onData(const QByteArray &data)
@@ -261,21 +299,21 @@ void TerminalBackend::onData(const QByteArray &data)
         emit commandRunningChanged();
     }
     if (m_terminal->keyboardProtocolQueryPending()) {
-        m_pty->write("\x1b[?1u");
+        writeToPty("\x1b[?1u");
         m_terminal->clearKeyboardProtocolQueryPending();
     }
     if (m_terminal->daPending()) {
-        m_pty->write(Terminal::daResponse());
+        writeToPty(Terminal::daResponse());
         m_terminal->clearDaPending();
     }
     if (m_terminal->colorQuery() != 0) {
-        m_pty->write(Terminal::colorQueryResponse(m_terminal->colorQuery()));
+        writeToPty(Terminal::colorQueryResponse(m_terminal->colorQuery()));
         m_terminal->clearColorQuery();
     }
     // Neovim pairs OSC 11 with CSI 5n and expects the OSC color reply first;
     // the following DSR response confirms that the color query was supported.
     if (m_terminal->dsrQuery() != 0) {
-        m_pty->write(m_terminal->dsrResponse());
+        writeToPty(m_terminal->dsrResponse());
         m_terminal->clearDsrQuery();
     }
 
@@ -304,11 +342,57 @@ void TerminalBackend::onData(const QByteArray &data)
 
     checkScrollOffsetChanged();
     scheduleFrame();
+    // Acknowledge consumption to the worker so it can resume paused reads.
+    if (m_worker) {
+        QMetaObject::invokeMethod(m_worker.get(), &PtyWorker::outputDelivered, Qt::QueuedConnection,
+                                  static_cast<qint64>(data.size()));
+    }
+}
+
+void TerminalBackend::onStarted()
+{
+    m_state = SessionState::Running;
 }
 
 void TerminalBackend::onExited(int code)
 {
     emit processExited(code);
+}
+
+void TerminalBackend::onStartFailed(const QString &error)
+{
+    m_state = SessionState::Failed;
+    qWarning("Konsoll: failed to start the PTY: %s", qUtf8Printable(error));
+    emit startFailed(error);
+}
+
+void TerminalBackend::onWorkerThreadStopped()
+{
+    m_state = SessionState::Stopped;
+    emit workerThreadStopped();
+}
+
+void TerminalBackend::onForegroundChanged(bool hasForeground)
+{
+    // The worker reports on every poll; cache only on change.
+    if (hasForeground == m_hasForeground) {
+        return;
+    }
+    m_hasForeground = hasForeground;
+}
+
+void TerminalBackend::writeToPty(const QByteArray &data)
+{
+    if (m_worker) {
+        QMetaObject::invokeMethod(m_worker.get(), &PtyWorker::write, Qt::QueuedConnection, data);
+    }
+}
+
+void TerminalBackend::resizePty(int columns, int rows)
+{
+    if (m_worker) {
+        QMetaObject::invokeMethod(m_worker.get(), &PtyWorker::resize, Qt::QueuedConnection, columns, rows);
+    }
 }
 
 void TerminalBackend::onFrameTimer()
@@ -388,15 +472,15 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
         }
     }
 
-    if (!out.isEmpty() && m_pty) {
-        m_pty->write(out);
+    if (!out.isEmpty() && m_worker) {
+        writeToPty(out);
     }
 }
 
 void TerminalBackend::writeText(const QString &text)
 {
-    if (m_pty && !text.isEmpty()) {
-        m_pty->write(text.toUtf8());
+    if (m_worker && !text.isEmpty()) {
+        writeToPty(text.toUtf8());
     }
 }
 
@@ -510,7 +594,7 @@ bool TerminalBackend::openLinkAt(int row, int col) const
 
 void TerminalBackend::sendMouseReport(int button, int row, int col, int event, int modifiers)
 {
-    if (!m_pty || !m_terminal) {
+    if (!m_worker || !m_terminal) {
         return;
     }
     unsigned int mouseModifiers = 0;
@@ -523,7 +607,7 @@ void TerminalBackend::sendMouseReport(int button, int row, int col, int event, i
     if ((modifiers & Qt::ControlModifier) != 0) {
         mouseModifiers |= 4u;
     }
-    m_pty->write(m_terminal->mouseReport(button, row, col, event, mouseModifiers));
+    writeToPty(m_terminal->mouseReport(button, row, col, event, mouseModifiers));
 }
 
 void TerminalBackend::resize(int cols, int rows)
@@ -540,8 +624,8 @@ void TerminalBackend::resize(int cols, int rows)
         m_terminal->resize(rows, cols);
     }
 
-    if (m_pty) {
-        m_pty->resize(cols, rows);
+    if (m_worker) {
+        resizePty(cols, rows);
     }
 
     // The reflow re-wraps the history, so absolute selection anchors are stale.
@@ -611,8 +695,8 @@ void TerminalBackend::clearBuffer()
     s.clearScrollback();
     m_terminal->clearCommandBlocks();
 
-    if (m_pty) {
-        m_pty->write(QByteArray(1, '\x0c'));
+    if (m_worker) {
+        writeToPty(QByteArray(1, '\x0c'));
     } else {
         s.eraseInDisplay(2);
         s.moveCursor(0, 0);
@@ -1170,7 +1254,7 @@ bool TerminalBackend::saveTextToFile(const QUrl &url, bool selectionOnly) const
 
 void TerminalBackend::paste()
 {
-    if (!m_pty) {
+    if (!m_worker) {
         return;
     }
     const QClipboard *const clipboard = QGuiApplication::clipboard();
@@ -1179,11 +1263,11 @@ void TerminalBackend::paste()
         // themselves and read the native macOS clipboard. A PTY cannot carry an
         // image object, so forward the application's image-paste key instead of
         // converting the image to a temporary path.
-        m_pty->write(QByteArray(1, '\x16'));
+        writeToPty(QByteArray(1, '\x16'));
     } else {
         const QString text = clipboard->text();
         if (!text.isEmpty()) {
-            m_pty->write(text.toUtf8());
+            writeToPty(text.toUtf8());
         }
     }
     clearTextSelectionAndHighlight();
