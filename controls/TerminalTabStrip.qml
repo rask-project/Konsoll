@@ -200,6 +200,7 @@ Rectangle {
 
         delegate: TerminalTabButton {
             id: tabButton
+
             required property int index
             required property var modelData
 
@@ -207,6 +208,7 @@ Rectangle {
 
             x: strip.tabX(layoutIndex)
             y: strip.tabY(layoutIndex)
+
             width: strip.tabWidth(layoutIndex)
             opacity: index === strip.dragSourceIndex ? 0 : 1
 

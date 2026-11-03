@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -21,20 +23,24 @@ Item {
 
         x: 0
         y: 3
+
         width: workspace.width
         height: workspace.titleBarHeight
+
         baseSafeTop: workspace.safeTop
         leadingInset: workspace.fullScreen ? 0 : Math.max(84, workspace.safeLeft)
         trailingInset: workspace.safeRight
+
         windowTranslucency: workspace.windowTranslucency
         tabs: SessionManager.workspaces
         currentIndex: SessionManager.activeWorkspaceIndex
+
         onActivateRequested: index => SessionManager.setActiveWorkspace(index)
         onCloseRequested: workspace => {
             if (SessionManager.workspaceHasRunningCommand(workspace) && !CloseConfirmDialog.confirmClose()) {
-                return
+                return;
             }
-            SessionManager.closeWorkspace(workspace)
+            SessionManager.closeWorkspace(workspace);
         }
         onReorderRequested: (fromIndex, toIndex) => SessionManager.moveWorkspace(fromIndex, toIndex)
         onAddRequested: SessionManager.addWorkspace()
@@ -49,11 +55,13 @@ Item {
             model: SessionManager.workspaces
 
             delegate: Item {
+                id: item
+
                 required property var modelData
 
-                TerminalPaneLayout {
+                Controls.TerminalPaneLayout {
                     anchors.fill: parent
-                    node: modelData.rootNode
+                    node: item.modelData.rootNode
                     terminalFont: workspace.terminalFont
                 }
             }
