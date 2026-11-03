@@ -316,6 +316,11 @@ void TerminalManager::closeSession(QObject *sessionObject)
         return;
     }
     const bool wasActive = m_activeSession == session;
+    const auto activeWorkspace = std::ranges::find_if(m_workspaces, [this, session](const auto &workspace) {
+        return findLeaf(workspace->root().get(), session) != nullptr;
+    });
+    TerminalWorkspaceModel *closingWorkspace =
+        activeWorkspace == m_workspaces.end() ? nullptr : activeWorkspace->get();
     pruneSession(session);
     removeSessionFromLayouts(session);
     std::ranges::for_each(m_workspaces, [this, session](const auto &workspace) {
@@ -327,7 +332,15 @@ void TerminalManager::closeSession(QObject *sessionObject)
     std::erase_if(m_workspaces, [](const auto &workspace) { return workspace->root() == nullptr; });
 
     if (wasActive) {
-        TerminalBackend *next = mostRecentlyActiveSession();
+        TerminalBackend *next = closingWorkspace != nullptr && closingWorkspace->root() != nullptr
+                                    ? closingWorkspace->lastActiveSession()
+                                    : nullptr;
+        if (findLeaf(closingWorkspace != nullptr ? closingWorkspace->root().get() : nullptr, next) == nullptr) {
+            next = firstSession(closingWorkspace != nullptr ? closingWorkspace->root().get() : nullptr);
+        }
+        if (next == nullptr) {
+            next = mostRecentlyActiveSession();
+        }
         if (next == nullptr) {
             for (const auto &workspace : m_workspaces) {
                 next = workspace->lastActiveSession();
@@ -339,7 +352,7 @@ void TerminalManager::closeSession(QObject *sessionObject)
                 }
             }
         }
-        setActiveSession(next, true);
+        setActiveSession(next, false);
     }
     emit workspacesChanged();
     emit activeWorkspaceChanged();
