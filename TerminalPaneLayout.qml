@@ -14,8 +14,9 @@ Item {
     Loader {
         id: contentLoader
 
-        anchors.fill: parent
         property var node: pane.node
+
+        anchors.fill: parent
         sourceComponent: node ? (node.leaf ? leafComponent : splitComponent) : null
         onLoaded: item.node = node
     }
@@ -30,7 +31,7 @@ Item {
             readonly property bool active: session && session === SessionManager.activeSession
 
             SystemPalette {
-                id: palette
+                id: systemPalette
                 colorGroup: SystemPalette.Active
             }
 
@@ -44,11 +45,11 @@ Item {
                     height: 32
                     anchors.horizontalCenter: parent.horizontalCenter
 
-                    color: Qt.rgba(palette.window.r, palette.window.g, palette.window.b, 0.50)
+                    color: Qt.rgba(systemPalette.window.r, systemPalette.window.g, systemPalette.window.b, 0.50)
 
                     border.width: 1
-                    border.color: leafItem.active ? palette.accent : Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.15)
-                    radius: 16
+                    border.color: leafItem.active ? systemPalette.accent : Qt.rgba(systemPalette.windowText.r, systemPalette.windowText.g, systemPalette.windowText.b, 0.15)
+                    radius: 8
 
                     TapHandler {
                         enabled: leafItem.session !== null
@@ -75,9 +76,9 @@ Item {
                             icon.name: "close"
                             onClicked: {
                                 if (leafItem.session.commandRunning && !CloseConfirmDialog.confirmClose()) {
-                                    return
+                                    return;
                                 }
-                                SessionManager.closeSession(leafItem.session)
+                                SessionManager.closeSession(leafItem.session);
                             }
                         }
 
@@ -86,7 +87,7 @@ Item {
                             height: parent.height
 
                             text: leafItem.session ? (leafItem.session.currentDirectory !== "" ? leafItem.session.currentDirectory : leafItem.session.title) : ""
-                            color: palette.windowText
+                            color: systemPalette.windowText
 
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideMiddle
@@ -94,9 +95,10 @@ Item {
                     }
                 }
 
-                TerminalView {
+                Controls.TerminalView {
                     width: parent.width
                     height: Math.max(0, parent.height - 42)
+
                     session: leafItem.session
                     active: leafItem.active
                     terminalFont: pane.terminalFont
