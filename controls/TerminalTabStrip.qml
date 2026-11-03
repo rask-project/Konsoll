@@ -4,7 +4,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import "." as Controls
 
-Item {
+Rectangle {
     id: strip
 
     property var tabs: []
@@ -41,6 +41,8 @@ Item {
     signal closeRequested(var workspace)
     signal reorderRequested(int fromIndex, int toIndex)
     signal addRequested
+
+    color: Qt.rgba(systemPalette.window.r, systemPalette.window.g, systemPalette.window.b, 0.25)
 
     SystemPalette {
         id: systemPalette
