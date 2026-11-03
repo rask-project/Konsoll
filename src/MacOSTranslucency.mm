@@ -11,6 +11,7 @@ namespace
 {
 char effectViewAssociationKey;
 char toolbarAssociationKey;
+char inputForwardingViewAssociationKey;
 
 NSWindow *windowFromId(WId winId)
 {
@@ -18,6 +19,58 @@ NSWindow *windowFromId(WId winId)
     return (nsView != nullptr) ? [nsView window] : nil;
 }
 } // namespace
+
+@interface KonsollInputForwardingView : NSView
+@property(nonatomic, assign) NSWindow *targetWindow;
+@property(nonatomic, assign) NSView *targetView;
+@end
+
+@implementation KonsollInputForwardingView
+
+- (BOOL)isOpaque
+{
+    return NO;
+}
+
+- (void)drawRect:(NSRect)dirtyRect
+{
+    Q_UNUSED(dirtyRect);
+}
+
+- (NSView *)hitTest:(NSPoint)point
+{
+    NSView *const parentView = [self superview];
+    NSWindow *const window = self.targetWindow;
+    NSView *const targetView = self.targetView;
+    if (parentView == nil || window == nil || targetView == nil) {
+        return nil;
+    }
+
+    constexpr std::array buttonTypes{
+        NSWindowCloseButton,
+        NSWindowMiniaturizeButton,
+        NSWindowZoomButton,
+    };
+    auto const buttonType = std::ranges::find_if(buttonTypes, [window, parentView, point](NSWindowButton type) {
+        NSButton *const button = [window standardWindowButton:type];
+        if (button == nil) {
+            return false;
+        }
+        NSRect const buttonRect = [button convertRect:[button bounds] toView:parentView];
+        return NSPointInRect(point, buttonRect);
+    });
+    if (buttonType != buttonTypes.end()) {
+        return [window standardWindowButton:*buttonType];
+    }
+
+    NSRect const forwardingRect = [self convertRect:[self bounds] toView:parentView];
+    if (!NSPointInRect(point, NSInsetRect(forwardingRect, 12.0, 12.0))) {
+        return nil;
+    }
+    return targetView;
+}
+
+@end
 
 void makeWindowTranslucent(WId winId, const QColor &color, qreal alpha)
 {
@@ -98,6 +151,9 @@ void installEmptyWindowToolbar(WId winId, bool visible)
     [toolbar setVisible:visible];
 
     if (!visible) {
+        NSView *const inputView = objc_getAssociatedObject(nsWindow, &inputForwardingViewAssociationKey);
+        [inputView removeFromSuperview];
+        objc_setAssociatedObject(nsWindow, &inputForwardingViewAssociationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return;
     }
 
@@ -123,5 +179,23 @@ void installEmptyWindowToolbar(WId winId, bool visible)
                 [parentView addSubview:buttonContainer positioned:NSWindowAbove relativeTo:nil];
             }
         });
+
+        KonsollInputForwardingView *inputView = objc_getAssociatedObject(
+            nsWindow,
+            &inputForwardingViewAssociationKey
+        );
+        if (inputView == nil) {
+            inputView = [[KonsollInputForwardingView alloc] initWithFrame:[parentView bounds]];
+            [inputView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+            objc_setAssociatedObject(
+                nsWindow,
+                &inputForwardingViewAssociationKey,
+                inputView,
+                OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            );
+        }
+        [inputView setTargetWindow:nsWindow];
+        [inputView setTargetView:contentView];
+        [parentView addSubview:inputView positioned:NSWindowAbove relativeTo:nil];
     }
 }
