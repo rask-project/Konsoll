@@ -20,7 +20,7 @@ public:
         int endLine{0};
     };
 
-    explicit Terminal(int rows, int cols);
+    explicit Terminal(int rows, int cols, const QString &remoteHostToken);
 
     void write(const QByteArray &data);
     void resize(int rows, int cols);
@@ -33,6 +33,9 @@ public:
     bool titleDirty() const { return m_titleDirty; }
     void clearTitleDirty() { m_titleDirty = false; }
     QString currentDirectory() const { return m_currentDirectory; }
+    QString remoteHost() const { return m_remoteHost; }
+    bool remoteHostDirty() const { return (m_extraFlags & RemoteHostDirty) != 0; }
+    void clearRemoteHostDirty() { m_extraFlags &= static_cast<unsigned char>(~RemoteHostDirty); }
     bool currentDirectoryDirty() const { return m_currentDirectoryDirty; }
     void clearCurrentDirectoryDirty() { m_currentDirectoryDirty = false; }
     QString clipboardText() const { return m_clipboardText; }
@@ -64,6 +67,7 @@ public:
     bool mouseMotionTracking() const { return (m_mouseModes & 0x06u) != 0; }
     bool sgrMouse() const { return m_sgrMouse; }
     bool kittyKeyboardEnabled() const { return m_kittyKeyboardEnabled; }
+    bool bracketedPasteEnabled() const { return (m_extraFlags & BracketedPasteEnabled) != 0; }
     bool applicationCursorKeys() const { return m_applicationCursorKeys; }
     bool keyboardProtocolQueryPending() const { return m_keyboardProtocolQueryPending; }
     void clearKeyboardProtocolQueryPending() { m_keyboardProtocolQueryPending = false; }
@@ -75,6 +79,9 @@ public:
     static QByteArray colorQueryResponse(unsigned char query);
 
 private:
+    static constexpr unsigned char RemoteHostDirty = 0x01;
+    static constexpr unsigned char BracketedPasteEnabled = 0x02;
+
     enum class State : std::uint8_t {
         Ground,
         Escape,
@@ -102,6 +109,8 @@ private:
     QByteArray m_oscBody;
     QString m_title;
     QString m_currentDirectory;
+    QString m_remoteHost;
+    QString m_remoteHostToken;
     QString m_clipboardText;
     unsigned int m_fg = 0;
     unsigned int m_bg = 0;
@@ -123,6 +132,7 @@ private:
     bool m_commandRunning = false;
     unsigned char m_dsrQuery = 0;
     unsigned char m_colorQuery = 0;
+    unsigned char m_extraFlags = 0;
     unsigned char m_mouseModes = 0;
     bool m_sgrMouse = false;
     bool m_applicationCursorKeys = false;

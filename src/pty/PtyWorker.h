@@ -27,7 +27,8 @@ public:
 
     // Create and start the PTY in this worker's thread. Emits started on
     // success and startFailed on launch failure.
-    Q_INVOKABLE void start(const QString &shellPath, int columns, int rows, const QString &workingDirectory);
+    Q_INVOKABLE void start(const QString &shellPath, int columns, int rows, const QString &workingDirectory,
+                           const QString &remoteHostToken);
     // Send a byte block to the PTY master.
     Q_INVOKABLE void write(const QByteArray &data);
     // Apply a new window size to the PTY.

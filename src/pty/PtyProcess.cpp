@@ -57,7 +57,8 @@ PtyProcess::~PtyProcess()
     }
 }
 
-bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QString &workingDirectory)
+bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QString &workingDirectory,
+                       const QString &remoteHostToken)
 {
     const QString shellName = QFileInfo(shellPath).fileName();
     const bool isZsh = shellName == QStringLiteral("zsh");
@@ -209,6 +210,9 @@ bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QStri
     setEnvironmentVariable("COLUMNS", columns);
     setEnvironmentVariable("LINES", lines);
     setEnvironmentVariable("PATH", path);
+    if (!remoteHostToken.isEmpty()) {
+        setEnvironmentVariable("KONSOLL_REMOTE_HOST_TOKEN", remoteHostToken.toUtf8());
+    }
     if (!integrationFile.isEmpty()) {
         setEnvironmentVariable("KONSOLL_SHELL_INTEGRATION", integrationPath);
         if (isZsh) {

@@ -11,6 +11,7 @@ Item {
 
     property var session: null
     property bool active: false
+    property string transferError: ""
 
     // Menlo advance is 0.6em, so 15px -> exactly 9px per column.
     readonly property real terminalFontSize: terminalFont.pixelSize > 0 ? terminalFont.pixelSize : terminalFont.pointSize * (4 / 3)
@@ -159,6 +160,54 @@ Item {
                 _clearing = false;
             }
         }
+    }
+
+    DropArea {
+        anchors.fill: parent
+
+        onDropped: drop => {
+            if (!view.session || !drop.hasUrls)
+                return;
+            for (let i = 0; i < drop.urls.length; ++i)
+                view.session.transferFile(drop.urls[i]);
+            drop.acceptProposedAction();
+        }
+    }
+
+    Connections {
+        target: view.session
+
+        function onTransferFailed(message) {
+            view.transferError = message;
+            transferErrorTimer.restart();
+        }
+    }
+
+    Rectangle {
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.margins: 14
+        z: 10
+        visible: view.transferError.length > 0
+        radius: 6
+        color: "#cc7f1d1d"
+        implicitWidth: transferErrorText.implicitWidth + 24
+        implicitHeight: transferErrorText.implicitHeight + 16
+
+        Text {
+            id: transferErrorText
+            anchors.centerIn: parent
+            text: view.transferError
+            color: "white"
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: text
+        }
+    }
+
+    Timer {
+        id: transferErrorTimer
+        interval: 6000
+        onTriggered: view.transferError = ""
     }
 
     WheelHandler {

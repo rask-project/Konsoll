@@ -99,8 +99,9 @@ and destination and opens in Downloads by default.
 ### Interaction
 
 - Text selection (drag, double-click word, triple-click line, Select All)
-- Clipboard copy/paste (text to the PTY; images forwarded via `Ctrl+V` for
-  image-aware CLI apps), context menu, Clear Screen (`Cmd+L`) and
+- Clipboard copy/paste (text to the PTY; image paste uploads to an SSH host
+  and inserts the remote image path; file drops upload to SSH sessions),
+  context menu, Clear Screen (`Cmd+L`) and
   Clear Buffer (`Cmd+K`)
 - Save the full terminal buffer or current selection to a UTF-8 text file
 - Scrollback navigation by wheel and scrollbar

@@ -5,6 +5,8 @@
 
 #include <QColor>
 #include <QObject>
+#include <QProcess>
+#include <QQueue>
 #include <QRegularExpression>
 #include <QThread>
 #include <QTimer>
@@ -14,6 +16,8 @@
 
 #include <cstdint>
 #include <memory>
+
+class QImage;
 
 namespace konsoll
 {
@@ -38,6 +42,7 @@ class TerminalBackend : public QObject
 
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
     Q_PROPERTY(QString currentDirectory READ currentDirectory NOTIFY currentDirectoryChanged)
+    Q_PROPERTY(QString remoteHost READ remoteHost NOTIFY remoteHostChanged)
     Q_PROPERTY(int rows READ rows NOTIFY sizeChanged)
     Q_PROPERTY(int cols READ cols NOTIFY sizeChanged)
     Q_PROPERTY(int scrollOffset READ scrollOffset NOTIFY scrollOffsetChanged)
@@ -72,6 +77,7 @@ public:
     Q_INVOKABLE void mouseWheel(bool up, int row, int col, int modifiers);
     Q_INVOKABLE QVariantMap linkAt(int row, int col) const;
     Q_INVOKABLE bool openLinkAt(int row, int col) const;
+    Q_INVOKABLE void transferFile(const QUrl &url);
 
     // Resize the terminal (cols x rows), driven by the QML view.
     Q_INVOKABLE void resize(int cols, int rows);
@@ -142,6 +148,7 @@ public:
 
     QString title() const { return m_title; }
     QString currentDirectory() const { return m_currentDirectory; }
+    QString remoteHost() const { return m_remoteHost; }
     int rows() const { return m_rows; }
     int cols() const { return m_cols; }
     int scrollOffset() const { return m_terminal ? m_terminal->screen().scrollOffset() : 0; }
@@ -158,6 +165,7 @@ signals:
     void frameReady();
     void titleChanged();
     void currentDirectoryChanged();
+    void remoteHostChanged();
     void colorSchemeChanged();
     void processExited(int code);
     void startFailed(const QString &error);
@@ -170,6 +178,7 @@ signals:
     void commandRunningChanged();
     void quitRequested();
     void commandFinished();
+    void transferFailed(const QString &message);
 
 private:
     void onData(const QByteArray &data);
@@ -188,6 +197,9 @@ private:
     int highlightVisibleEndRow() const;
 
     void editorShortcuts(int key);
+    void transferLocalFile(const QString &path, bool removeAfterTransfer = false);
+    void transferImage(const QImage &image);
+    void startNextTransfer();
     void clearTextSelectionAndHighlight();
     void sendMouseReport(int button, int row, int col, int event, int modifiers);
     // Route PTY I/O to the session worker via a queued call (never touch the
@@ -212,14 +224,30 @@ private:
         int end;
     };
 
+    struct TransferJob {
+        QString localPath;
+        QString remotePath;
+        QString destination;
+        QString port;
+        QString targetHost;
+        std::uint64_t flags{0};
+
+        bool removeLocal() const { return (flags & 1u) != 0; }
+    };
+
     std::unique_ptr<QThread> m_thread;
     std::unique_ptr<PtyWorker> m_worker;
     std::unique_ptr<Terminal> m_terminal;
+    QProcess m_transferProcess;
     QVector<SearchMatch> m_searchMatches;
+    QQueue<TransferJob> m_transferQueue;
+    TransferJob m_activeTransfer;
 
     QTimer m_frameTimer;
     QString m_title{QStringLiteral("Konsoll")};
     QString m_currentDirectory;
+    QString m_remoteHost;
+    QString m_remoteHostToken;
     AbsPos m_selAnchor{.line = -1, .col = 0};
     AbsPos m_selCurrent{.line = -1, .col = 0};
     int m_highlightStart{-1};

@@ -301,8 +301,9 @@ implemented in the repository:
 
 - Text selection by drag, double-click word selection, triple-click line
   selection, and Select All
-- Clipboard copy/paste (text is sent to the PTY; when an image is copied,
-  Ctrl+V is forwarded so image-aware CLI apps can read the native clipboard),
+- Clipboard copy/paste (text is sent to the PTY; local image paste is forwarded
+  to image-aware CLI apps, while SSH image paste and dropped files are uploaded
+  with `scp` and the remote path is inserted),
   context menu, and Clear Buffer
 - Scrollback navigation by wheel and scrollbar
 - Scrollback search with literal or regular-expression queries and
