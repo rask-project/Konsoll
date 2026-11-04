@@ -30,6 +30,13 @@ Window {
         appWindow.requestQuit()
     }
 
+    Connections {
+        target: SessionManager
+        function onQuitRequested() {
+            appWindow.requestQuit()
+        }
+    }
+
     Settings {
         id: appPreferences
 

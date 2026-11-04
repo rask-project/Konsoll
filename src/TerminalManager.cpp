@@ -27,12 +27,18 @@ TerminalLayoutNode::TerminalLayoutNode(
 
 void TerminalLayoutNode::notifyTreeChanged()
 {
-    emit layoutChanged();
-    if (m_first) {
-        m_first->notifyTreeChanged();
-    }
-    if (m_second) {
-        m_second->notifyTreeChanged();
+    std::vector<TerminalLayoutNode *> pending;
+    pending.push_back(this);
+    while (!pending.empty()) {
+        auto *node = pending.back();
+        pending.pop_back();
+        node->layoutChanged();
+        if (node->m_second) {
+            pending.push_back(node->m_second.get());
+        }
+        if (node->m_first) {
+            pending.push_back(node->m_first.get());
+        }
     }
 }
 
@@ -174,9 +180,8 @@ void TerminalManager::renameWorkspace(QObject *workspaceObject, const QString &t
     if (workspace == nullptr) {
         return;
     }
-    const auto it = std::ranges::find_if(m_workspaces, [workspace](const auto &candidate) {
-        return candidate.get() == workspace;
-    });
+    const auto it =
+        std::ranges::find_if(m_workspaces, [workspace](const auto &candidate) { return candidate.get() == workspace; });
     if (it != m_workspaces.end()) {
         workspace->setCustomTitle(title);
     }
@@ -337,9 +342,7 @@ bool TerminalManager::workspaceHasRunningCommand(QObject *workspaceObject) const
 
 bool TerminalManager::anySessionHasRunningCommand() const
 {
-    return std::ranges::any_of(m_sessions, [](const auto &session) {
-        return session->commandRunning();
-    });
+    return std::ranges::any_of(m_sessions, [](const auto &session) { return session->commandRunning(); });
 }
 
 bool TerminalManager::anySessionHasActiveProcess() const
@@ -363,21 +366,25 @@ void TerminalManager::closeSession(QObject *sessionObject)
     const auto it = std::ranges::find_if(m_sessions, [sessionObject](const auto &candidate) {
         return candidate.get() == sessionObject;
     });
+
     if (it == m_sessions.end()) {
         return;
     }
+
     auto *session = it->get();
     const bool wasActive = m_activeSession == session;
     if (!session->close()) {
         return;
     }
+
     const auto activeWorkspace = std::ranges::find_if(m_workspaces, [this, session](const auto &workspace) {
         return findLeaf(workspace->root().get(), session) != nullptr;
     });
-    TerminalWorkspaceModel *closingWorkspace =
-        activeWorkspace == m_workspaces.end() ? nullptr : activeWorkspace->get();
+
+    TerminalWorkspaceModel *closingWorkspace = activeWorkspace == m_workspaces.end() ? nullptr : activeWorkspace->get();
     pruneSession(session);
     removeSessionFromLayouts(session);
+
     TerminalBackend *nextInClosingWorkspace = nullptr;
     if (closingWorkspace != nullptr && closingWorkspace->root() != nullptr) {
         nextInClosingWorkspace = closingWorkspace->lastActiveSession();
@@ -390,6 +397,7 @@ void TerminalManager::closeSession(QObject *sessionObject)
             workspace->setLastActiveSession(firstSession(workspace->root().get()));
         }
     });
+
     std::erase_if(m_sessions, [session](const auto &candidate) { return candidate.get() == session; });
     std::erase_if(m_workspaces, [](const auto &workspace) { return workspace->root() == nullptr; });
 
@@ -398,12 +406,14 @@ void TerminalManager::closeSession(QObject *sessionObject)
         if (next == nullptr) {
             next = mostRecentlyActiveSession();
         }
+
         if (next == nullptr) {
             for (const auto &workspace : m_workspaces) {
                 next = workspace->lastActiveSession();
                 if (findLeaf(workspace->root().get(), next) == nullptr) {
                     next = firstSession(workspace->root().get());
                 }
+
                 if (next != nullptr) {
                     break;
                 }
@@ -411,8 +421,10 @@ void TerminalManager::closeSession(QObject *sessionObject)
         }
         setActiveSession(next, false);
     }
+
     emit workspacesChanged();
     emit activeWorkspaceChanged();
+
     if (m_sessions.empty()) {
         emit quitRequested();
     }
@@ -432,12 +444,15 @@ void TerminalManager::setActiveWorkspace(int index)
     if (index < 0 || index >= static_cast<int>(m_workspaces.size())) {
         return;
     }
+
     auto *workspace = m_workspaces[static_cast<std::size_t>(index)].get();
     workspace->setAlerting(false);
+
     TerminalBackend *session = workspace->lastActiveSession();
     if (findLeaf(workspace->root().get(), session) == nullptr) {
         session = firstSession(workspace->root().get());
     }
+
     if (session != nullptr) {
         setActiveSession(session, true);
     }
@@ -449,6 +464,7 @@ void TerminalManager::navigateActivationHistory(int direction)
     if (historySize < 2) {
         return;
     }
+
     const qsizetype step = direction < 0 ? -1 : 1;
     m_activationHistoryCursor = (m_activationHistoryCursor + step + historySize) % historySize;
     setActiveSession(m_activationHistory.at(static_cast<std::size_t>(m_activationHistoryCursor)), false);
@@ -475,13 +491,28 @@ TerminalLayoutNode *TerminalManager::findLeaf(TerminalLayoutNode *node, Terminal
     if ((node == nullptr) || (session == nullptr)) {
         return nullptr;
     }
-    if (node->isLeaf()) {
-        return node->session() == session ? node : nullptr;
+
+    std::vector<TerminalLayoutNode *> pending;
+    pending.push_back(node);
+    while (!pending.empty()) {
+        auto *current = pending.back();
+        pending.pop_back();
+        if (current->isLeaf()) {
+            if (current->m_session == session) {
+                return current;
+            }
+            continue;
+        }
+
+        if (current->m_second) {
+            pending.push_back(current->m_second.get());
+        }
+
+        if (current->m_first) {
+            pending.push_back(current->m_first.get());
+        }
     }
-    if (auto *found = findLeaf(static_cast<TerminalLayoutNode *>(node->first()), session)) {
-        return found;
-    }
-    return findLeaf(static_cast<TerminalLayoutNode *>(node->second()), session);
+    return nullptr;
 }
 
 TerminalBackend *TerminalManager::firstSession(TerminalLayoutNode *node) const
@@ -489,13 +520,27 @@ TerminalBackend *TerminalManager::firstSession(TerminalLayoutNode *node) const
     if (node == nullptr) {
         return nullptr;
     }
-    if (node->isLeaf()) {
-        return static_cast<TerminalBackend *>(node->session());
+
+    std::vector<TerminalLayoutNode *> pending;
+    pending.push_back(node);
+
+    while (!pending.empty()) {
+        auto *current = pending.back();
+        pending.pop_back();
+        if (current->isLeaf()) {
+            return current->m_session;
+        }
+
+        if (current->m_second) {
+            pending.push_back(current->m_second.get());
+        }
+
+        if (current->m_first) {
+            pending.push_back(current->m_first.get());
+        }
     }
-    if (auto *first = firstSession(static_cast<TerminalLayoutNode *>(node->first()))) {
-        return first;
-    }
-    return firstSession(static_cast<TerminalLayoutNode *>(node->second()));
+
+    return nullptr;
 }
 
 TerminalBackend *TerminalManager::mostRecentlyActiveSession() const
@@ -512,13 +557,31 @@ TerminalManager::findNodeSlot(std::unique_ptr<TerminalLayoutNode> &node, Termina
     if (!node) {
         return nullptr;
     }
-    if (node->m_session == session) {
-        return &node;
+
+    std::vector<std::unique_ptr<TerminalLayoutNode> *> pending;
+    pending.push_back(&node);
+
+    while (!pending.empty()) {
+        auto *slot = pending.back();
+        pending.pop_back();
+        if (!*slot) {
+            continue;
+        }
+
+        if ((*slot)->m_session == session) {
+            return slot;
+        }
+
+        if ((*slot)->m_second) {
+            pending.push_back(&(*slot)->m_second);
+        }
+
+        if ((*slot)->m_first) {
+            pending.push_back(&(*slot)->m_first);
+        }
     }
-    if (auto *found = findNodeSlot(node->m_first, session)) {
-        return found;
-    }
-    return findNodeSlot(node->m_second, session);
+
+    return nullptr;
 }
 
 void TerminalManager::setActiveSession(TerminalBackend *session, bool record)
@@ -529,16 +592,19 @@ void TerminalManager::setActiveSession(TerminalBackend *session, bool record)
             workspace->setLastActiveSession(session);
         }
     });
+
     if (m_activeSession == session) {
         if (record && (session != nullptr)) {
             recordActivation(session);
         }
         return;
     }
+
     m_activeSession = session;
     if (record && (session != nullptr)) {
         recordActivation(session);
     }
+
     emit activeSessionChanged();
     emit activeWorkspaceChanged();
 }
@@ -554,6 +620,7 @@ void TerminalManager::pruneSession(TerminalBackend *session)
 {
     std::erase(m_activationHistory, session);
     m_activationHistoryCursor = 0;
+
     if (m_activeSession == session) {
         m_activeSession = nullptr;
         emit activeSessionChanged();
@@ -563,29 +630,64 @@ void TerminalManager::pruneSession(TerminalBackend *session)
 
 void TerminalManager::removeSessionFromLayouts(TerminalBackend *session)
 {
-    const auto removeNode = [session](auto &&self, std::unique_ptr<TerminalLayoutNode> &node) -> void {
-        if (!node) {
+    struct Frame {
+        std::unique_ptr<TerminalLayoutNode> *slot;
+        bool entered;
+    };
+    const auto enter = [session](Frame &frame, std::vector<Frame> &stack) {
+        frame.entered = true;
+        auto *node = (*frame.slot).get();
+        if (node == nullptr) {
             return;
         }
-        if (node->m_session) {
+
+        if (node->m_session != nullptr) {
             if (node->m_session == session) {
-                node.reset();
+                (*frame.slot).reset();
             }
             return;
         }
-        self(self, node->m_first);
-        self(self, node->m_second);
-        if (!node->m_first) {
-            node = std::move(node->m_second);
-        } else if (!node->m_second) {
-            node = std::move(node->m_first);
+
+        if (node->m_second) {
+            stack.push_back({.slot = &node->m_second, .entered = false});
+        }
+
+        if (node->m_first) {
+            stack.push_back({.slot = &node->m_first, .entered = false});
         }
     };
+
+    const auto exit = [](Frame &frame) {
+        auto *node = (*frame.slot).get();
+        if (node == nullptr || node->m_session != nullptr) {
+            return;
+        }
+
+        if (node->m_first == nullptr) {
+            *frame.slot = std::move(node->m_second);
+        } else if (node->m_second == nullptr) {
+            *frame.slot = std::move(node->m_first);
+        }
+    };
+
     for (const auto &workspace : m_workspaces) {
-        removeNode(removeNode, workspace->root());
+        std::vector<Frame> stack;
+        stack.push_back({.slot = &workspace->root(), .entered = false});
+
+        while (!stack.empty()) {
+            auto &frame = stack.back();
+            if (frame.entered) {
+                exit(frame);
+                stack.pop_back();
+                continue;
+            }
+            enter(frame, stack);
+        }
+
         if (workspace->root()) {
             workspace->root()->notifyTreeChanged();
         }
+
         emit workspace->layoutChanged();
     }
 }

@@ -40,18 +40,19 @@ PtyProcess::~PtyProcess()
         }
 
         int status = 0;
-        pid_t result = 0;
-        do {
+        pid_t result = ::waitpid(pid, &status, WNOHANG);
+        while (result < 0 && errno == EINTR) {
             result = ::waitpid(pid, &status, WNOHANG);
-        } while (result < 0 && errno == EINTR);
+        }
 
         if (result == 0) {
             if (::kill(-pid, SIGKILL) < 0) {
                 ::kill(pid, SIGKILL);
             }
-            do {
+            result = ::waitpid(pid, &status, 0);
+            while (result < 0 && errno == EINTR) {
                 result = ::waitpid(pid, &status, 0);
-            } while (result < 0 && errno == EINTR);
+            }
         }
         m_pid = -1;
     }
@@ -337,10 +338,10 @@ int PtyProcess::waitForExit()
     }
     int status = 0;
     const pid_t pid = static_cast<pid_t>(m_pid);
-    pid_t result = 0;
-    do {
+    pid_t result = ::waitpid(pid, &status, 0);
+    while (result < 0 && errno == EINTR) {
         result = ::waitpid(pid, &status, 0);
-    } while (result < 0 && errno == EINTR);
+    }
     m_pid = -1;
     return (result > 0 && WIFEXITED(status)) ? WEXITSTATUS(status) : -1;
 }
