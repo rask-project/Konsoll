@@ -93,12 +93,25 @@ public:
     void fullReset();
 
 private:
+    struct ReflowedScreen {
+        std::vector<Line> lines;
+        std::vector<bool> wrapped;
+    };
+
     void scrollUpOne(int top, int bottom);
     void scrollDownOne(int top, int bottom);
     void blankLine(int row);
     void pushScrollback(const Line &line, bool wrapped);
     void lineFeedImpl(bool soft);
     void reflow();
+    void collectPhysicalLines(std::vector<Line> &phys, std::vector<bool> &wrapped) const;
+    std::vector<std::vector<Cell>> buildLogicalLines(
+        const std::vector<Line> &phys, const std::vector<bool> &wrapped, size_t cursorPhys,
+        size_t &cursorLogical, size_t &cursorLogicalCol) const;
+    ReflowedScreen rewrapLogicalLines(
+        const std::vector<std::vector<Cell>> &logical, size_t cursorLogical, size_t cursorLogicalCol,
+        size_t &cursorNewPhys, size_t &cursorNewCol) const;
+    void redistribute(const ReflowedScreen &rewrapped, size_t cursorNewPhys, size_t cursorNewCol);
     std::vector<Line> &grid() { return m_inAlt ? m_alt : m_main; }
     const std::vector<Line> &grid() const { return m_inAlt ? m_alt : m_main; }
 

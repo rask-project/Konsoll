@@ -572,10 +572,25 @@ void Screen::reflow()
     if (m_inAlt) {
         return;
     }
-    // 1. Collect physical lines: scrollback (oldest -> newest), then screen
-    //    (top -> bottom).
     std::vector<Line> phys;
     std::vector<bool> wrapped;
+    collectPhysicalLines(phys, wrapped);
+    const size_t cursorPhys = m_scrollback.size() + static_cast<size_t>(m_cursorRow);
+    size_t cursorLogical = 0;
+    size_t cursorLogicalCol = 0;
+    const std::vector<std::vector<Cell>> logical =
+        buildLogicalLines(phys, wrapped, cursorPhys, cursorLogical, cursorLogicalCol);
+    size_t cursorNewPhys = 0;
+    size_t cursorNewCol = 0;
+    const ReflowedScreen rewrapped =
+        rewrapLogicalLines(logical, cursorLogical, cursorLogicalCol, cursorNewPhys, cursorNewCol);
+    redistribute(rewrapped, cursorNewPhys, cursorNewCol);
+}
+
+// 1. Collect physical lines: scrollback (oldest -> newest), then screen
+//    (top -> bottom).
+void Screen::collectPhysicalLines(std::vector<Line> &phys, std::vector<bool> &wrapped) const
+{
     phys.reserve(m_scrollback.size() + m_main.size());
     wrapped.reserve(m_scrollback.size() + m_main.size());
     for (size_t i = 0; i < m_scrollback.size(); ++i) {
@@ -586,19 +601,22 @@ void Screen::reflow()
         phys.push_back(m_main[r]);
         wrapped.push_back(m_mainWrapped[r]);
     }
-    const size_t cursorPhys = m_scrollback.size() + static_cast<size_t>(m_cursorRow);
-    size_t cursorLogical = 0;
-    size_t cursorLogicalCol = 0;
-    // 2. Build logical lines: merge soft continuations, then trim the trailing
-    //    padding of each logical line. Spaces at a wrap point are content
-    //    (they separate words), so only the end of the whole logical line is
-    //    padding.
-    std::vector<std::vector<Cell>> logical;
+}
+
+// 2. Build logical lines: merge soft continuations, then trim the trailing
+//    padding of each logical line. Spaces at a wrap point are content
+//    (they separate words), so only the end of the whole logical line is
+//    padding.
+std::vector<std::vector<Cell>>
+Screen::buildLogicalLines(const std::vector<Line> &phys, const std::vector<bool> &wrapped, size_t cursorPhys,
+                           size_t &cursorLogical, size_t &cursorLogicalCol) const
+{
     auto const trimEnd = [](std::vector<Cell> &line) {
         while (!line.empty() && line.back().ch == ' ') {
             line.pop_back();
         }
     };
+    std::vector<std::vector<Cell>> logical;
     std::vector<Cell> cur;
     bool curValid = false;
     for (size_t i = 0; i < phys.size(); ++i) {
@@ -622,17 +640,21 @@ void Screen::reflow()
         trimEnd(cur);
         logical.push_back(std::move(cur));
     }
-    // 3. Re-wrap each logical line at the new width.
-    std::vector<Line> newPhys;
-    std::vector<bool> newWrapped;
-    size_t cursorNewPhys = 0;
-    size_t cursorNewCol = 0;
+    return logical;
+}
+
+// 3. Re-wrap each logical line at the new width.
+Screen::ReflowedScreen
+Screen::rewrapLogicalLines(const std::vector<std::vector<Cell>> &logical, size_t cursorLogical, size_t cursorLogicalCol,
+                           size_t &cursorNewPhys, size_t &cursorNewCol) const
+{
+    ReflowedScreen rewrapped;
     for (size_t logicalIndex = 0; logicalIndex < logical.size(); ++logicalIndex) {
         auto &log = logical[logicalIndex];
-        const size_t logicalStart = newPhys.size();
+        const size_t logicalStart = rewrapped.lines.size();
         if (log.empty()) {
-            newPhys.emplace_back(m_cols, blankCell());
-            newWrapped.push_back(false);
+            rewrapped.lines.emplace_back(m_cols, blankCell());
+            rewrapped.wrapped.push_back(false);
         } else {
             bool first = true;
             for (size_t i = 0; i < log.size(); i += static_cast<size_t>(m_cols)) {
@@ -644,8 +666,8 @@ void Screen::reflow()
                 while (line.size() < static_cast<size_t>(m_cols)) {
                     line.push_back(blankCell());
                 }
-                newPhys.push_back(std::move(line));
-                newWrapped.push_back(!first);
+                rewrapped.lines.push_back(std::move(line));
+                rewrapped.wrapped.push_back(!first);
                 first = false;
             }
         }
@@ -654,8 +676,16 @@ void Screen::reflow()
             cursorNewCol = cursorLogicalCol % static_cast<size_t>(m_cols);
         }
     }
-    // 4. Redistribute: last `rows` lines -> screen, the rest -> scrollback.
-    const size_t total = newPhys.size();
+    return rewrapped;
+}
+
+// 4. Redistribute: last `rows` lines -> screen, the rest -> scrollback.
+// 5. Keep the cursor attached to its logical line and column. This keeps
+//    it in place when the window grows instead of anchoring it to the
+//    bottom row of the newly larger screen.
+void Screen::redistribute(const ReflowedScreen &rewrapped, size_t cursorNewPhys, size_t cursorNewCol)
+{
+    const size_t total = rewrapped.lines.size();
     // Cap only when a limit is set (0 = unlimited).
     const size_t maxTotal =
         m_maxScrollback > 0 ? static_cast<size_t>(m_rows) + static_cast<size_t>(m_maxScrollback) : total;
@@ -664,22 +694,19 @@ void Screen::reflow()
     m_scrollback.clear();
     m_scrollbackWrapped.clear();
     for (size_t i = keepFrom; i < screenStart; ++i) {
-        m_scrollback.push_back(newPhys[i]);
-        m_scrollbackWrapped.push_back(newWrapped[i]);
+        m_scrollback.push_back(rewrapped.lines[i]);
+        m_scrollbackWrapped.push_back(rewrapped.wrapped[i]);
     }
     for (int r = 0; r < m_rows; ++r) {
         const size_t idx = screenStart + static_cast<size_t>(r);
         if (idx < total) {
-            m_main[r] = newPhys[idx];
-            m_mainWrapped[r] = newWrapped[idx];
+            m_main[r] = rewrapped.lines[idx];
+            m_mainWrapped[r] = rewrapped.wrapped[idx];
         } else {
             m_main[r] = Line(m_cols, blankCell());
             m_mainWrapped[r] = false;
         }
     }
-    // 5. Keep the cursor attached to its logical line and column. This keeps
-    //    it in place when the window grows instead of anchoring it to the
-    //    bottom row of the newly larger screen.
     m_cursorRow = std::clamp(static_cast<int>(cursorNewPhys) - static_cast<int>(screenStart), 0, m_rows - 1);
     m_cursorCol = std::min(static_cast<int>(cursorNewCol), m_cols - 1);
     m_pendingWrap = false;

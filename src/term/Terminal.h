@@ -91,11 +91,23 @@ private:
     };
 
     void processByte(unsigned char c);
+    bool processUtf8Continuation(unsigned char c);
+    void processGroundByte(unsigned char c);
+    void processEscapeByte(unsigned char c);
+    void processEscapeIntermediateByte(unsigned char c);
+    void processCsiByte(unsigned char c);
+    void processOscByte(unsigned char c);
     void putCodePoint(unsigned int codePoint);
     void handleCsi(char final, bool privateMode);
     void handleDec(char final, const std::vector<int> &params);
     void handleSgr(const std::vector<int> &params);
     void handleOsc(const QByteArray &body);
+    void handleOscRemoteHost(const QByteArray &body);
+    void handleOscClipboard(const QByteArray &body);
+    void handleOscCurrentDirectory(const QByteArray &body);
+    void handleOscCommandMark(const QByteArray &body);
+    void handleOscTitle(const QByteArray &body);
+    void handleOscColorQuery(const QByteArray &body);
     void handleCommandMark(char mark);
     void handleEsc(char c);
     void cursorMove(int dRow, int dCol);

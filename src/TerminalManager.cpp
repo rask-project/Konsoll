@@ -385,13 +385,7 @@ void TerminalManager::closeSession(QObject *sessionObject)
     pruneSession(session);
     removeSessionFromLayouts(session);
 
-    TerminalBackend *nextInClosingWorkspace = nullptr;
-    if (closingWorkspace != nullptr && closingWorkspace->root() != nullptr) {
-        nextInClosingWorkspace = closingWorkspace->lastActiveSession();
-        if (findLeaf(closingWorkspace->root().get(), nextInClosingWorkspace) == nullptr) {
-            nextInClosingWorkspace = firstSession(closingWorkspace->root().get());
-        }
-    }
+    TerminalBackend *nextInClosingWorkspace = firstValidSessionIn(closingWorkspace);
     std::ranges::for_each(m_workspaces, [this, session](const auto &workspace) {
         if (workspace->lastActiveSession() == session) {
             workspace->setLastActiveSession(firstSession(workspace->root().get()));
@@ -402,24 +396,7 @@ void TerminalManager::closeSession(QObject *sessionObject)
     std::erase_if(m_workspaces, [](const auto &workspace) { return workspace->root() == nullptr; });
 
     if (wasActive) {
-        TerminalBackend *next = nextInClosingWorkspace;
-        if (next == nullptr) {
-            next = mostRecentlyActiveSession();
-        }
-
-        if (next == nullptr) {
-            for (const auto &workspace : m_workspaces) {
-                next = workspace->lastActiveSession();
-                if (findLeaf(workspace->root().get(), next) == nullptr) {
-                    next = firstSession(workspace->root().get());
-                }
-
-                if (next != nullptr) {
-                    break;
-                }
-            }
-        }
-        setActiveSession(next, false);
+        setActiveSession(nextActiveSession(nextInClosingWorkspace), false);
     }
 
     emit workspacesChanged();
@@ -428,6 +405,35 @@ void TerminalManager::closeSession(QObject *sessionObject)
     if (m_sessions.empty()) {
         emit quitRequested();
     }
+}
+
+TerminalBackend *TerminalManager::firstValidSessionIn(TerminalWorkspaceModel *workspace) const
+{
+    if (workspace == nullptr || workspace->root() == nullptr) {
+        return nullptr;
+    }
+    TerminalBackend *session = workspace->lastActiveSession();
+    if (findLeaf(workspace->root().get(), session) == nullptr) {
+        session = firstSession(workspace->root().get());
+    }
+    return session;
+}
+
+TerminalBackend *TerminalManager::nextActiveSession(TerminalBackend *fallback) const
+{
+    if (fallback != nullptr) {
+        return fallback;
+    }
+    TerminalBackend *next = mostRecentlyActiveSession();
+    if (next == nullptr) {
+        for (const auto &workspace : m_workspaces) {
+            next = firstValidSessionIn(workspace.get());
+            if (next != nullptr) {
+                break;
+            }
+        }
+    }
+    return next;
 }
 
 void TerminalManager::activateSession(QObject *sessionObject)
@@ -448,10 +454,7 @@ void TerminalManager::setActiveWorkspace(int index)
     auto *workspace = m_workspaces[static_cast<std::size_t>(index)].get();
     workspace->setAlerting(false);
 
-    TerminalBackend *session = workspace->lastActiveSession();
-    if (findLeaf(workspace->root().get(), session) == nullptr) {
-        session = firstSession(workspace->root().get());
-    }
+    TerminalBackend *session = firstValidSessionIn(workspace);
 
     if (session != nullptr) {
         setActiveSession(session, true);

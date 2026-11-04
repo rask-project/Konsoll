@@ -131,6 +131,8 @@ private:
     TerminalLayoutNode *findLeaf(TerminalLayoutNode *node, TerminalBackend *session) const;
     TerminalBackend *firstSession(TerminalLayoutNode *node) const;
     TerminalBackend *mostRecentlyActiveSession() const;
+    TerminalBackend *firstValidSessionIn(TerminalWorkspaceModel *workspace) const;
+    TerminalBackend *nextActiveSession(TerminalBackend *fallback) const;
     std::unique_ptr<TerminalLayoutNode> *findNodeSlot(
         std::unique_ptr<TerminalLayoutNode> &node, TerminalBackend *session) const;
     void setActiveSession(TerminalBackend *session, bool record);

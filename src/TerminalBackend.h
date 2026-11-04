@@ -18,6 +18,7 @@
 #include <memory>
 
 class QImage;
+class QRegularExpressionMatch;
 
 namespace konsoll
 {
@@ -202,6 +203,8 @@ private:
     void startNextTransfer();
     void clearTextSelectionAndHighlight();
     void sendMouseReport(int button, int row, int col, int event, int modifiers);
+    QByteArray keyOutputBytes(int key, const QString &text, bool control, bool option, bool shift) const;
+    QVariantMap linkFromMatch(const QRegularExpressionMatch &match, int col) const;
     // Route PTY I/O to the session worker via a queued call (never touch the
     // master descriptor from this thread).
     void writeToPty(const QByteArray &data);

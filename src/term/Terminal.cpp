@@ -100,115 +100,139 @@ QByteArray Terminal::mouseReport(int button, int row, int col, int event, unsign
 
 void Terminal::processByte(unsigned char c)
 {
-    if (m_state == State::Ground && m_utf8Remaining != 0) {
-        if (c >= 0x80 && c <= 0xbf) {
-            m_utf8CodePoint = (m_utf8CodePoint << 6) | (c & 0x3fu);
-            --m_utf8Remaining;
-            if (m_utf8Remaining == 0) {
-                putCodePoint(m_utf8CodePoint < m_utf8Minimum ? 0xfffd : m_utf8CodePoint);
-                m_utf8Minimum = 0;
-            }
+    if (m_state == State::Ground) {
+        if (m_utf8Remaining != 0 && processUtf8Continuation(c)) {
             return;
         }
-        putCodePoint(0xfffd);
-        m_utf8Remaining = 0;
-        m_utf8Minimum = 0;
+        processGroundByte(c);
+        return;
     }
+    if (m_state == State::Escape) {
+        processEscapeByte(c);
+        return;
+    }
+    if (m_state == State::EscapeIntermediate) {
+        processEscapeIntermediateByte(c);
+        return;
+    }
+    if (m_state == State::Csi) {
+        processCsiByte(c);
+        return;
+    }
+    processOscByte(c);
+}
 
-    switch (m_state) {
-    case State::Ground:
-        if (c == 0x1b) {
-            m_state = State::Escape;
-            m_csiBody.clear();
-            m_csiPrivate = false;
-        } else if (c == '\r') {
-            m_screen.carriageReturn();
-        } else if (c == '\n') {
-            m_screen.lineFeed();
-        } else if (c == '\b') {
-            m_screen.backspace();
-        } else if (c == '\t') {
-            m_screen.tab();
-        } else if (c == 0x07 || c == 0x08 || c == 0x09) {
-            // BEL / SO / SI: charset shift and bell are ignored.
-        } else if (c == 0x00) {
-            // NUL: dropped.
-        } else if (c < 0x80) {
-            m_screen.putChar(c, m_fg, m_bg, m_flags);
-        } else if (c >= 0xc2 && c <= 0xdf) {
-            m_utf8CodePoint = c & 0x1fu;
-            m_utf8Minimum = 0x80;
-            m_utf8Remaining = 1;
-        } else if (c >= 0xe0 && c <= 0xef) {
-            m_utf8CodePoint = c & 0x0fu;
-            m_utf8Minimum = 0x800;
-            m_utf8Remaining = 2;
-        } else if (c >= 0xf0 && c <= 0xf4) {
-            m_utf8CodePoint = c & 0x07u;
-            m_utf8Minimum = 0x10000;
-            m_utf8Remaining = 3;
-        } else {
-            putCodePoint(0xfffd);
+bool Terminal::processUtf8Continuation(unsigned char c)
+{
+    if (c >= 0x80 && c <= 0xbf) {
+        m_utf8CodePoint = (m_utf8CodePoint << 6) | (c & 0x3fu);
+        --m_utf8Remaining;
+        if (m_utf8Remaining == 0) {
+            putCodePoint(m_utf8CodePoint < m_utf8Minimum ? 0xfffd : m_utf8CodePoint);
+            m_utf8Minimum = 0;
         }
-        break;
+        return true;
+    }
+    putCodePoint(0xfffd);
+    m_utf8Remaining = 0;
+    m_utf8Minimum = 0;
+    return false;
+}
 
-    case State::Escape: // NOLINT: escape dispatch is inherently branching
-        if (c == '[') {
-            m_state = State::Csi;
-            m_csiBody.clear();
-            m_csiPrivate = false;
-        } else if (c == '?') {
-            m_state = State::Csi;
-            m_csiBody.clear();
-            m_csiPrivate = true;
-        } else if (c == ']') {
-            m_state = State::Osc;
-            m_oscBody.clear();
-        } else if (c >= 0x20 && c <= 0x2f) {
-            // ESC sequences with an intermediate byte (for example ESC ( B
-            // to select the ASCII character set) end with a separate final
-            // byte. Consume both; otherwise that final byte leaks as text.
-            m_state = State::EscapeIntermediate;
-        } else {
-            handleEsc(static_cast<char>(c));
-            m_state = State::Ground;
-        }
-        break;
+void Terminal::processGroundByte(unsigned char c)
+{
+    if (c == 0x1b) {
+        m_state = State::Escape;
+        m_csiBody.clear();
+        m_csiPrivate = false;
+    } else if (c == '\r') {
+        m_screen.carriageReturn();
+    } else if (c == '\n') {
+        m_screen.lineFeed();
+    } else if (c == '\b') {
+        m_screen.backspace();
+    } else if (c == '\t') {
+        m_screen.tab();
+    } else if (c == 0x00 || c == 0x07 || c == 0x08 || c == 0x09) {
+        // NUL / BEL / SO / SI: dropped (charset shift and bell are ignored).
+    } else if (c < 0x80) {
+        m_screen.putChar(c, m_fg, m_bg, m_flags);
+    } else if (c >= 0xc2 && c <= 0xdf) {
+        m_utf8CodePoint = c & 0x1fu;
+        m_utf8Minimum = 0x80;
+        m_utf8Remaining = 1;
+    } else if (c >= 0xe0 && c <= 0xef) {
+        m_utf8CodePoint = c & 0x0fu;
+        m_utf8Minimum = 0x800;
+        m_utf8Remaining = 2;
+    } else if (c >= 0xf0 && c <= 0xf4) {
+        m_utf8CodePoint = c & 0x07u;
+        m_utf8Minimum = 0x10000;
+        m_utf8Remaining = 3;
+    } else {
+        putCodePoint(0xfffd);
+    }
+}
 
-    case State::EscapeIntermediate:
-        if (c >= 0x30 && c <= 0x7e) {
-            m_state = State::Ground;
-        }
-        break;
+void Terminal::processEscapeByte(unsigned char c)
+{
+    if (c == '[') {
+        m_state = State::Csi;
+        m_csiBody.clear();
+        m_csiPrivate = false;
+    } else if (c == '?') {
+        m_state = State::Csi;
+        m_csiBody.clear();
+        m_csiPrivate = true;
+    } else if (c == ']') {
+        m_state = State::Osc;
+        m_oscBody.clear();
+    } else if (c >= 0x20 && c <= 0x2f) {
+        // ESC sequences with an intermediate byte (for example ESC ( B
+        // to select the ASCII character set) end with a separate final
+        // byte. Consume both; otherwise that final byte leaks as text.
+        m_state = State::EscapeIntermediate;
+    } else {
+        handleEsc(static_cast<char>(c));
+        m_state = State::Ground;
+    }
+}
 
-    case State::Csi:
-        if (c >= 0x40 && c <= 0x7e) {
-            handleCsi(static_cast<char>(c), m_csiPrivate);
-            m_state = State::Ground;
-            m_csiBody.clear();
-            m_csiPrivate = false;
-        } else if (c == '?' && m_csiBody.isEmpty()) {
-            // DEC private modes follow '[' directly: CSI ? 1049 h.
-            m_csiPrivate = true;
-        } else {
-            m_csiBody.append(static_cast<char>(c));
-        }
-        break;
+void Terminal::processEscapeIntermediateByte(unsigned char c)
+{
+    if (c >= 0x30 && c <= 0x7e) {
+        m_state = State::Ground;
+    }
+}
 
-    case State::Osc:
-        if (c == 0x07 || c == 0x9c) {
-            handleOsc(m_oscBody);
-            m_state = State::Ground;
-            m_oscBody.clear();
-        } else if (c == 0x1b) {
-            // ST (ESC \) terminates the string.
-            handleOsc(m_oscBody);
-            m_state = State::Escape;
-            m_oscBody.clear();
-        } else {
-            m_oscBody.append(static_cast<char>(c));
-        }
-        break;
+void Terminal::processCsiByte(unsigned char c)
+{
+    if (c >= 0x40 && c <= 0x7e) {
+        handleCsi(static_cast<char>(c), m_csiPrivate);
+        m_state = State::Ground;
+        m_csiBody.clear();
+        m_csiPrivate = false;
+    } else if (c == '?' && m_csiBody.isEmpty()) {
+        // DEC private modes follow '[' directly: CSI ? 1049 h.
+        m_csiPrivate = true;
+    } else {
+        m_csiBody.append(static_cast<char>(c));
+    }
+}
+
+void Terminal::processOscByte(unsigned char c)
+{
+    if (c == 0x07 || c == 0x9c) {
+        handleOsc(m_oscBody);
+        m_state = State::Ground;
+        m_oscBody.clear();
+    } else if (c == 0x1b) {
+        // ST (ESC \) terminates the string.
+        handleOsc(m_oscBody);
+        m_state = State::Escape;
+        m_oscBody.clear();
+    } else {
+        m_oscBody.append(static_cast<char>(c));
     }
 }
 
@@ -504,63 +528,89 @@ void Terminal::handleSgr(const std::vector<int> &p) // NOLINT: SGR dispatch is i
 void Terminal::handleOsc(const QByteArray &body)
 {
     if (body.startsWith("1337;RemoteHost=")) {
-        const QByteArray payload = body.mid(sizeof("1337;RemoteHost=") - 1);
-        const qsizetype separator = payload.indexOf(';');
-        if (separator < 0 || payload.first(separator) != m_remoteHostToken.toUtf8()) {
-            return;
-        }
-        const QString host = QString::fromUtf8(payload.mid(separator + 1));
-        if (host != m_remoteHost) {
-            m_remoteHost = host;
-            m_extraFlags |= RemoteHostDirty;
-        }
+        handleOscRemoteHost(body);
         return;
     }
-
-    // OSC 52;selection;base64 stores text copied by a remote terminal app.
-    // Bound the encoded payload to avoid untrusted PTY output allocating an
-    // arbitrarily large clipboard value.
     if (body.startsWith("52;")) {
-        const int separator = static_cast<int>(body.indexOf(';', 3));
-        if (separator < 0 || body.size() - separator - 1 > 1'400'000) {
-            return;
-        }
-        const QByteArray selection = body.mid(3, separator - 3);
-        if (selection.isEmpty() || selection.contains('c') || selection.contains('p')) {
-            const QByteArray encoded = body.mid(separator + 1);
-            const QByteArray decoded = QByteArray::fromBase64(encoded, QByteArray::AbortOnBase64DecodingErrors);
-            if (!encoded.isEmpty() && decoded.size() <= 1'000'000) {
-                m_clipboardText = QString::fromUtf8(decoded);
-                m_clipboardTextDirty = true;
-            }
-        }
+        handleOscClipboard(body);
         return;
     }
-
     if (body.startsWith("7;")) {
-        const QUrl url = QUrl::fromEncoded(body.mid(2), QUrl::TolerantMode);
-        const QString path = url.scheme() == QStringLiteral("file") ? url.path(QUrl::FullyDecoded) : QString{};
-        if (path.startsWith(QLatin1Char('/')) && path != m_currentDirectory) {
-            m_currentDirectory = path;
-            m_currentDirectoryDirty = true;
-        }
+        handleOscCurrentDirectory(body);
         return;
     }
-
-    if (body.startsWith("133;") && body.size() > 4) {
-        handleCommandMark(body.at(4));
-        if (body.at(4) == 'D') {
-            m_commandFinished = true;
-        }
+    if (body.startsWith("133;")) {
+        handleOscCommandMark(body);
         return;
     }
+    handleOscTitle(body);
+    handleOscColorQuery(body);
+    // "8;" (hyperlink) and others: ignored.
+}
 
-    // Form: <num>;<text>. We only honor 0 (icon+title) and 2 (title).
+void Terminal::handleOscRemoteHost(const QByteArray &body)
+{
+    const QByteArray payload = body.mid(sizeof("1337;RemoteHost=") - 1);
+    const qsizetype separator = payload.indexOf(';');
+    if (separator < 0 || payload.first(separator) != m_remoteHostToken.toUtf8()) {
+        return;
+    }
+    const QString host = QString::fromUtf8(payload.mid(separator + 1));
+    if (host != m_remoteHost) {
+        m_remoteHost = host;
+        m_extraFlags |= RemoteHostDirty;
+    }
+}
+
+// OSC 52;selection;base64 stores text copied by a remote terminal app.
+// Bound the encoded payload to avoid untrusted PTY output allocating an
+// arbitrarily large clipboard value.
+void Terminal::handleOscClipboard(const QByteArray &body)
+{
+    const int separator = static_cast<int>(body.indexOf(';', 3));
+    if (separator < 0 || body.size() - separator - 1 > 1'400'000) {
+        return;
+    }
+    const QByteArray selection = body.mid(3, separator - 3);
+    if (selection.isEmpty() || selection.contains('c') || selection.contains('p')) {
+        const QByteArray encoded = body.mid(separator + 1);
+        const QByteArray decoded = QByteArray::fromBase64(encoded, QByteArray::AbortOnBase64DecodingErrors);
+        if (!encoded.isEmpty() && decoded.size() <= 1'000'000) {
+            m_clipboardText = QString::fromUtf8(decoded);
+            m_clipboardTextDirty = true;
+        }
+    }
+}
+
+void Terminal::handleOscCurrentDirectory(const QByteArray &body)
+{
+    const QUrl url = QUrl::fromEncoded(body.mid(2), QUrl::TolerantMode);
+    const QString path = url.scheme() == QStringLiteral("file") ? url.path(QUrl::FullyDecoded) : QString{};
+    if (path.startsWith(QLatin1Char('/')) && path != m_currentDirectory) {
+        m_currentDirectory = path;
+        m_currentDirectoryDirty = true;
+    }
+}
+
+void Terminal::handleOscCommandMark(const QByteArray &body)
+{
+    if (body.size() <= 4) {
+        return;
+    }
+    handleCommandMark(body.at(4));
+    if (body.at(4) == 'D') {
+        m_commandFinished = true;
+    }
+}
+
+// Form: <num>;<text>. We only honor 0 (icon+title) and 2 (title).
+void Terminal::handleOscTitle(const QByteArray &body)
+{
     const int idx = static_cast<int>(body.indexOf(';'));
     if (idx <= 0) {
         return;
     }
-    QByteArray const num = body.left(idx);
+    const QByteArray num = body.left(idx);
     const QString text = QString::fromUtf8(body.mid(idx + 1));
     if (num == "0" || num == "2") {
         if (m_title != text) {
@@ -568,10 +618,18 @@ void Terminal::handleOsc(const QByteArray &body)
             m_titleDirty = true;
         }
     }
+}
+
+void Terminal::handleOscColorQuery(const QByteArray &body)
+{
+    const int idx = static_cast<int>(body.indexOf(';'));
+    if (idx <= 0) {
+        return;
+    }
+    const QByteArray num = body.left(idx);
     if ((num == "10" || num == "11") && body.mid(idx + 1) == "?") {
         m_colorQuery = static_cast<unsigned char>(num == "10" ? 10 : 11);
     }
-    // "8;" (hyperlink) and others: ignored.
 }
 
 void Terminal::handleCommandMark(char mark)

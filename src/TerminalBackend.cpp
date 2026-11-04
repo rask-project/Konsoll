@@ -474,19 +474,29 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
         scrollToBottom();
     }
 
-    QByteArray out;
+    // Physical Ctrl+K: clear the scrollback buffer (terminal-level action,
+    // like Konsole's "Clear Buffer"). Not sent to the shell.
+    if (control && key == static_cast<int>(Qt::Key_K)) {
+        clearBuffer();
+        return;
+    }
+
+    const QByteArray out = keyOutputBytes(key, text, control, option, shift);
+    if (!out.isEmpty() && m_worker) {
+        writeToPty(out);
+    }
+}
+
+QByteArray
+TerminalBackend::keyOutputBytes(int key, const QString &text, bool control, bool option, bool shift) const
+{
     if (shift && !control && (key == static_cast<int>(Qt::Key_Return) || key == static_cast<int>(Qt::Key_Enter))) {
         // Codex and other terminal TUIs commonly bind LF (Ctrl+J) to insert
         // a draft newline. TUIs using Kitty keyboard mode need the distinct
         // modified Enter event instead.
-        out = m_terminal && m_terminal->kittyKeyboardEnabled() ? QByteArray("\x1b[13;2u") : QByteArray("\n");
-    } else if (control) {
-        // Physical Ctrl+K: clear the scrollback buffer (terminal-level action,
-        // like Konsole's "Clear Buffer"). Not sent to the shell.
-        if (key == static_cast<int>(Qt::Key_K)) {
-            clearBuffer();
-            return;
-        }
+        return m_terminal && m_terminal->kittyKeyboardEnabled() ? QByteArray("\x1b[13;2u") : QByteArray("\n");
+    }
+    if (control) {
         // Physical Ctrl+letter: send the control byte (e.g. Ctrl+C -> 0x03).
         // The event text may be empty for a Ctrl-modified key, so derive the
         // letter from the key code if needed.
@@ -494,27 +504,23 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
         if (ctrlText.isEmpty() && key >= static_cast<int>(Qt::Key_A) && key <= static_cast<int>(Qt::Key_Z)) {
             ctrlText = QChar(static_cast<char>('a' + (key - static_cast<int>(Qt::Key_A))));
         }
-        out = ctrlKeyByte(ctrlText, shift);
-    } else {
-        out = specialKeyByte(key, m_terminal && m_terminal->applicationCursorKeys());
-        if (option) {
-            // Option-modified keys: word-by-word movement and deletion,
-            // handled by the shell line editor (zsh/bash: \eb/\ef ->
-            // word-left/right, \e\177 -> backward-kill-word, \eD ->
-            // forward-kill-word).
-            const QByteArray opt = optionKeyByte(key);
-            if (!opt.isEmpty()) {
-                out = opt;
-            }
-        }
-        if (out.isEmpty() && !text.isEmpty()) {
-            out = text.toUtf8();
+        return ctrlKeyByte(ctrlText, shift);
+    }
+    QByteArray out = specialKeyByte(key, m_terminal && m_terminal->applicationCursorKeys());
+    if (option) {
+        // Option-modified keys: word-by-word movement and deletion,
+        // handled by the shell line editor (zsh/bash: \eb/\ef ->
+        // word-left/right, \e\177 -> backward-kill-word, \eD ->
+        // forward-kill-word).
+        const QByteArray opt = optionKeyByte(key);
+        if (!opt.isEmpty()) {
+            out = opt;
         }
     }
-
-    if (!out.isEmpty() && m_worker) {
-        writeToPty(out);
+    if (out.isEmpty() && !text.isEmpty()) {
+        out = text.toUtf8();
     }
+    return out;
 }
 
 void TerminalBackend::writeText(const QString &text)
@@ -564,53 +570,61 @@ QVariantMap TerminalBackend::linkAt(int row, int col) const
     auto matches = linkPattern.globalMatch(line);
     while (matches.hasNext()) {
         const QRegularExpressionMatch match = matches.next();
-        if (col < match.capturedStart() || col >= match.capturedEnd()) {
-            continue;
+        const QVariantMap link = linkFromMatch(match, col);
+        if (!link.isEmpty()) {
+            return link;
         }
+    }
+    return {};
+}
 
-        QString target = match.captured();
-        while (!target.isEmpty() && QStringLiteral(".,;:!?) ]}").contains(target.back())) {
-            target.chop(1);
-        }
-        if (target.isEmpty()) {
-            return {};
-        }
-        const auto targetLength = target.size();
-        if (col >= match.capturedStart() + targetLength) {
-            return {};
-        }
+QVariantMap TerminalBackend::linkFromMatch(const QRegularExpressionMatch &match, int col) const
+{
+    if (col < match.capturedStart() || col >= match.capturedEnd()) {
+        return {};
+    }
 
-        if (target.startsWith(QStringLiteral("www."), Qt::CaseInsensitive)) {
-            target.prepend(QStringLiteral("https://"));
-        }
-        const QUrl url(target);
-        if (url.isValid() && !url.scheme().isEmpty()) {
-            if (url.isLocalFile() && !QFileInfo::exists(url.toLocalFile())) {
-                return {};
-            }
-            return {
-                {QStringLiteral("target"), url.toString()},
-                {QStringLiteral("start"), match.capturedStart()},
-                {QStringLiteral("end"), match.capturedStart() + targetLength}
-            };
-        }
+    QString target = match.captured();
+    while (!target.isEmpty() && QStringLiteral(".,;:!?) ]}").contains(target.back())) {
+        target.chop(1);
+    }
+    if (target.isEmpty()) {
+        return {};
+    }
+    const auto targetLength = target.size();
+    if (col >= match.capturedStart() + targetLength) {
+        return {};
+    }
 
-        if (target.startsWith(QLatin1Char('~'))) {
-            target.replace(0, 1, QDir::homePath());
-        } else if (!QDir::isAbsolutePath(target)) {
-            target = QDir(m_currentDirectory).filePath(target);
-        }
-        const QFileInfo fileInfo(QDir::cleanPath(target));
-        if (!fileInfo.exists()) {
+    if (target.startsWith(QStringLiteral("www."), Qt::CaseInsensitive)) {
+        target.prepend(QStringLiteral("https://"));
+    }
+    const QUrl url(target);
+    if (url.isValid() && !url.scheme().isEmpty()) {
+        if (url.isLocalFile() && !QFileInfo::exists(url.toLocalFile())) {
             return {};
         }
         return {
-            {QStringLiteral("target"), QUrl::fromLocalFile(fileInfo.absoluteFilePath()).toString()},
+            {QStringLiteral("target"), url.toString()},
             {QStringLiteral("start"), match.capturedStart()},
             {QStringLiteral("end"), match.capturedStart() + targetLength}
         };
     }
-    return {};
+
+    if (target.startsWith(QLatin1Char('~'))) {
+        target.replace(0, 1, QDir::homePath());
+    } else if (!QDir::isAbsolutePath(target)) {
+        target = QDir(m_currentDirectory).filePath(target);
+    }
+    const QFileInfo fileInfo(QDir::cleanPath(target));
+    if (!fileInfo.exists()) {
+        return {};
+    }
+    return {
+        {QStringLiteral("target"), QUrl::fromLocalFile(fileInfo.absoluteFilePath()).toString()},
+        {QStringLiteral("start"), match.capturedStart()},
+        {QStringLiteral("end"), match.capturedStart() + targetLength}
+    };
 }
 
 bool TerminalBackend::openLinkAt(int row, int col) const

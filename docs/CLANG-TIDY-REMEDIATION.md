@@ -4,8 +4,9 @@
 > Tool: Homebrew LLVM 19.1.6 `clang-tidy`
 > Config: `.clang-tidy` (`WarningsAsErrors: "*"`)
 > Scope: all 14 C++ / Objective-C++ sources (10 `.cpp`, 4 `.mm`)
-> Latest run: 2026-11-04, after the Stage 3 tree-traversal and `waitpid`
-> refactors; 8 diagnostics remain (7 cognitive-complexity, 1 branch-clone).
+> Latest run: 2026-11-04, after the Stage 3 cognitive-complexity and
+> branch-clone refactors; **0 diagnostics remain** — all 16 Stage 3 items
+> refactored and verified by a clean build + a full clang-tidy re-run.
 
 ## 1. How to reproduce
 
@@ -26,15 +27,14 @@ clang-tidy -p build/Qt_6_12_0_for_macOS_Debug --config-file=.clang-tidy <file>
 ## 2. Summary
 
 The initial run found **33 unique findings** (deduplicated across translation
-units) across **11 distinct checks**. The latest run leaves **8 diagnostics**
-in project sources: 7 cognitive-complexity findings and 1 branch-clone finding.
-Stage 1 (9 unique findings) and Stage 2 (8) are complete. In Stage 3, the 5
-recursion and 3 do-while findings no longer reproduce; the remaining findings
-are listed below.
+units) across **11 distinct checks**. The latest run leaves **0 diagnostics**
+in project sources. Stage 1 (9 unique findings) and Stage 2 (8) are complete.
+In Stage 3, all 16 findings (5 recursion, 3 do-while, 7 cognitive-complexity,
+1 branch-clone) are refactored and no longer reproduce.
 
 | Check | Count | Stage |
 |---|---|---|
-| `readability-function-cognitive-complexity` | 7 | 3 — remaining |
+| `readability-function-cognitive-complexity` | 7 | 3 — done |
 | `bugprone-narrowing-conversions` | 7 | 2 |
 | `misc-no-recursion` | 5 | 3 — cleared |
 | `cppcoreguidelines-avoid-non-const-global-variables` | 4 | 1 |
@@ -44,7 +44,7 @@ are listed below.
 | `modernize-use-override` | 2 | 1 |
 | `bugprone-implicit-widening-of-multiplication-result` | 1 | 2 |
 | `readability-use-std-min-max` | 1 | 1 |
-| `bugprone-branch-clone` | 1 | 3 — remaining |
+| `bugprone-branch-clone` | 1 | 3 — done |
 
 > `cppcoreguidelines-explicit-virtual-functions` and `modernize-use-override`
 > are the **same two findings** (the two destructors below) reported by two
@@ -60,9 +60,9 @@ Ordered by effort/risk, so each stage is self-contained and shippable:
 - **Stage 2 — Type conversions (8 findings).** Narrowing / implicit-widening.
   Each needs a deliberate `static_cast` (or a type change) with a reason;
   low risk but review each site.
-- **Stage 3 — Refactoring (16 findings).** Cognitive complexity, recursion,
-  branch-clone, do-while. The recursion and do-while findings are cleared;
-  8 findings remain as listed below.
+- **Stage 3 — Refactoring (16 findings) — ✅ done 2026-11-04.** Cognitive
+  complexity, recursion, branch-clone, do-while. All 16 findings refactored;
+  the latest full re-run reports 0 diagnostics.
 
 ## 4. Findings by stage
 
@@ -99,26 +99,18 @@ Ordered by effort/risk, so each stage is self-contained and shippable:
 **`bugprone-implicit-widening-of-multiplication-result` (1)**
 - `src/TerminalBackend.cpp:1559` — `rowsOut.reserve(s.rows() * s.cols());` — perform the multiplication in the wider type: `rowsOut.reserve(static_cast<qsizetype>(s.rows()) * s.cols());`. → applied verbatim.
 
-### Stage 3 — Refactoring (16) — partial
+### Stage 3 — Refactoring (16) — ✅ done 2026-11-04
 
-**Cleared in the latest run:** all 5 `misc-no-recursion` findings and all 3
-`cppcoreguidelines-avoid-do-while` findings. The explicit-stack traversals
-are in `src/TerminalManager.cpp`; the EINTR retries in `src/pty/PtyProcess.cpp`
-now use ordinary `while` loops.
-
-**Still reported in the latest run (8 diagnostics):**
-
-| File | Finding | Count |
-|---|---|---:|
-| `src/Terminal.cpp` | `readability-function-cognitive-complexity` (`processByte`, `handleOsc`) | 2 |
-| `src/Screen.cpp` | `readability-function-cognitive-complexity` (`reflow`) | 1 |
-| `src/pty/PtyProcess.cpp` | `readability-function-cognitive-complexity` (`start`) | 1 |
-| `src/TerminalBackend.cpp` | `readability-function-cognitive-complexity` (`keyPress`, `linkAt`) | 2 |
-| `src/TerminalManager.cpp` | `readability-function-cognitive-complexity` (`closeSession`) | 1 |
-| `src/Terminal.cpp` | `bugprone-branch-clone` | 1 |
-
-The line numbers and complexity scores below are from the initial run and are
-kept as the baseline. Use the latest diagnostics above to locate current lines.
+**Cleared in the latest run:** all 16 Stage 3 findings. The 5 `misc-no-recursion`
+and 3 `cppcoreguidelines-avoid-do-while` findings are gone (explicit-stack
+traversals in `src/TerminalManager.cpp`; ordinary `while` loops for the EINTR
+retries in `src/pty/PtyProcess.cpp`). The 7 `readability-function-cognitive-complexity`
+findings were brought under the threshold by extracting helpers
+(`Terminal.cpp` `processByte`/`handleOsc`, `Screen.cpp` `reflow`,
+`PtyProcess.cpp` `start`, `TerminalBackend.cpp` `keyPress`/`linkAt`,
+`TerminalManager.cpp` `closeSession`), and the 1 `bugprone-branch-clone` was
+fixed by merging the duplicated empty branches in `Terminal.cpp`. A full
+clang-tidy re-run over all 14 sources reports **0 diagnostics**.
 
 **`readability-function-cognitive-complexity` (7)** — threshold 25; extract helpers / table-drive / early-return to bring each under.
 - `src/term/Terminal.cpp:101` — `processByte` (51).
