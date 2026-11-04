@@ -393,6 +393,7 @@ Item {
         property bool _dragging: false
         property bool _cancelOnly: false
         property bool _activationClick: false
+        property bool _middlePaste: false
         property bool _pointerInside: false
         property bool _linkModifierDown: false
         property int _hoverRow: -1
@@ -474,6 +475,12 @@ Item {
                     return;
                 }
             }
+            if (mouse.button === Qt.MiddleButton) {
+                selectionArea._middlePaste = true;
+                view.session.pasteSelectionOrClipboard();
+                mouse.accepted = true;
+                return;
+            }
             if (view.session.mouseTracking) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
                 view.session.mousePress(selectionArea.buttonCode(mouse.button), cell[1], cell[0], mouse.modifiers);
@@ -515,7 +522,7 @@ Item {
             selectionArea._pointerY = mouse.y;
             selectionArea._pointerInside = true;
             selectionArea.updateLinkHover(mouse.modifiers);
-            if (selectionArea._activationClick)
+            if (selectionArea._activationClick || selectionArea._middlePaste)
                 return;
             if (view.session.mouseTracking && (mouse.buttons !== Qt.NoButton || view.session.mouseMotionTracking)) {
                 const button = (mouse.buttons & Qt.LeftButton) ? Qt.LeftButton : (mouse.buttons & Qt.MiddleButton) ? Qt.MiddleButton : (mouse.buttons & Qt.RightButton) ? Qt.RightButton : Qt.NoButton;
@@ -541,6 +548,11 @@ Item {
         }
 
         onReleased: mouse => {
+            if (mouse.button === Qt.MiddleButton) {
+                selectionArea._middlePaste = false;
+                mouse.accepted = true;
+                return;
+            }
             if (selectionArea._activationClick) {
                 selectionArea._activationClick = false;
                 mouse.accepted = true;
@@ -583,7 +595,10 @@ Item {
             }
         }
 
-        onCanceled: selectionArea._activationClick = false
+        onCanceled: {
+            selectionArea._activationClick = false;
+            selectionArea._middlePaste = false;
+        }
     }
 
     Controls.Menu {
