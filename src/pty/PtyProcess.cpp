@@ -56,7 +56,8 @@ PtyProcess::~PtyProcess()
     }
 }
 
-bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QString &workingDirectory)
+bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QString &workingDirectory,
+                       const QString &remoteHostToken)
 {
     const QString shellName = QFileInfo(shellPath).fileName();
     const bool isZsh = shellName == QStringLiteral("zsh");
@@ -174,6 +175,7 @@ bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QStri
     const QByteArray path = "/usr/bin:/bin:/usr/sbin:/sbin:" + qgetenv("PATH");
     const QByteArray integrationPath = integrationFile.toLocal8Bit();
     const QByteArray startupPath = startupDir.toLocal8Bit();
+    const QByteArray remoteHostTokenBytes = remoteHostToken.toUtf8();
     std::vector<char *> argv;
     argv.reserve(shellArgs.size() + 2);
     argv.push_back(argv0.data());
@@ -208,6 +210,9 @@ bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QStri
         ::setenv("COLUMNS", columns.constData(), 1);
         ::setenv("LINES", lines.constData(), 1);
         ::setenv("PATH", path.constData(), 1);
+        if (!remoteHostTokenBytes.isEmpty()) {
+            ::setenv("KONSOLL_REMOTE_HOST_TOKEN", remoteHostTokenBytes.constData(), 1);
+        }
 
         if (!integrationFile.isEmpty()) {
             ::setenv("KONSOLL_SHELL_INTEGRATION", integrationPath.constData(), 1);

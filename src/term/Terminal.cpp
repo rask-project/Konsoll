@@ -7,7 +7,10 @@
 namespace konsoll
 {
 
-Terminal::Terminal(int rows, int cols) : m_screen(rows, cols) {}
+Terminal::Terminal(int rows, int cols, const QString &remoteHostToken)
+    : m_screen(rows, cols)
+    , m_remoteHostToken(remoteHostToken)
+{}
 
 void Terminal::write(const QByteArray &data)
 {
@@ -392,8 +395,10 @@ void Terminal::handleDec(char final, const std::vector<int> &params)
             m_sgrMouse = set;
             break;
         case 2004:
-            break; // Bracketed paste: accepted, unused in the MVP.
-        case 6:    // Origin mode: ignored.
+            m_extraFlags = set ? static_cast<unsigned char>(m_extraFlags | BracketedPasteEnabled)
+                               : static_cast<unsigned char>(m_extraFlags & ~BracketedPasteEnabled);
+            break;
+        case 6: // Origin mode: ignored.
         default:
             break;
         }
@@ -498,6 +503,20 @@ void Terminal::handleSgr(const std::vector<int> &p) // NOLINT: SGR dispatch is i
 
 void Terminal::handleOsc(const QByteArray &body)
 {
+    if (body.startsWith("1337;RemoteHost=")) {
+        const QByteArray payload = body.mid(sizeof("1337;RemoteHost=") - 1);
+        const qsizetype separator = payload.indexOf(';');
+        if (separator < 0 || payload.first(separator) != m_remoteHostToken.toUtf8()) {
+            return;
+        }
+        const QString host = QString::fromUtf8(payload.mid(separator + 1));
+        if (host != m_remoteHost) {
+            m_remoteHost = host;
+            m_extraFlags |= RemoteHostDirty;
+        }
+        return;
+    }
+
     // OSC 52;selection;base64 stores text copied by a remote terminal app.
     // Bound the encoded payload to avoid untrusted PTY output allocating an
     // arbitrarily large clipboard value.
@@ -578,7 +597,7 @@ void Terminal::handleCommandMark(char mark)
         m_commandRunning = false;
         if (m_commandStartLine >= 0) {
             const int endLine = std::max(m_commandStartLine, line - (m_screen.cursorCol() == 0 ? 1 : 0));
-            m_commandBlocks.push_back({.startLine=m_commandStartLine, .endLine=endLine});
+            m_commandBlocks.push_back({.startLine = m_commandStartLine, .endLine = endLine});
             m_commandStartLine = -1;
         }
         break;

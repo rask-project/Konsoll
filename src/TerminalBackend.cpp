@@ -7,8 +7,10 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QImage>
 #include <QProcess>
 #include <QUrl>
+#include <QUuid>
 #include <QtGui>
 
 #include <pwd.h>
@@ -199,10 +201,42 @@ QByteArray optionKeyByte(int key)
 
 TerminalBackend::TerminalBackend(QObject *parent) : QObject(parent)
 {
+    m_remoteHostToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_frameTimer.setTimerType(Qt::CoarseTimer);
     m_frameTimer.setInterval(16ms);
     m_frameTimer.setSingleShot(true);
     connect(&m_frameTimer, &QTimer::timeout, this, &TerminalBackend::onFrameTimer);
+    connect(&m_transferProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
+        const TransferJob completed = std::exchange(m_activeTransfer, TransferJob{});
+        if (completed.removeLocal()) {
+            QFile::remove(completed.localPath);
+        }
+        const bool succeeded = exitStatus == QProcess::NormalExit && exitCode == 0;
+        if (succeeded && m_pty && completed.targetHost == m_remoteHost) {
+            QByteArray pastedPath = completed.remotePath.toUtf8();
+            if (m_terminal && m_terminal->bracketedPasteEnabled()) {
+                pastedPath.prepend("\x1b[200~");
+                pastedPath.append("\x1b[201~");
+            }
+            m_pty->write(pastedPath);
+        } else if (!succeeded) {
+            qWarning().noquote() << "Konsoll: remote file transfer failed:" << m_transferProcess.errorString();
+            emit transferFailed(tr("Remote upload failed. Check SSH access and key-based authentication."));
+        }
+        startNextTransfer();
+    });
+    connect(&m_transferProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart) {
+            return;
+        }
+        const TransferJob failed = std::exchange(m_activeTransfer, TransferJob{});
+        if (failed.removeLocal()) {
+            QFile::remove(failed.localPath);
+        }
+        qWarning().noquote() << "Konsoll: could not start scp:" << m_transferProcess.errorString();
+        emit transferFailed(tr("Could not start scp for the remote upload."));
+        startNextTransfer();
+    });
 
     const QPalette palette = QGuiApplication::palette();
     setSystemColors(palette.color(QPalette::Window), palette.color(QPalette::WindowText));
@@ -230,12 +264,12 @@ void TerminalBackend::start(const QString &workingDirectory)
         return; // Already running.
     }
 
-    m_terminal = std::make_unique<Terminal>(m_rows, m_cols);
+    m_terminal = std::make_unique<Terminal>(m_rows, m_cols, m_remoteHostToken);
     m_pty = std::make_unique<PtyProcess>();
     connect(m_pty.get(), &PtyProcess::dataReceived, this, &TerminalBackend::onData);
     connect(m_pty.get(), &PtyProcess::processExited, this, &TerminalBackend::onExited);
     const QString shell = detectDefaultShell();
-    if (!m_pty->start(shell, m_cols, m_rows, workingDirectory)) {
+    if (!m_pty->start(shell, m_cols, m_rows, workingDirectory, m_remoteHostToken)) {
         qWarning("Konsoll: failed to start the PTY");
     }
 }
@@ -288,6 +322,11 @@ void TerminalBackend::onData(const QByteArray &data)
         m_currentDirectory = m_terminal->currentDirectory();
         emit currentDirectoryChanged();
         m_terminal->clearCurrentDirectoryDirty();
+    }
+    if (m_terminal->remoteHostDirty()) {
+        m_remoteHost = m_terminal->remoteHost();
+        emit remoteHostChanged();
+        m_terminal->clearRemoteHostDirty();
     }
 
     if (m_terminal->clearPending()) {
@@ -1174,7 +1213,10 @@ void TerminalBackend::paste()
         return;
     }
     const QClipboard *const clipboard = QGuiApplication::clipboard();
-    if (!clipboard->image().isNull()) {
+    const QImage image = clipboard->image();
+    if (!image.isNull() && !m_remoteHost.isEmpty() && m_remoteHost != QStringLiteral("localhost")) {
+        transferImage(image);
+    } else if (!image.isNull()) {
         // Image-aware terminal applications (including Codex CLI) handle Ctrl+V
         // themselves and read the native macOS clipboard. A PTY cannot carry an
         // image object, so forward the application's image-paste key instead of
@@ -1183,10 +1225,141 @@ void TerminalBackend::paste()
     } else {
         const QString text = clipboard->text();
         if (!text.isEmpty()) {
-            m_pty->write(text.toUtf8());
+            QByteArray pastedText = text.toUtf8();
+            if (m_terminal && m_terminal->bracketedPasteEnabled()) {
+                pastedText.prepend("\x1b[200~");
+                pastedText.append("\x1b[201~");
+            }
+            m_pty->write(pastedText);
         }
     }
     clearTextSelectionAndHighlight();
+}
+
+void TerminalBackend::transferFile(const QUrl &url)
+{
+    if (!url.isLocalFile()) {
+        return;
+    }
+    transferLocalFile(url.toLocalFile());
+}
+
+void TerminalBackend::transferImage(const QImage &image)
+{
+    const QString localPath =
+        QDir::temp().filePath(QStringLiteral("konsoll-%1.png").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+    if (!image.save(localPath, "PNG")) {
+        qWarning("Konsoll: failed to encode clipboard image");
+        emit transferFailed(tr("Could not encode the clipboard image."));
+        return;
+    }
+    transferLocalFile(localPath, true);
+}
+
+void TerminalBackend::transferLocalFile(const QString &path, bool removeAfterTransfer)
+{
+    if (!m_pty) {
+        if (removeAfterTransfer) {
+            QFile::remove(path);
+        }
+        return;
+    }
+    const QFileInfo fileInfo(path);
+    if (!fileInfo.exists()) {
+        if (removeAfterTransfer) {
+            QFile::remove(path);
+        }
+        return;
+    }
+    if (m_remoteHost.isEmpty() || m_remoteHost == QStringLiteral("localhost")) {
+        m_pty->write(path.toUtf8());
+        if (removeAfterTransfer) {
+            QFile::remove(path);
+        }
+        return;
+    }
+
+    static const QRegularExpression remoteSpec(
+        QStringLiteral("^(?:(?<user>[A-Za-z0-9_.-]+)@)?(?<host>[A-Za-z0-9._-]+)(?:;port=(?<port>[0-9]{1,5}))?$")
+    );
+    const QRegularExpressionMatch remoteMatch = remoteSpec.match(m_remoteHost);
+    if (!remoteMatch.hasMatch()) {
+        qWarning() << "Konsoll: ignoring unsupported remote host in terminal metadata";
+        emit transferFailed(tr("Could not identify the SSH host for this transfer."));
+        if (removeAfterTransfer) {
+            QFile::remove(path);
+        }
+        return;
+    }
+    const QString suffix = fileInfo.isDir() ? QString{} : fileInfo.completeSuffix();
+    const QString remoteName = QStringLiteral("konsoll-%1%2")
+                                   .arg(
+                                       QUuid::createUuid().toString(QUuid::WithoutBraces),
+                                       suffix.isEmpty() ? QString{} : QStringLiteral(".") + suffix
+                                   );
+    const QString remotePath = QStringLiteral("/tmp/") + remoteName;
+    const QString port = remoteMatch.captured(QStringLiteral("port"));
+    if (!port.isEmpty() && (port.toUInt() == 0 || port.toUInt() > 65535)) {
+        qWarning() << "Konsoll: ignoring invalid SSH port in terminal metadata";
+        emit transferFailed(tr("The SSH port reported by the shell is invalid."));
+        if (removeAfterTransfer) {
+            QFile::remove(path);
+        }
+        return;
+    }
+    const QString user = remoteMatch.captured(QStringLiteral("user"));
+    const QString host = remoteMatch.captured(QStringLiteral("host"));
+    const QString destination = (user.isEmpty() ? QString{} : user + QLatin1Char('@')) + host;
+    TransferJob job{
+        .localPath = fileInfo.absoluteFilePath(),
+        .remotePath = remotePath,
+        .destination = destination,
+        .port = port,
+        .targetHost = m_remoteHost,
+        .flags = removeAfterTransfer ? 1u : 0u,
+    };
+    if (m_transferProcess.state() != QProcess::NotRunning || !m_transferQueue.isEmpty()) {
+        m_transferQueue.enqueue(job);
+        return;
+    }
+    m_transferQueue.enqueue(job);
+    startNextTransfer();
+}
+
+void TerminalBackend::startNextTransfer()
+{
+    if (m_transferProcess.state() != QProcess::NotRunning || m_transferQueue.isEmpty()) {
+        return;
+    }
+    while (!m_transferQueue.isEmpty()) {
+        m_activeTransfer = m_transferQueue.dequeue();
+        if (m_activeTransfer.targetHost == m_remoteHost) {
+            break;
+        }
+        if (m_activeTransfer.removeLocal()) {
+            QFile::remove(m_activeTransfer.localPath);
+        }
+        m_activeTransfer = {};
+    }
+    if (m_activeTransfer.localPath.isEmpty()) {
+        return;
+    }
+    QStringList arguments{QStringLiteral("-q")};
+    if (!m_activeTransfer.port.isEmpty()) {
+        arguments.append(QStringLiteral("-P"));
+        arguments.append(m_activeTransfer.port);
+    }
+    if (QFileInfo(m_activeTransfer.localPath).isDir()) {
+        arguments.append(QStringLiteral("-r"));
+    }
+    arguments.append(QStringLiteral("-o"));
+    arguments.append(QStringLiteral("BatchMode=yes"));
+    arguments.append(QStringLiteral("-o"));
+    arguments.append(QStringLiteral("ConnectTimeout=10"));
+    arguments.append(QStringLiteral("--"));
+    arguments.append(m_activeTransfer.localPath);
+    arguments.append(m_activeTransfer.destination + QLatin1Char(':') + m_activeTransfer.remotePath);
+    m_transferProcess.start(QStringLiteral("scp"), arguments);
 }
 
 void TerminalBackend::pasteSelectionOrClipboard()

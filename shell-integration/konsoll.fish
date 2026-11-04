@@ -1,11 +1,22 @@
 function _konsoll_prompt --on-event fish_prompt
     set -l encoded_path (string escape --style=url -- "$PWD")
-    printf '\e]7;file://%s%s\a' (hostname) "$encoded_path"
+    printf '\e]7;file://localhost%s\a' "$encoded_path"
+    printf '\e]1337;RemoteHost=%s;\a' "$KONSOLL_REMOTE_HOST_TOKEN"
     printf '\e]133;A\a'
     printf '\e]133;B\a'
 end
 
 function _konsoll_preexec --on-event fish_preexec
+    set -l command_words (string split ' ' -- $argv[1])
+    if test "$command_words[1]" = ssh; and set -q command_words[2]
+        if string match -q -- '-*' $command_words[2]
+            if test "$command_words[2]" = -p; and set -q command_words[4]
+                printf '\e]1337;RemoteHost=%s;%s;port=%s\a' "$KONSOLL_REMOTE_HOST_TOKEN" $command_words[4] $command_words[3]
+            end
+        else
+            printf '\e]1337;RemoteHost=%s;%s\a' "$KONSOLL_REMOTE_HOST_TOKEN" $command_words[2]
+        end
+    end
     printf '\e]133;C\a'
 end
 
