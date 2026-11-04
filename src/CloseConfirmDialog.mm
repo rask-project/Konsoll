@@ -42,6 +42,11 @@ void CloseConfirmDialog::approveQuit()
     s_quitApprovedByQml = true;
 }
 
+void CloseConfirmDialog::terminateApplication()
+{
+    [NSApp terminate:nil];
+}
+
 bool CloseConfirmDialog::consumeQuitApproval()
 {
     const bool approved = s_quitApprovedByQml;

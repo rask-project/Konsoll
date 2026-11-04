@@ -22,7 +22,7 @@ Window {
             return
         }
         CloseConfirmDialog.approveQuit()
-        Qt.quit()
+        CloseConfirmDialog.terminateApplication()
     }
 
     onClosing: close => {
@@ -362,7 +362,7 @@ Window {
     Connections {
         target: SessionManager
         function onQuitRequested() {
-            Qt.quit();
+            CloseConfirmDialog.terminateApplication();
         }
     }
 }
