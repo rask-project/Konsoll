@@ -364,7 +364,7 @@ Window {
     Connections {
         target: SessionManager
         function onQuitRequested() {
-            NativeDialogs.terminateApplication();
+            appWindow.requestQuit()
         }
     }
 }
