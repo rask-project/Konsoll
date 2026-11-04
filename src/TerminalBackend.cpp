@@ -1275,13 +1275,13 @@ void TerminalBackend::paste()
 
 void TerminalBackend::pasteSelectionOrClipboard()
 {
-    if (!m_pty) {
+    if (!m_worker) {
         return;
     }
     if (selectionActive() || highlightActive()) {
         const QString text = selectionText();
         if (!text.isEmpty()) {
-            m_pty->write(text.toUtf8());
+            writeToPty(text.toUtf8());
             clearTextSelectionAndHighlight();
             return;
         }
