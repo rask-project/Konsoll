@@ -1,17 +1,17 @@
 #pragma once
 
 #include <QObject>
+#include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
 namespace konsoll
 {
 
-// Native confirmation shown before closing a session/workspace or quitting
-// while a task is in progress. Exposed to QML as a stateless singleton.
-class CloseConfirmDialog : public QObject
+// Native AppKit dialogs exposed to QML as a stateless singleton.
+class NativeDialogs : public QObject
 {
     Q_OBJECT
-    QML_NAMED_ELEMENT(CloseConfirmDialog)
+    QML_NAMED_ELEMENT(NativeDialogs)
     QML_SINGLETON
 
 public:
@@ -23,6 +23,7 @@ public:
 
     // Presents the native alert before quitting the application.
     Q_INVOKABLE bool confirmQuit();
+    Q_INVOKABLE QVariantMap promptWorkspaceRename(const QString &currentTitle);
     Q_INVOKABLE void approveQuit();
     Q_INVOKABLE void terminateApplication();
     static bool consumeQuitApproval();
