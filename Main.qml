@@ -18,10 +18,10 @@ Window {
     function requestQuit() {
         const count = SessionManager.sessionCount()
         const activeProcess = SessionManager.anySessionHasActiveProcess()
-        if ((count > 1 || activeProcess) && !CloseConfirmDialog.confirmQuit()) {
+        if ((count > 1 || activeProcess) && !NativeDialogs.confirmQuit()) {
             return
         }
-        CloseConfirmDialog.approveQuit()
+        NativeDialogs.approveQuit()
         Qt.quit()
     }
 
@@ -158,7 +158,7 @@ Window {
         shortcut: "Ctrl+W"
         enabled: SessionManager.activeSession !== null
         onTriggered: {
-            if (SessionManager.activeSession.commandRunning && !CloseConfirmDialog.confirmClose()) {
+            if (SessionManager.activeSession.commandRunning && !NativeDialogs.confirmClose()) {
                 return
             }
             SessionManager.closeSession(SessionManager.activeSession)
@@ -288,7 +288,7 @@ Window {
                 enabled: SessionManager.activeWorkspaceIndex >= 0
                 onTriggered: {
                     const workspace = SessionManager.workspaces[SessionManager.activeWorkspaceIndex]
-                    if (SessionManager.workspaceHasRunningCommand(workspace) && !CloseConfirmDialog.confirmClose()) {
+                    if (SessionManager.workspaceHasRunningCommand(workspace) && !NativeDialogs.confirmClose()) {
                         return
                     }
                     SessionManager.closeWorkspace(workspace)

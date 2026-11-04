@@ -42,11 +42,24 @@ TerminalWorkspaceModel::TerminalWorkspaceModel(QString title, std::unique_ptr<Te
 
 QString TerminalWorkspaceModel::title() const
 {
+    if (!m_customTitle.isEmpty()) {
+        return m_customTitle;
+    }
     if (m_lastActiveSession == nullptr) {
         return m_title;
     }
     const QString directory = m_lastActiveSession->currentDirectory();
     return directory.isEmpty() ? m_lastActiveSession->title() : directory;
+}
+
+void TerminalWorkspaceModel::setCustomTitle(QString title)
+{
+    title = title.trimmed();
+    if (m_customTitle == title) {
+        return;
+    }
+    m_customTitle = std::move(title);
+    emit titleChanged();
 }
 
 void TerminalWorkspaceModel::setAlerting(bool value)
@@ -147,6 +160,20 @@ void TerminalManager::addWorkspace()
     emit activeWorkspaceChanged();
     setActiveSession(session, true);
     session->start(workingDirectory);
+}
+
+void TerminalManager::renameWorkspace(QObject *workspaceObject, const QString &title)
+{
+    auto *workspace = qobject_cast<TerminalWorkspaceModel *>(workspaceObject);
+    if (workspace == nullptr) {
+        return;
+    }
+    const auto it = std::ranges::find_if(m_workspaces, [workspace](const auto &candidate) {
+        return candidate.get() == workspace;
+    });
+    if (it != m_workspaces.end()) {
+        workspace->setCustomTitle(title);
+    }
 }
 
 void TerminalManager::moveWorkspace(int fromIndex, int toIndex)

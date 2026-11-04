@@ -1,7 +1,7 @@
 #import <AppKit/AppKit.h>
 
 #include "AppQuitGuard.h"
-#include "CloseConfirmDialog.h"
+#include "NativeDialogs.h"
 #include "TerminalManager.h"
 
 // ObjC delegate that routes the macOS app-quit decision to the C++ logic.
@@ -17,14 +17,14 @@
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender
 {
     Q_UNUSED(sender);
-    if (konsoll::CloseConfirmDialog::consumeQuitApproval()) {
+    if (konsoll::NativeDialogs::consumeQuitApproval()) {
         return NSTerminateNow;
     }
     konsoll::TerminalManager *const manager = konsoll::TerminalManager::instance();
     const bool activeProcess = manager != nullptr && manager->anySessionHasActiveProcess();
     const int sessions = manager != nullptr ? manager->sessionCount() : -1;
     if ((manager != nullptr) && (activeProcess || sessions > 1)) {
-        konsoll::CloseConfirmDialog dialog;
+        konsoll::NativeDialogs dialog;
         const bool confirmed = dialog.confirmQuit();
         if (!confirmed) {
             return NSTerminateCancel;

@@ -66,8 +66,8 @@ qt_add_qml_module(konsoll
         src/AboutDialog.mm
         src/AppQuitGuard.h
         src/AppQuitGuard.mm
-        src/CloseConfirmDialog.h
-        src/CloseConfirmDialog.mm
+        src/NativeDialogs.h
+        src/NativeDialogs.mm
         src/TerminalBackend.cpp
         src/TerminalBackend.h
         src/TerminalManager.cpp

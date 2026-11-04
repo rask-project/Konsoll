@@ -64,7 +64,7 @@ Item {
                         Controls.MenuItem {
                             text: qsTr("Close tab")
                             onTriggered: {
-                                if (leafItem.session.commandRunning && !CloseConfirmDialog.confirmClose())
+                                if (leafItem.session.commandRunning && !NativeDialogs.confirmClose())
                                     return;
                                 SessionManager.closeSession(leafItem.session);
                             }
@@ -122,7 +122,7 @@ Item {
 
                             icon.name: "close"
                             onClicked: {
-                                if (leafItem.session.commandRunning && !CloseConfirmDialog.confirmClose()) {
+                                if (leafItem.session.commandRunning && !NativeDialogs.confirmClose()) {
                                     return;
                                 }
                                 SessionManager.closeSession(leafItem.session);

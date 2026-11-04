@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Basic
 import "." as Controls
 
 TabButton {
@@ -33,9 +32,18 @@ TabButton {
         }
 
         Controls.MenuItem {
+            text: qsTr("Rename workspace")
+            onTriggered: {
+                const result = NativeDialogs.promptWorkspaceRename(tab.workspace.customTitle);
+                if (result.accepted)
+                    SessionManager.renameWorkspace(tab.workspace, result.title);
+            }
+        }
+
+        Controls.MenuItem {
             text: qsTr("Close workspace")
             onTriggered: {
-                if (SessionManager.workspaceHasRunningCommand(tab.workspace) && !CloseConfirmDialog.confirmClose())
+                if (SessionManager.workspaceHasRunningCommand(tab.workspace) && !NativeDialogs.confirmClose())
                     return;
                 SessionManager.closeWorkspace(tab.workspace);
             }
@@ -115,8 +123,6 @@ TabButton {
 
             Accessible.name: qsTr("Close tab")
 
-            // visible: tab.active || tab.hovered
-
             width: 22
             height: 22
             anchors.verticalCenter: parent.verticalCenter
@@ -165,18 +171,21 @@ TabButton {
                     pressSceneY = point.y;
                     movedBeforeHold = false;
                     holdActivated = false;
+
                     if (tab.tabStrip) {
                         tab.tabStrip.tabPointerPressed = true;
                         tab.tabStrip.updateWindowMovable();
                     } else if (tab.windowTranslucency) {
                         tab.windowTranslucency.setWindowMovable(false);
                     }
+
                     mouse.accepted = true;
                 }
 
                 onPressAndHold: mouse => {
                     if (!pressed || movedBeforeHold)
                         return;
+
                     const point = dragArea.mapToItem(null, mouse.x, mouse.y);
                     holdActivated = true;
                     tab.dragging = true;
@@ -188,6 +197,7 @@ TabButton {
                 onPositionChanged: mouse => {
                     if (!pressed)
                         return;
+
                     const point = dragArea.mapToItem(null, mouse.x, mouse.y);
                     const dx = point.x - pressSceneX;
                     const dy = point.y - pressSceneY;
@@ -196,6 +206,7 @@ TabButton {
                             movedBeforeHold = true;
                         return;
                     }
+
                     tab.dragMoved(point.x, point.y);
                 }
 
@@ -208,23 +219,28 @@ TabButton {
                     } else if (!movedBeforeHold) {
                         tab.click();
                     }
+
                     holdActivated = false;
                     movedBeforeHold = false;
+
                     if (tab.tabStrip) {
                         tab.tabStrip.tabPointerPressed = false;
                         tab.tabStrip.updateWindowMovable();
                     } else if (tab.windowTranslucency) {
                         tab.windowTranslucency.setWindowMovable(true);
                     }
+
                     mouse.accepted = true;
                 }
 
                 onCanceled: {
                     if (holdActivated)
                         tab.dragCanceled();
+
                     tab.dragging = false;
                     holdActivated = false;
                     movedBeforeHold = false;
+
                     if (tab.tabStrip) {
                         tab.tabStrip.tabPointerPressed = false;
                         tab.tabStrip.updateWindowMovable();
