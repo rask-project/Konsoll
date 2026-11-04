@@ -9,7 +9,21 @@ namespace konsoll
 
 namespace
 {
-bool s_quitApprovedByQml{};
+struct QuitApproval
+{
+    void approve() const
+    {
+        approved = true;
+    }
+    bool consume() const
+    {
+        const bool wasApproved = approved;
+        approved = false;
+        return wasApproved;
+    }
+    mutable bool approved{};
+};
+const QuitApproval s_quitApproval{};
 
 NSString *toNSString(const QString &value)
 {
@@ -74,7 +88,7 @@ QVariantMap NativeDialogs::promptWorkspaceRename(const QString &currentTitle)
 
 void NativeDialogs::approveQuit()
 {
-    s_quitApprovedByQml = true;
+    s_quitApproval.approve();
 }
 
 void NativeDialogs::terminateApplication()
@@ -84,9 +98,7 @@ void NativeDialogs::terminateApplication()
 
 bool NativeDialogs::consumeQuitApproval()
 {
-    const bool approved = s_quitApprovedByQml;
-    s_quitApprovedByQml = false;
-    return approved;
+    return s_quitApproval.consume();
 }
 
 } // namespace konsoll

@@ -59,7 +59,7 @@ class TerminalBackend : public QObject
 
 public:
     explicit TerminalBackend(QObject *parent = nullptr);
-    ~TerminalBackend();
+    ~TerminalBackend() override;
 
     // Start the terminal with the detected default shell.
     Q_INVOKABLE void start(const QString &workingDirectory = {});

@@ -1,5 +1,7 @@
 #include "PtyWorker.h"
 
+#include <algorithm>
+
 #include <QEventLoop>
 #include <QThread>
 #include <QTimer>
@@ -66,9 +68,7 @@ void PtyWorker::onOutput(const QByteArray &data)
 void PtyWorker::outputDelivered(qint64 bytes)
 {
     m_undelivered -= bytes;
-    if (m_undelivered < 0) {
-        m_undelivered = 0;
-    }
+    m_undelivered = std::max<qint64>(m_undelivered, 0);
     if (m_pty && (m_undelivered <= kLowWater)) {
         m_pty->resumeReading();
     }

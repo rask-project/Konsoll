@@ -187,7 +187,7 @@ bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QStri
     // allocates and would deadlock on a heap lock inherited from another
     // thread once the app is multithreaded; execvpe() sets the environment
     // atomically at exec time instead.
-    QProcessEnvironment currentEnvironment = QProcessEnvironment::systemEnvironment();
+    const QProcessEnvironment currentEnvironment = QProcessEnvironment::systemEnvironment();
     std::vector<QByteArray> envp;
     const QStringList environmentKeys = currentEnvironment.keys();
     for (const QString &key : environmentKeys) {

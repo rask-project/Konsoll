@@ -9,9 +9,9 @@
 
 namespace
 {
-char effectViewAssociationKey;
-char toolbarAssociationKey;
-char inputForwardingViewAssociationKey;
+const char effectViewAssociationKey{};
+const char toolbarAssociationKey{};
+const char inputForwardingViewAssociationKey{};
 
 NSWindow *windowFromId(WId winId)
 {

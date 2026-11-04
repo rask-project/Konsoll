@@ -1395,7 +1395,7 @@ void TerminalBackend::transferLocalFile(const QString &path, bool removeAfterTra
     const QString user = remoteMatch.captured(QStringLiteral("user"));
     const QString host = remoteMatch.captured(QStringLiteral("host"));
     const QString destination = (user.isEmpty() ? QString{} : user + QLatin1Char('@')) + host;
-    TransferJob job{
+    const TransferJob job{
         .localPath = fileInfo.absoluteFilePath(),
         .remotePath = remotePath,
         .destination = destination,

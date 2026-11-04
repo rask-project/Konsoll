@@ -95,7 +95,7 @@ class TerminalManager final : public QObject
 
 public:
     explicit TerminalManager(QObject *parent = nullptr);
-    ~TerminalManager();
+    ~TerminalManager() override;
 
     static TerminalManager *instance();
 
