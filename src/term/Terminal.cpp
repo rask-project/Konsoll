@@ -521,7 +521,7 @@ void Terminal::handleOsc(const QByteArray &body)
     // Bound the encoded payload to avoid untrusted PTY output allocating an
     // arbitrarily large clipboard value.
     if (body.startsWith("52;")) {
-        const int separator = body.indexOf(';', 3);
+        const int separator = static_cast<int>(body.indexOf(';', 3));
         if (separator < 0 || body.size() - separator - 1 > 1'400'000) {
             return;
         }
@@ -556,7 +556,7 @@ void Terminal::handleOsc(const QByteArray &body)
     }
 
     // Form: <num>;<text>. We only honor 0 (icon+title) and 2 (title).
-    const int idx = body.indexOf(';');
+    const int idx = static_cast<int>(body.indexOf(';'));
     if (idx <= 0) {
         return;
     }

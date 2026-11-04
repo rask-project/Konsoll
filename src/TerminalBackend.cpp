@@ -575,7 +575,7 @@ QVariantMap TerminalBackend::linkAt(int row, int col) const
         if (target.isEmpty()) {
             return {};
         }
-        const int targetLength = target.size();
+        const auto targetLength = target.size();
         if (col >= match.capturedStart() + targetLength) {
             return {};
         }
@@ -802,7 +802,7 @@ int TerminalBackend::search(const QString &query, bool regex)
         checkScrollOffsetChanged();
     }
     scheduleFrame();
-    return m_searchMatches.size();
+    return static_cast<int>(m_searchMatches.size());
 }
 
 int TerminalBackend::searchNext(bool backwards)
@@ -810,7 +810,7 @@ int TerminalBackend::searchNext(bool backwards)
     if (m_searchMatches.isEmpty()) {
         return 0;
     }
-    const int count = m_searchMatches.size();
+    const int count = static_cast<int>(m_searchMatches.size());
     m_searchIndex = (m_searchIndex + (backwards ? count - 1 : 1)) % count;
     const auto &match = m_searchMatches.at(m_searchIndex);
     m_terminal->screen().scrollTo(m_terminal->screen().totalLines() - m_terminal->screen().rows() - match.line);
@@ -1556,7 +1556,7 @@ QVariantList TerminalBackend::snapshot() const
     const int total = s.totalLines();
     const int start = total - s.rows() - s.scrollOffset();
     static const Cell kBlank{};
-    rowsOut.reserve(s.rows() * s.cols());
+    rowsOut.reserve(static_cast<qsizetype>(s.rows()) * s.cols());
     for (int r = 0; r < s.rows(); ++r) {
         const Line &line = s.lineAt(start + r);
         for (int c = 0; c < s.cols(); ++c) {
@@ -1617,7 +1617,7 @@ QString TerminalBackend::detectDefaultShell()
 
 QRgb TerminalBackend::resolveColor(
     unsigned int encoded,
-    int defaultColor
+    unsigned int defaultColor
 ) // NOLINT: encoded/defaultColor are inherently swappable
 {
     if (encoded == 0) {

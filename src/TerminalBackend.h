@@ -208,7 +208,7 @@ private:
     void resizePty(int columns, int rows);
 
     static QString detectDefaultShell();
-    static QRgb resolveColor(unsigned int encoded, int defaultColor);
+    static QRgb resolveColor(unsigned int encoded, unsigned int defaultColor);
 
     // Selection anchors, in absolute line+col (0 = oldest line). A line < 0
     // marks "no selection". Kept stable across output so a selection stays on
