@@ -16,6 +16,19 @@ if(NOT KONSOLL_GIT_COMMIT)
     set(KONSOLL_GIT_COMMIT "unknown")
 endif()
 
+execute_process(
+    COMMAND git describe --tags --abbrev=0
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE KONSOLL_DISPLAY_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(KONSOLL_DISPLAY_VERSION)
+    string(REGEX REPLACE "^v" "" KONSOLL_DISPLAY_VERSION "${KONSOLL_DISPLAY_VERSION}")
+else()
+    set(KONSOLL_DISPLAY_VERSION ${PROJECT_VERSION})
+endif()
+
 if(APPLE AND CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/dist" CACHE PATH
         "Directory for the installed macOS application bundle" FORCE)
@@ -121,7 +134,7 @@ set_target_properties(konsoll PROPERTIES
 # <TerminalBackend.h>, so src/ must be on the include path.
 target_include_directories(konsoll PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(konsoll PRIVATE
-    KONSOLL_VERSION="${PROJECT_VERSION} Beta"
+    KONSOLL_VERSION="${KONSOLL_DISPLAY_VERSION}"
     KONSOLL_GIT_COMMIT="${KONSOLL_GIT_COMMIT}"
 )
 

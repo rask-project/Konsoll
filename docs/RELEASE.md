@@ -14,11 +14,11 @@ creates an archive for distribution.
 - For notarization: an app-specific password for an Apple ID associated with
   the developer team. An App Store Connect API key can be used instead.
 
-Konsoll currently targets arm64 and macOS 14.4 or later. This branch is the
-2.0.0 beta line; the app displays `2.0.0 Beta`, while the macOS bundle version
-remains the numeric `2.0.0`. `CMakeLists.txt` contains the bundle identifier
-and app version. Update the version there before building another release.
-Do not change the bundle identifier between releases.
+Konsoll currently targets arm64 and macOS 14.4 or later. The app displays the
+latest Git tag (without the leading `v`) and the build commit, while the macOS
+bundle version remains the numeric project version (`2.0.0` for this beta
+line). Tag each release before building it. Do not change the bundle identifier
+between releases.
 
 ## 1. Configure and build the signed bundle
 
