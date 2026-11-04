@@ -23,23 +23,22 @@ clang-tidy -p build/Qt_6_12_0_for_macOS_Debug --config-file=.clang-tidy <file>
 
 ## 2. Summary
 
-**42 unique findings** (deduplicated across translation units) across **11
+**33 unique findings** (deduplicated across translation units) across **11
 distinct checks**.
 
 | Check | Count | Stage |
 |---|---|---|
-| `bugprone-easily-swappable-parameters` | 9 | 3 |
-| `readability-function-cognitive-complexity` | 7 | 4 |
+| `readability-function-cognitive-complexity` | 7 | 3 |
 | `bugprone-narrowing-conversions` | 7 | 2 |
-| `misc-no-recursion` | 5 | 4 |
+| `misc-no-recursion` | 5 | 3 |
 | `cppcoreguidelines-avoid-non-const-global-variables` | 4 | 1 |
-| `cppcoreguidelines-avoid-do-while` | 3 | 4 |
+| `cppcoreguidelines-avoid-do-while` | 3 | 3 |
 | `misc-const-correctness` | 2 | 1 |
 | `cppcoreguidelines-explicit-virtual-functions` | 2 | 1 |
 | `modernize-use-override` | 2 | 1 |
 | `bugprone-implicit-widening-of-multiplication-result` | 1 | 2 |
 | `readability-use-std-min-max` | 1 | 1 |
-| `bugprone-branch-clone` | 1 | 4 |
+| `bugprone-branch-clone` | 1 | 3 |
 
 > `cppcoreguidelines-explicit-virtual-functions` and `modernize-use-override`
 > are the **same two findings** (the two destructors below) reported by two
@@ -55,10 +54,7 @@ Ordered by effort/risk, so each stage is self-contained and shippable:
 - **Stage 2 — Type conversions (8 findings).** Narrowing / implicit-widening.
   Each needs a deliberate `static_cast` (or a type change) with a reason;
   low risk but review each site.
-- **Stage 3 — API / parameter design (9 findings).** Adjacent similar
-  parameters. Changes function signatures → touches call sites. Decide the
-  approach per function (param-struct vs. documented `NOLINT`).
-- **Stage 4 — Refactoring (16 findings).** Cognitive complexity, recursion,
+- **Stage 3 — Refactoring (16 findings).** Cognitive complexity, recursion,
   branch-clone, do-while. Highest effort; several are legitimate patterns
   where the right answer is a justified `NOLINT`, not a rewrite.
 
@@ -83,41 +79,21 @@ Ordered by effort/risk, so each stage is self-contained and shippable:
 - `src/MacOSTranslucency.mm:14` — `char inputForwardingViewAssociationKey;` → `const char …{};`.
 - `src/NativeDialogs.mm:12` — `bool s_quitApprovedByQml{};` — **mutable** module flag (set when QML approves quit), so it cannot be `const`. Chose (a): encapsulated in `struct QuitApproval` (const global + `mutable` member).
 
-### Stage 2 — Type conversions (8)
+### Stage 2 — Type conversions (8) — ✅ done 2026-11-04
 
 **`bugprone-narrowing-conversions` (7)** — each needs an explicit, justified `static_cast` (or a type change to the receiver).
-- `src/TerminalBackend.cpp:578` — `const int targetLength = target.size();` (`qsizetype` → `int`).
-- `src/TerminalBackend.cpp:805` — `return m_searchMatches.size();` (`qsizetype` → `int`); consider returning `qsizetype`.
-- `src/TerminalBackend.cpp:813` — `const int count = m_searchMatches.size();` (`qsizetype` → `int`).
-- `src/TerminalBackend.cpp:1564` — `resolveColor(cell.fg, m_defaultFg)` (`unsigned int` → `int`).
-- `src/TerminalBackend.cpp:1565` — `resolveColor(cell.bg, m_defaultBg)` (`unsigned int` → `int`).
-- `src/term/Terminal.cpp:524` — `qsizetype` → `int`.
-- `src/term/Terminal.cpp:559` — `qsizetype` → `int`.
+- `src/TerminalBackend.cpp:578` — `const int targetLength = target.size();` (`qsizetype` → `int`). → `const auto targetLength = target.size();`
+- `src/TerminalBackend.cpp:805` — `return m_searchMatches.size();` (`qsizetype` → `int`). → `return static_cast<int>(m_searchMatches.size());` (kept `int` — QML `Q_INVOKABLE int search`).
+- `src/TerminalBackend.cpp:813` — `const int count = m_searchMatches.size();` (`qsizetype` → `int`). → `const int count = static_cast<int>(m_searchMatches.size());`
+- `src/TerminalBackend.cpp:1564` — `resolveColor(cell.fg, m_defaultFg)` (`unsigned int` → `int`). → changed `resolveColor`'s 2nd param `int` → `unsigned int` (declaration + definition); drops the narrowing, no `static_cast` needed.
+- `src/TerminalBackend.cpp:1565` — `resolveColor(cell.bg, m_defaultBg)` (`unsigned int` → `int`). → same 2nd-param change as 1564.
+- `src/term/Terminal.cpp:524` — `qsizetype` → `int`. → `const int separator = static_cast<int>(body.indexOf(';', 3));`
+- `src/term/Terminal.cpp:559` — `qsizetype` → `int`. → `const int idx = static_cast<int>(body.indexOf(';'));`
 
 **`bugprone-implicit-widening-of-multiplication-result` (1)**
-- `src/TerminalBackend.cpp:1559` — `rowsOut.reserve(s.rows() * s.cols());` — perform the multiplication in the wider type: `rowsOut.reserve(static_cast<qsizetype>(s.rows()) * s.cols());`.
+- `src/TerminalBackend.cpp:1559` — `rowsOut.reserve(s.rows() * s.cols());` — perform the multiplication in the wider type: `rowsOut.reserve(static_cast<qsizetype>(s.rows()) * s.cols());`. → applied verbatim.
 
-### Stage 3 — API / parameter design (9)
-
-**`bugprone-easily-swappable-parameters` (9)** — adjacent similar/convertible parameters. Two viable approaches per function:
-- **(A) Param-struct** — group the related values (e.g. a `CellPos{row,col}`, `MouseReportArgs`, `PtyStartConfig`). The "proper" fix; touches every call site.
-- **(B) Documented `NOLINT`** — keep the signature, add `// NOLINT(bugprone-easily-swappable-parameters)` with a one-line reason. Fast; keeps the API.
-
-Findings:
-- `src/TerminalBackend.cpp:635` — `sendMouseReport(int button, int row, int col, int event, int modifiers)`.
-- `src/TerminalBackend.cpp:869` — `selPress(int row, int col)`.
-- `src/TerminalBackend.cpp:883` — `selMove(int row, int col)`.
-- `src/TerminalBackend.cpp:941` — `selWord(int row, int col)`.
-- `src/TerminalBackend.cpp:1619` — `resolveColor(unsigned int encoded, int defaultColor)` (convertible types).
-- `src/pty/PtyProcess.cpp:60` — `start(…, const QString &workingDirectory, const QString &remoteHostToken)`.
-- `src/term/Screen.cpp:42` — `ensureRows(std::vector<Line> &grid, int rows, int width)`.
-- `src/term/Terminal.cpp:59` — `mouseReport(int button, int row, int col, int event, unsigned int modifiers)` (two overlapping ranges: 3×`int`, then `int`/`unsigned int`).
-
-> Suggested default: `selPress`/`selMove`/`selWord`/`ensureRows` are clear row/col
-> pairs → (B) `NOLINT`. `sendMouseReport`/`mouseReport`/`start` carry several
-> similar values → (A) param-struct is the cleaner long-term fix.
-
-### Stage 4 — Refactoring (16)
+### Stage 3 — Refactoring (16)
 
 **`readability-function-cognitive-complexity` (7)** — threshold 25; extract helpers / table-drive / early-return to bring each under.
 - `src/term/Terminal.cpp:101` — `processByte` (51).
