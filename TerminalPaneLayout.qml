@@ -11,6 +11,8 @@ Item {
     required property var node
     required property font terminalFont
 
+    signal saveBufferRequested(var session)
+
     Loader {
         id: contentLoader
 
@@ -54,6 +56,51 @@ Item {
                     TapHandler {
                         enabled: leafItem.session !== null
                         onTapped: SessionManager.activateSession(leafItem.session)
+                    }
+
+                    Controls.Menu {
+                        id: sessionContextMenu
+
+                        Controls.MenuItem {
+                            text: qsTr("Close tab")
+                            onTriggered: {
+                                if (leafItem.session.commandRunning && !CloseConfirmDialog.confirmClose())
+                                    return;
+                                SessionManager.closeSession(leafItem.session);
+                            }
+                        }
+
+                        Controls.MenuItem {
+                            text: qsTr("Divide horizontal")
+                            onTriggered: {
+                                SessionManager.activateSession(leafItem.session);
+                                SessionManager.splitActive(Qt.Horizontal);
+                            }
+                        }
+
+                        Controls.MenuItem {
+                            text: qsTr("Divide vertical")
+                            onTriggered: {
+                                SessionManager.activateSession(leafItem.session);
+                                SessionManager.splitActive(Qt.Vertical);
+                            }
+                        }
+
+                        Controls.MenuItem {
+                            text: qsTr("Save Buffer")
+                            onTriggered: {
+                                SessionManager.activateSession(leafItem.session);
+                                pane.saveBufferRequested(leafItem.session);
+                            }
+                        }
+                    }
+
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: {
+                            SessionManager.activateSession(leafItem.session);
+                            sessionContextMenu.popup();
+                        }
                     }
 
                     Row {

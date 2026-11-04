@@ -9,6 +9,8 @@ import "controls" as Controls
 Item {
     id: workspace
 
+    signal saveBufferRequested(var session)
+
     required property font terminalFont
 
     property real safeTop: 0
@@ -63,6 +65,7 @@ Item {
                     anchors.fill: parent
                     node: item.modelData.rootNode
                     terminalFont: workspace.terminalFont
+                    onSaveBufferRequested: session => workspace.saveBufferRequested(session)
                 }
             }
         }

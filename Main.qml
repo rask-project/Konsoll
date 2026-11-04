@@ -357,6 +357,8 @@ Window {
         safeTop: appWindow.SafeArea.margins.top
         safeLeft: appWindow.SafeArea.margins.left
         safeRight: appWindow.SafeArea.margins.right
+
+        onSaveBufferRequested: session => saveTextDialog.openFor(session, appWindow.activeFocusItem)
     }
 
     Connections {

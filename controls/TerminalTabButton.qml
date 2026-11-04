@@ -24,6 +24,24 @@ TabButton {
     signal dragFinished(real sceneX, real sceneY)
     signal dragCanceled
 
+    Controls.Menu {
+        id: contextMenu
+
+        Controls.MenuItem {
+            text: qsTr("New workspace")
+            onTriggered: SessionManager.addWorkspace()
+        }
+
+        Controls.MenuItem {
+            text: qsTr("Close workspace")
+            onTriggered: {
+                if (SessionManager.workspaceHasRunningCommand(tab.workspace) && !CloseConfirmDialog.confirmClose())
+                    return;
+                SessionManager.closeWorkspace(tab.workspace);
+            }
+        }
+    }
+
     SystemPalette {
         id: systemPalette
         colorGroup: SystemPalette.Active
@@ -35,6 +53,11 @@ TabButton {
             if (tab.tabStrip)
                 tab.tabStrip.updateWindowMovable();
         }
+    }
+
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        onTapped: contextMenu.popup()
     }
 
     width: active ? 250 : 150
