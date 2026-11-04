@@ -111,6 +111,7 @@ public:
     // Clipboard.
     Q_INVOKABLE void copySelection();
     Q_INVOKABLE void paste();
+    Q_INVOKABLE void pasteSelectionOrClipboard();
     Q_INVOKABLE bool saveTextToFile(const QUrl &url, bool selectionOnly) const;
     QString bufferText() const;
     QString selectionText() const;

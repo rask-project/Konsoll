@@ -1189,6 +1189,22 @@ void TerminalBackend::paste()
     clearTextSelectionAndHighlight();
 }
 
+void TerminalBackend::pasteSelectionOrClipboard()
+{
+    if (!m_pty) {
+        return;
+    }
+    if (selectionActive() || highlightActive()) {
+        const QString text = selectionText();
+        if (!text.isEmpty()) {
+            m_pty->write(text.toUtf8());
+            clearTextSelectionAndHighlight();
+            return;
+        }
+    }
+    paste();
+}
+
 int TerminalBackend::lineTextEnd(int line) const
 {
     const Line &l = m_terminal->screen().lineAt(line);
