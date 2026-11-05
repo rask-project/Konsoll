@@ -36,6 +36,29 @@ Guidance for AI agents working in this repository.
   be packed, not given a full field each. Debug builds enable `-Wpadded` to
   flag any layout that still wastes padding — keep it clean.
 
+## clang-tidy
+
+- **Follow the clang-tidy rules proactively.** Before writing or changing C++,
+  read `.clang-tidy` and write code that already conforms to its checks, so you
+  don't need to refactor afterward. The config is the source of truth for the
+  rules — `WarningsAsErrors: "*"` makes every enabled check an error.
+- Key enforced rules (see `.clang-tidy`):
+  - `readability-function-cognitive-complexity` — threshold 25; keep functions
+    under it (extract helpers, table-drive, early-return).
+  - `misc-no-recursion` — no recursion; rewrite to iterative form with an
+    explicit stack.
+  - `cppcoreguidelines-avoid-do-while` — no `do { … } while (…)`; use a `while`
+    loop.
+  - No `NOLINT` to suppress findings — refactor the code to fix the finding.
+  - Flag/mask types: `inline constexpr unsigned int` constants in a namespace,
+    unsigned literals with the `u` suffix (keeps `bugprone-signed-bitwise` quiet).
+- Verify per file (uses the build's `compile_commands.json`):
+  `clang-tidy -p build/Qt_6_12_0_for_macOS_Debug --config-file=.clang-tidy <file>`.
+- **`.mm` caveat:** clang-tidy 19 segfaults on every `.mm` file while running
+  `cppcoreguidelines-avoid-const-or-ref-data-members` (known AST-matcher bug, not
+  a code issue). Run `.mm` files with that single check disabled; all other checks
+  run normally.
+
 ## Native macOS interop
 
 - Some window behavior is native AppKit, done in **Objective-C++**
