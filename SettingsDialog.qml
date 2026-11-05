@@ -10,7 +10,7 @@ T.Dialog {
     id: control
 
     required property var preferences
-    required property var translucency
+    property var translucency: null
     property int selectedSection: 0
 
     title: qsTr("Settings")

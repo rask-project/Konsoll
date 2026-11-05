@@ -1,0 +1,371 @@
+import QtQuick
+import QtQuick.Controls
+import QtCore
+
+Window {
+    id: appWindow
+
+    // Back-references to the app-level manager root (Main.qml).
+    required property var windowManager
+    required property var appPreferences
+    required property var aboutDialog
+    required property var settingsDialog
+
+    visibility: Window.Hidden
+
+    width: appPreferences.windowWidth
+    height: appPreferences.windowHeight
+    minimumWidth: 200
+    minimumHeight: 250
+
+    flags: Qt.Window | Qt.ExpandedClientAreaHint | Qt.NoTitleBarBackgroundHint
+    color: "transparent"
+
+    function requestQuit() {
+        const count = sessionManager.sessionCount();
+        const activeProcess = sessionManager.anySessionHasActiveProcess();
+        if ((count > 1 || activeProcess) && !NativeDialogs.confirmQuit()) {
+            return;
+        }
+        NativeDialogs.approveQuit();
+        NativeDialogs.terminateApplication();
+    }
+
+    onClosing: close => {
+        close.accepted = false;
+        appWindow.requestQuit();
+    }
+
+    Connections {
+        target: sessionManager
+        function onQuitRequested() {
+            appWindow.requestQuit();
+        }
+    }
+
+    // Save only the normal window geometry. Maximized and fullscreen sizes are
+    // monitor geometry and must not replace the user's restorable dimensions.
+    onWidthChanged: {
+        if (visibility === Window.Windowed)
+            appPreferences.windowWidth = width;
+    }
+    onHeightChanged: {
+        if (visibility === Window.Windowed)
+            appPreferences.windowHeight = height;
+    }
+
+    onVisibilityChanged: {
+        if (visibility === Window.FullScreen) {
+            appPreferences.windowState = "fullscreen";
+        } else if (visibility === Window.Maximized) {
+            appPreferences.windowState = "maximized";
+        } else if (visibility === Window.Windowed) {
+            appPreferences.windowState = "windowed";
+        }
+    }
+
+    onScreenChanged: appPreferences.windowScreenName = windowScreen.currentScreenName()
+
+    Component.onCompleted: {
+        windowScreen.restoreScreen(appPreferences.windowScreenName);
+        if (appPreferences.windowState === "fullscreen")
+            visibility = Window.FullScreen;
+        else if (appPreferences.windowState === "maximized")
+            visibility = Window.Maximized;
+        else
+            visibility = Window.Windowed;
+        sessionManager.start();
+    }
+
+    readonly property font terminalFont: Qt.font({
+        family: appPreferences.fontFamily,
+        pointSize: appPreferences.fontPointSize,
+        weight: appPreferences.fontWeight,
+        italic: appPreferences.fontItalic
+    })
+
+    Shortcut {
+        sequence: "Ctrl+T"
+        context: Qt.WindowShortcut
+        autoRepeat: false
+        onActivated: sessionManager.addWorkspace()
+    }
+
+    Shortcut {
+        sequence: "Meta+,"
+        context: Qt.WindowShortcut
+        onActivated: {
+            settingsDialog.translucency = translucency;
+            settingsDialog.open();
+        }
+    }
+
+    Shortcut {
+        enabled: sessionManager.workspaces.length > 0
+
+        sequence: "Meta+Tab"
+        context: Qt.WindowShortcut
+        autoRepeat: false
+        onActivated: sessionManager.navigateActivationHistory(1)
+    }
+
+    Shortcut {
+        enabled: sessionManager.workspaces.length > 0
+
+        sequence: "Meta+Shift+Tab"
+        context: Qt.WindowShortcut
+        autoRepeat: false
+        onActivated: sessionManager.navigateActivationHistory(-1)
+    }
+
+    Shortcut {
+        enabled: sessionManager.workspaces.length > 0
+
+        sequence: "Ctrl+Tab"
+        context: Qt.WindowShortcut
+        autoRepeat: false
+        onActivated: sessionManager.navigateActivationHistory(1)
+    }
+
+    Shortcut {
+        enabled: sessionManager.workspaces.length > 0
+
+        sequence: "Ctrl+Shift+Tab"
+        context: Qt.WindowShortcut
+        autoRepeat: false
+        onActivated: sessionManager.navigateActivationHistory(-1)
+    }
+
+    Action {
+        id: splitHorizontallyAction
+
+        enabled: sessionManager.activeSession !== null
+
+        text: qsTr("Split Horizontally")
+        shortcut: "Ctrl+D"
+        onTriggered: sessionManager.splitActive(Qt.Horizontal)
+    }
+
+    Action {
+        id: splitVerticallyAction
+
+        enabled: sessionManager.activeSession !== null
+
+        text: qsTr("Split Vertically")
+        shortcut: "Ctrl+Shift+D"
+        onTriggered: sessionManager.splitActive(Qt.Vertical)
+    }
+
+    Action {
+        id: closeSessionAction
+
+        enabled: sessionManager.activeSession !== null
+
+        text: qsTr("Close Session")
+        shortcut: "Ctrl+W"
+        onTriggered: {
+            if (sessionManager.activeSession.commandRunning && !NativeDialogs.confirmClose()) {
+                return;
+            }
+            sessionManager.closeSession(sessionManager.activeSession);
+        }
+    }
+
+    Action {
+        id: clearScreenAction
+
+        text: qsTr("Clear")
+        shortcut: "Meta+L"
+        enabled: sessionManager.activeSession !== null
+        onTriggered: sessionManager.activeSession.clearScreen()
+    }
+
+    Action {
+        id: clearBufferAction
+
+        enabled: sessionManager.activeSession !== null
+
+        text: qsTr("Clear Buffer")
+        shortcut: "Meta+K"
+        onTriggered: sessionManager.activeSession.clearBuffer()
+    }
+
+    Action {
+        id: copyAction
+
+        enabled: sessionManager.activeSession !== null
+
+        text: qsTr("Copy")
+        shortcut: StandardKey.Copy
+        onTriggered: sessionManager.activeSession.copySelection()
+    }
+
+    Action {
+        id: pasteAction
+
+        enabled: sessionManager.activeSession !== null
+
+        text: qsTr("Paste")
+        shortcut: StandardKey.Paste
+        onTriggered: sessionManager.activeSession.paste()
+    }
+
+    Action {
+        id: selectAllAction
+
+        enabled: sessionManager.activeSession !== null
+
+        text: qsTr("Select All")
+        shortcut: StandardKey.SelectAll
+        onTriggered: sessionManager.activeSession.selectAll()
+    }
+
+    Action {
+        id: saveTextAction
+
+        enabled: sessionManager.activeSession !== null
+
+        text: qsTr("Save Buffer or Selection…")
+        onTriggered: saveTextDialog.openFor(sessionManager.activeSession, appWindow.activeFocusItem)
+    }
+
+    Action {
+        id: quitAction
+
+        text: qsTr("Quit Konsoll")
+        shortcut: StandardKey.Quit
+        onTriggered: appWindow.requestQuit()
+    }
+
+    // On macOS (Qt >= 6.8, native menu bar) a Menu whose title equals the
+    // application name is moved to the app menu (the bold first menu).
+    MenuBar {
+        Menu {
+            title: Qt.application.name
+
+            MenuItem {
+                text: qsTr("About Konsoll")
+                onTriggered: aboutDialog.open()
+            }
+
+            MenuItem {
+                text: qsTr("About Qt")
+                onTriggered: aboutDialog.openAboutQt()
+            }
+
+            MenuItem {
+                text: qsTr("Settings…")
+                onTriggered: {
+                    settingsDialog.translucency = translucency;
+                    settingsDialog.open();
+                }
+            }
+
+            MenuSeparator {}
+
+            MenuItem {
+                action: quitAction
+            }
+        }
+
+        Menu {
+            title: qsTr("Shell")
+
+            MenuItem {
+                action: splitHorizontallyAction
+            }
+
+            MenuItem {
+                action: splitVerticallyAction
+            }
+
+            MenuSeparator {}
+
+            MenuItem {
+                action: clearScreenAction
+            }
+
+            MenuItem {
+                action: clearBufferAction
+            }
+
+            MenuSeparator {}
+
+            MenuItem {
+                action: closeSessionAction
+            }
+
+            MenuItem {
+                text: qsTr("Close Workspace")
+                enabled: sessionManager.activeWorkspaceIndex >= 0
+                onTriggered: {
+                    const workspace = sessionManager.workspaces[sessionManager.activeWorkspaceIndex];
+                    if (sessionManager.workspaceHasRunningCommand(workspace) && !NativeDialogs.confirmClose()) {
+                        return;
+                    }
+                    sessionManager.closeWorkspace(workspace);
+                }
+            }
+        }
+
+        Menu {
+            title: qsTr("Edit")
+
+            MenuItem {
+                action: copyAction
+            }
+
+            MenuItem {
+                action: pasteAction
+            }
+
+            MenuItem {
+                action: selectAllAction
+            }
+
+            MenuSeparator {}
+
+            MenuItem {
+                action: saveTextAction
+            }
+        }
+    }
+
+    SaveTextDialog {
+        id: saveTextDialog
+    }
+
+    WindowTranslucency {
+        id: translucency
+
+        window: appWindow
+        color: sessionManager.activeSession ? sessionManager.activeSession.backgroundColor : 0xff141414
+        alpha: appPreferences.windowAlpha
+        blurEnabled: appPreferences.blurEnabled
+        fullScreen: appWindow.visibility === Window.FullScreen
+    }
+
+    WindowScreen {
+        id: windowScreen
+        window: appWindow
+    }
+
+    TerminalManager {
+        id: sessionManager
+        window: appWindow
+    }
+
+    TerminalWorkspace {
+        anchors.fill: parent
+        sessionManager: sessionManager
+        windowTranslucency: translucency
+        fullScreen: appWindow.visibility === Window.FullScreen
+        terminalFont: appWindow.terminalFont
+
+        safeTop: appWindow.SafeArea.margins.top
+        safeLeft: appWindow.SafeArea.margins.left
+        safeRight: appWindow.SafeArea.margins.right
+
+        onSaveBufferRequested: session => saveTextDialog.openFor(session, appWindow.activeFocusItem)
+    }
+}
