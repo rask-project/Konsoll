@@ -7,11 +7,11 @@ import QtQuick.Layouts
 import "controls" as Controls
 
 Item {
-    id: workspace
+    id: itemWorkspace
 
     signal saveBufferRequested(var session)
 
-    required property var sessionManager
+    required property TerminalManager sessionManager
     required property font terminalFont
 
     property real safeTop: 0
@@ -27,36 +27,36 @@ Item {
         x: 0
         y: 3
 
-        width: workspace.width
-        height: workspace.titleBarHeight
+        width: itemWorkspace.width
+        height: itemWorkspace.titleBarHeight
 
-        baseSafeTop: workspace.safeTop
-        leadingInset: workspace.fullScreen ? 0 : Math.max(84, workspace.safeLeft)
-        trailingInset: workspace.safeRight
+        baseSafeTop: itemWorkspace.safeTop
+        leadingInset: itemWorkspace.fullScreen ? 0 : Math.max(84, itemWorkspace.safeLeft)
+        trailingInset: itemWorkspace.safeRight
 
-        windowTranslucency: workspace.windowTranslucency
-        sessionManager: sessionManager
-        tabs: sessionManager.workspaces
-        currentIndex: sessionManager.activeWorkspaceIndex
+        windowTranslucency: itemWorkspace.windowTranslucency
+        sessionManager: itemWorkspace.sessionManager
+        tabs: itemWorkspace.sessionManager.workspaces
+        currentIndex: itemWorkspace.sessionManager.activeWorkspaceIndex
 
-        onActivateRequested: index => sessionManager.setActiveWorkspace(index)
+        onActivateRequested: index => itemWorkspace.sessionManager.setActiveWorkspace(index)
         onCloseRequested: workspace => {
-            if (sessionManager.workspaceHasRunningCommand(workspace) && !NativeDialogs.confirmClose()) {
+            if (itemWorkspace.sessionManager.workspaceHasRunningCommand(workspace) && !NativeDialogs.confirmClose()) {
                 return;
             }
-            sessionManager.closeWorkspace(workspace);
+            itemWorkspace.sessionManager.closeWorkspace(workspace);
         }
-        onReorderRequested: (fromIndex, toIndex) => sessionManager.moveWorkspace(fromIndex, toIndex)
-        onAddRequested: sessionManager.addWorkspace()
+        onReorderRequested: (fromIndex, toIndex) => itemWorkspace.sessionManager.moveWorkspace(fromIndex, toIndex)
+        onAddRequested: itemWorkspace.sessionManager.addWorkspace()
     }
 
     StackLayout {
         anchors.fill: parent
-        anchors.topMargin: workspace.titleBarHeight + tabStrip.y
-        currentIndex: sessionManager.activeWorkspaceIndex
+        anchors.topMargin: itemWorkspace.titleBarHeight + tabStrip.y
+        currentIndex: itemWorkspace.sessionManager.activeWorkspaceIndex
 
         Repeater {
-            model: sessionManager.workspaces
+            model: itemWorkspace.sessionManager.workspaces
 
             delegate: Item {
                 id: item
@@ -65,10 +65,10 @@ Item {
 
                 Controls.TerminalPaneLayout {
                     anchors.fill: parent
-                    sessionManager: sessionManager
+                    sessionManager: itemWorkspace.sessionManager
                     node: item.modelData.rootNode
-                    terminalFont: workspace.terminalFont
-                    onSaveBufferRequested: session => workspace.saveBufferRequested(session)
+                    terminalFont: itemWorkspace.terminalFont
+                    onSaveBufferRequested: session => itemWorkspace.saveBufferRequested(session)
                 }
             }
         }

@@ -7,6 +7,8 @@ import "." as Controls
 Rectangle {
     id: strip
 
+    required property TerminalManager sessionManager
+
     property var tabs: []
     property int currentIndex: -1
     property real baseSafeTop: 40
@@ -14,7 +16,6 @@ Rectangle {
     property real trailingInset: 0
     property real minimumTabWidth: 88
     property var windowTranslucency: null
-    required property var sessionManager
     property bool tabPointerPressed: false
     property int dragSourceIndex: -1
     property int dragTargetIndex: -1
@@ -24,9 +25,6 @@ Rectangle {
     property real dragPointerY: 0
     property real dragGrabOffsetX: 0
     property real dragGrabOffsetY: 0
-
-    onWindowTranslucencyChanged: updateWindowMovable()
-    Component.onCompleted: updateWindowMovable()
 
     readonly property real rowHeight: 34
     readonly property real tabSpacing: 6
@@ -42,6 +40,9 @@ Rectangle {
     signal closeRequested(var workspace)
     signal reorderRequested(int fromIndex, int toIndex)
     signal addRequested
+
+    onWindowTranslucencyChanged: updateWindowMovable()
+    Component.onCompleted: updateWindowMovable()
 
     color: Qt.rgba(systemPalette.window.r, systemPalette.window.g, systemPalette.window.b, 0.25)
 
@@ -243,7 +244,7 @@ Rectangle {
         }
     }
 
-    TerminalTabButton {
+    Controls.TerminalTabButton {
         visible: strip.dragSourceIndex >= 0
         enabled: false
 

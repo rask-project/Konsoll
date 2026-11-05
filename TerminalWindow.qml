@@ -7,14 +7,21 @@ Window {
 
     // Back-references to the app-level manager root (Main.qml).
     required property var windowManager
-    required property var appPreferences
-    required property var aboutDialog
-    required property var settingsDialog
+    required property AppSettings settings
+    required property AboutDialog aboutDialog
+    required property SettingsDialog settingsDialog
+
+    readonly property font terminalFont: Qt.font({
+        family: appWindow.settings.fontFamily,
+        pointSize: appWindow.settings.fontPointSize,
+        weight: appWindow.settings.fontWeight,
+        italic: appWindow.settings.fontItalic
+    })
 
     visibility: Window.Hidden
 
-    width: appPreferences.windowWidth
-    height: appPreferences.windowHeight
+    width: appWindow.settings.windowWidth
+    height: appWindow.settings.windowHeight
     minimumWidth: 200
     minimumHeight: 250
 
@@ -47,42 +54,35 @@ Window {
     // monitor geometry and must not replace the user's restorable dimensions.
     onWidthChanged: {
         if (visibility === Window.Windowed)
-            appPreferences.windowWidth = width;
+            appWindow.settings.windowWidth = width;
     }
     onHeightChanged: {
         if (visibility === Window.Windowed)
-            appPreferences.windowHeight = height;
+            appWindow.settings.windowHeight = height;
     }
 
     onVisibilityChanged: {
         if (visibility === Window.FullScreen) {
-            appPreferences.windowState = "fullscreen";
+            appWindow.settings.windowState = "fullscreen";
         } else if (visibility === Window.Maximized) {
-            appPreferences.windowState = "maximized";
+            appWindow.settings.windowState = "maximized";
         } else if (visibility === Window.Windowed) {
-            appPreferences.windowState = "windowed";
+            appWindow.settings.windowState = "windowed";
         }
     }
 
-    onScreenChanged: appPreferences.windowScreenName = windowScreen.currentScreenName()
+    onScreenChanged: appWindow.settings.windowScreenName = windowScreen.currentScreenName()
 
     Component.onCompleted: {
-        windowScreen.restoreScreen(appPreferences.windowScreenName);
-        if (appPreferences.windowState === "fullscreen")
-            visibility = Window.FullScreen;
-        else if (appPreferences.windowState === "maximized")
-            visibility = Window.Maximized;
+        windowScreen.restoreScreen(appWindow.settings.windowScreenName);
+        if (appWindow.settings.windowState === "fullscreen")
+            appWindow.visibility = Window.FullScreen;
+        else if (appWindow.settings.windowState === "maximized")
+            appWindow.visibility = Window.Maximized;
         else
-            visibility = Window.Windowed;
+            appWindow.visibility = Window.Windowed;
         sessionManager.start();
     }
-
-    readonly property font terminalFont: Qt.font({
-        family: appPreferences.fontFamily,
-        pointSize: appPreferences.fontPointSize,
-        weight: appPreferences.fontWeight,
-        italic: appPreferences.fontItalic
-    })
 
     Shortcut {
         sequence: "Ctrl+T"
@@ -95,8 +95,8 @@ Window {
         sequence: "Meta+,"
         context: Qt.WindowShortcut
         onActivated: {
-            settingsDialog.translucency = translucency;
-            settingsDialog.open();
+            appWindow.settingsDialog.translucency = translucency;
+            appWindow.settingsDialog.open();
         }
     }
 
@@ -237,6 +237,22 @@ Window {
         onTriggered: appWindow.requestQuit()
     }
 
+    Action {
+        id: newWindowAction
+
+        text: qsTr("New Window")
+        shortcut: "Ctrl+N"
+        onTriggered: windowManager.openWindow()
+    }
+
+    Action {
+        id: closeWindowAction
+
+        text: qsTr("Close Window")
+        shortcut: "Ctrl+Alt+W"
+        onTriggered: windowManager.closeWindow(appWindow)
+    }
+
     // On macOS (Qt >= 6.8, native menu bar) a Menu whose title equals the
     // application name is moved to the app menu (the bold first menu).
     MenuBar {
@@ -245,19 +261,19 @@ Window {
 
             MenuItem {
                 text: qsTr("About Konsoll")
-                onTriggered: aboutDialog.open()
+                onTriggered: appWindow.aboutDialog.open()
             }
 
             MenuItem {
                 text: qsTr("About Qt")
-                onTriggered: aboutDialog.openAboutQt()
+                onTriggered: appWindow.aboutDialog.openAboutQt()
             }
 
             MenuItem {
                 text: qsTr("Settings…")
                 onTriggered: {
-                    settingsDialog.translucency = translucency;
-                    settingsDialog.open();
+                    appWindow.settingsDialog.translucency = translucency;
+                    appWindow.settingsDialog.open();
                 }
             }
 
@@ -329,6 +345,18 @@ Window {
                 action: saveTextAction
             }
         }
+
+        Menu {
+            title: qsTr("Window")
+
+            MenuItem {
+                action: newWindowAction
+            }
+
+            MenuItem {
+                action: closeWindowAction
+            }
+        }
     }
 
     SaveTextDialog {
@@ -340,8 +368,8 @@ Window {
 
         window: appWindow
         color: sessionManager.activeSession ? sessionManager.activeSession.backgroundColor : 0xff141414
-        alpha: appPreferences.windowAlpha
-        blurEnabled: appPreferences.blurEnabled
+        alpha: appWindow.settings.windowAlpha
+        blurEnabled: appWindow.settings.blurEnabled
         fullScreen: appWindow.visibility === Window.FullScreen
     }
 
@@ -356,12 +384,12 @@ Window {
     }
 
     TerminalWorkspace {
-        anchors.fill: parent
         sessionManager: sessionManager
         windowTranslucency: translucency
         fullScreen: appWindow.visibility === Window.FullScreen
         terminalFont: appWindow.terminalFont
 
+        anchors.fill: parent
         safeTop: appWindow.SafeArea.margins.top
         safeLeft: appWindow.SafeArea.margins.left
         safeRight: appWindow.SafeArea.margins.right

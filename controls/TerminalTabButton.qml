@@ -5,7 +5,7 @@ import "." as Controls
 TabButton {
     id: tab
 
-    required property var sessionManager
+    required property TerminalManager sessionManager
     required property var workspace
     required property bool active
 
@@ -29,7 +29,7 @@ TabButton {
 
         Controls.MenuItem {
             text: qsTr("New workspace")
-            onTriggered: sessionManager.addWorkspace()
+            onTriggered: tab.sessionManager.addWorkspace()
         }
 
         Controls.MenuItem {

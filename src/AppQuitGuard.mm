@@ -1,15 +1,18 @@
 #import <AppKit/AppKit.h>
 
+#include "AppController.h"
 #include "AppQuitGuard.h"
 #include "NativeDialogs.h"
 #include "WindowRegistry.h"
 
-// ObjC delegate that routes the macOS app-quit decision to the C++ logic.
-// It is installed after the Qt launch has completed, so only the quit-related
-// methods need to be provided here.
+// ObjC delegate that routes the macOS app-quit decision and the dock-click
+// reopen into the C++ logic. It is installed after the Qt launch has
+// completed, so only the quit- and reopen-related methods need to be
+// provided here.
 @interface KonsollAppQuitDelegate : NSObject <NSApplicationDelegate>
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender;
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender;
+- (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)hasVisibleWindows;
 @end
 
 @implementation KonsollAppQuitDelegate
@@ -36,7 +39,17 @@
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender
 {
     Q_UNUSED(sender);
-    return YES;
+    return NO;
+}
+
+- (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)hasVisibleWindows
+{
+    Q_UNUSED(sender);
+    if (!hasVisibleWindows) {
+        konsoll::AppController::requestOpenWindow();
+        return YES;
+    }
+    return NO;
 }
 
 @end

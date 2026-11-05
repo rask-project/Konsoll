@@ -8,48 +8,27 @@ Item {
     id: view
 
     required property font terminalFont
-    required property var sessionManager
+    required property TerminalManager sessionManager
 
-    property var session: null
-    property bool active: false
-    property string transferError: ""
-
-    // Menlo advance is 0.6em, so 15px -> exactly 9px per column.
     readonly property real terminalFontSize: terminalFont.pixelSize > 0 ? terminalFont.pixelSize : terminalFont.pointSize * (4 / 3)
     readonly property real cellWidth: terminalFontSize * 0.6
     readonly property real cellHeight: terminalFontSize * 1.2
-    // Primary font for regular text. The Nerd Font is the CSS fallback for
-    // supplementary-plane glyphs (Nerd Font icons, U+F0xxx) that the primary
-    // font lacks: the CSS font-family list does per-glyph fallback, so icons
-    // render from the Nerd Font while regular text stays in the primary font.
-    // The "Mono" variant guarantees every glyph (icons included) is one cell
-    // wide, so the icon column grid stays aligned.
     readonly property string nerdFont: "'JetBrainsMono Nerd Font Mono'"
     readonly property string fontFamily: "'" + terminalFont.family.replace(/'/g, "\\'") + "', " + nerdFont
     readonly property int cols: Math.max(2, Math.floor(canvas.width / cellWidth))
     readonly property int rows: Math.max(2, Math.floor(canvas.height / cellHeight))
-
-    SystemPalette {
-        id: appPalette
-        colorGroup: SystemPalette.Active
-    }
-
     readonly property color systemBackground: appPalette.window
     readonly property color systemForeground: appPalette.windowText
+    readonly property int totalLines: view.session ? view.session.maxScrollOffset + view.session.rows : 0
+
+    property var session: null
+    property bool active: false
+    property string transferError: ""
+    property real scrollAccumulator: 0
+    property bool _syncingScrollBar: false
 
     onSystemBackgroundChanged: applySystemColors()
     onSystemForegroundChanged: applySystemColors()
-
-    // Accumulates wheel/trackpad deltas so a few small deltas add up to a whole
-    // line. 40 units = 1 line (a mouse notch is 120 units, so 1 notch = 3 lines).
-    property real scrollAccumulator: 0
-
-    // Whole history (scrollback + visible screen) for the scrollbar mapping.
-    readonly property int totalLines: view.session ? view.session.maxScrollOffset + view.session.rows : 0
-
-    // True while syncScrollBar() drives the bar, so onPositionChanged ignores
-    // our imperative sets and only reacts to real user drags.
-    property bool _syncingScrollBar: false
 
     onColsChanged: syncSessionSize()
     onRowsChanged: syncSessionSize()
@@ -62,6 +41,11 @@ Item {
     }
     onVisibleChanged: syncSessionSize()
     onActiveChanged: focusInputIfActive()
+
+    SystemPalette {
+        id: appPalette
+        colorGroup: SystemPalette.Active
+    }
 
     Component.onCompleted: focusInputIfActive()
 
@@ -130,7 +114,7 @@ Item {
                     return;
                 }
                 if (view.session)
-                    sessionManager.routeKeyPress(view.session, event.key, event.text, event.modifiers);
+                    view.sessionManager.routeKeyPress(view.session, event.key, event.text, event.modifiers);
                 event.accepted = true;
             }
         }
@@ -155,7 +139,7 @@ Item {
             }
             if (text.length > 0) {
                 if (view.session)
-                    sessionManager.routeTextInput(view.session, text);
+                    view.sessionManager.routeTextInput(view.session, text);
                 _clearing = true;
                 text = "";
                 _clearing = false;
@@ -511,10 +495,10 @@ Item {
         onPressed: mouse => {
             if (!view.session)
                 return;
-            const wasActive = view.session === sessionManager.activeSession;
+            const wasActive = view.session === view.sessionManager.activeSession;
             if (!wasActive) {
                 selectionArea._activationClick = true;
-                sessionManager.activateSession(view.session);
+                view.sessionManager.activateSession(view.session);
                 mouse.accepted = true;
                 return;
             }
@@ -559,7 +543,7 @@ Item {
                     selectionArea._inTriple = false;
                 }
             } else if (mouse.button === Qt.RightButton) {
-                sessionManager.activateSession(view.session);
+                view.sessionManager.activateSession(view.session);
                 // popup(x, y) positions the menu relative to its parent item,
                 // so map the click into that parent's space (not global screen).
                 const p = selectionArea.mapToItem(view, mouse.x, mouse.y);
@@ -657,16 +641,16 @@ Item {
         Controls.MenuItem {
             text: qsTr("Split Side by Side")
             onTriggered: {
-                sessionManager.activateSession(view.session);
-                sessionManager.splitActive(Qt.Horizontal);
+                view.sessionManager.activateSession(view.session);
+                view.sessionManager.splitActive(Qt.Horizontal);
             }
         }
 
         Controls.MenuItem {
             text: qsTr("Split Top and Bottom")
             onTriggered: {
-                sessionManager.activateSession(view.session);
-                sessionManager.splitActive(Qt.Vertical);
+                view.sessionManager.activateSession(view.session);
+                view.sessionManager.splitActive(Qt.Vertical);
             }
         }
 
@@ -700,7 +684,7 @@ Item {
         }
     }
 
-    SaveTextDialog {
+    Controls.SaveTextDialog {
         id: saveTextDialog
     }
 

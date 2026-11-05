@@ -62,6 +62,7 @@ qt_add_qml_module(konsoll
     VERSION 1.0
     NAMESPACE konsoll
     QML_FILES
+        AppSettings.qml
         Main.qml
         TerminalWindow.qml
         SaveTextDialog.qml
@@ -78,6 +79,8 @@ qt_add_qml_module(konsoll
     SOURCES
         src/AboutDialog.h
         src/AboutDialog.mm
+        src/AppController.h
+        src/AppController.cpp
         src/AppQuitGuard.h
         src/AppQuitGuard.mm
         src/NativeDialogs.h
