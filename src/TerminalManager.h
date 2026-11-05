@@ -5,6 +5,7 @@
 #include <QEvent>
 #include <QObject>
 #include <QVariantList>
+#include <QWindow>
 #include <QtQml>
 
 #include <memory>
@@ -82,13 +83,13 @@ private:
     bool m_alerting{};
 };
 
-class TerminalManager final : public QObject
+class TerminalManager : public QObject
 {
     Q_OBJECT
 
-    QML_NAMED_ELEMENT(SessionManager)
-    QML_SINGLETON
+    QML_ELEMENT
 
+    Q_PROPERTY(QObject *window READ window WRITE setWindow)
     Q_PROPERTY(QVariantList workspaces READ workspaces NOTIFY workspacesChanged)
     Q_PROPERTY(QObject *activeSession READ activeSession NOTIFY activeSessionChanged)
     Q_PROPERTY(int activeWorkspaceIndex READ activeWorkspaceIndex NOTIFY activeWorkspaceChanged)
@@ -97,7 +98,8 @@ public:
     explicit TerminalManager(QObject *parent = nullptr);
     ~TerminalManager() override;
 
-    static TerminalManager *instance();
+    QObject *window() const { return m_window; }
+    void setWindow(QObject *window);
 
     QVariantList workspaces() const;
     QObject *activeSession() const { return m_activeSession; }
@@ -145,7 +147,7 @@ private:
     std::vector<std::unique_ptr<TerminalWorkspaceModel>> m_workspaces;
     std::vector<TerminalBackend *> m_activationHistory;
     TerminalBackend *m_activeSession{};
-    static TerminalManager *s_instance;
+    QObject *m_window{};
     qsizetype m_activationHistoryCursor{};
     qsizetype m_nextWorkspaceNumber{1};
 

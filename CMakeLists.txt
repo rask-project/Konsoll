@@ -102,6 +102,8 @@ qt_add_qml_module(konsoll
         src/WindowTranslucency.h
         src/WindowScreen.cpp
         src/WindowScreen.h
+        src/WindowRegistry.cpp
+        src/WindowRegistry.h
 )
 
 qt_add_resources(konsoll "/"

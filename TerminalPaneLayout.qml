@@ -8,6 +8,7 @@ import "controls" as Controls
 Item {
     id: pane
 
+    required property var sessionManager
     required property var node
     required property font terminalFont
 
@@ -30,7 +31,7 @@ Item {
             id: leafItem
             property var node: null
             property var session: node ? node.session : null
-            readonly property bool active: session && session === SessionManager.activeSession
+            readonly property bool active: session && session === sessionManager.activeSession
 
             SystemPalette {
                 id: systemPalette
@@ -55,7 +56,7 @@ Item {
 
                     TapHandler {
                         enabled: leafItem.session !== null
-                        onTapped: SessionManager.activateSession(leafItem.session)
+                        onTapped: sessionManager.activateSession(leafItem.session)
                     }
 
                     Controls.Menu {
@@ -66,30 +67,30 @@ Item {
                             onTriggered: {
                                 if (leafItem.session.commandRunning && !NativeDialogs.confirmClose())
                                     return;
-                                SessionManager.closeSession(leafItem.session);
+                                sessionManager.closeSession(leafItem.session);
                             }
                         }
 
                         Controls.MenuItem {
                             text: qsTr("Divide horizontal")
                             onTriggered: {
-                                SessionManager.activateSession(leafItem.session);
-                                SessionManager.splitActive(Qt.Horizontal);
+                                sessionManager.activateSession(leafItem.session);
+                                sessionManager.splitActive(Qt.Horizontal);
                             }
                         }
 
                         Controls.MenuItem {
                             text: qsTr("Divide vertical")
                             onTriggered: {
-                                SessionManager.activateSession(leafItem.session);
-                                SessionManager.splitActive(Qt.Vertical);
+                                sessionManager.activateSession(leafItem.session);
+                                sessionManager.splitActive(Qt.Vertical);
                             }
                         }
 
                         Controls.MenuItem {
                             text: qsTr("Save Buffer")
                             onTriggered: {
-                                SessionManager.activateSession(leafItem.session);
+                                sessionManager.activateSession(leafItem.session);
                                 pane.saveBufferRequested(leafItem.session);
                             }
                         }
@@ -98,7 +99,7 @@ Item {
                     TapHandler {
                         acceptedButtons: Qt.RightButton
                         onTapped: {
-                            SessionManager.activateSession(leafItem.session);
+                            sessionManager.activateSession(leafItem.session);
                             sessionContextMenu.popup();
                         }
                     }
@@ -125,7 +126,7 @@ Item {
                                 if (leafItem.session.commandRunning && !NativeDialogs.confirmClose()) {
                                     return;
                                 }
-                                SessionManager.closeSession(leafItem.session);
+                                sessionManager.closeSession(leafItem.session);
                             }
                         }
 
@@ -146,6 +147,7 @@ Item {
                     width: parent.width
                     height: Math.max(0, parent.height - 42)
 
+                    sessionManager: sessionManager
                     session: leafItem.session
                     active: leafItem.active
                     terminalFont: pane.terminalFont

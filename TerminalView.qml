@@ -8,6 +8,7 @@ Item {
     id: view
 
     required property font terminalFont
+    required property var sessionManager
 
     property var session: null
     property bool active: false
@@ -129,7 +130,7 @@ Item {
                     return;
                 }
                 if (view.session)
-                    SessionManager.routeKeyPress(view.session, event.key, event.text, event.modifiers);
+                    sessionManager.routeKeyPress(view.session, event.key, event.text, event.modifiers);
                 event.accepted = true;
             }
         }
@@ -154,7 +155,7 @@ Item {
             }
             if (text.length > 0) {
                 if (view.session)
-                    SessionManager.routeTextInput(view.session, text);
+                    sessionManager.routeTextInput(view.session, text);
                 _clearing = true;
                 text = "";
                 _clearing = false;
@@ -510,10 +511,10 @@ Item {
         onPressed: mouse => {
             if (!view.session)
                 return;
-            const wasActive = view.session === SessionManager.activeSession;
+            const wasActive = view.session === sessionManager.activeSession;
             if (!wasActive) {
                 selectionArea._activationClick = true;
-                SessionManager.activateSession(view.session);
+                sessionManager.activateSession(view.session);
                 mouse.accepted = true;
                 return;
             }
@@ -558,7 +559,7 @@ Item {
                     selectionArea._inTriple = false;
                 }
             } else if (mouse.button === Qt.RightButton) {
-                SessionManager.activateSession(view.session);
+                sessionManager.activateSession(view.session);
                 // popup(x, y) positions the menu relative to its parent item,
                 // so map the click into that parent's space (not global screen).
                 const p = selectionArea.mapToItem(view, mouse.x, mouse.y);
@@ -656,16 +657,16 @@ Item {
         Controls.MenuItem {
             text: qsTr("Split Side by Side")
             onTriggered: {
-                SessionManager.activateSession(view.session);
-                SessionManager.splitActive(Qt.Horizontal);
+                sessionManager.activateSession(view.session);
+                sessionManager.splitActive(Qt.Horizontal);
             }
         }
 
         Controls.MenuItem {
             text: qsTr("Split Top and Bottom")
             onTriggered: {
-                SessionManager.activateSession(view.session);
-                SessionManager.splitActive(Qt.Vertical);
+                sessionManager.activateSession(view.session);
+                sessionManager.splitActive(Qt.Vertical);
             }
         }
 

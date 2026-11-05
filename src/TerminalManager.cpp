@@ -1,6 +1,9 @@
 #include "TerminalManager.h"
 
+#include "WindowRegistry.h"
+
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QThread>
 #include <QTimer>
@@ -94,16 +97,9 @@ void TerminalWorkspaceModel::notifySessionTitleChanged(TerminalBackend *session)
     }
 }
 
-TerminalManager *TerminalManager::s_instance = nullptr;
-
-TerminalManager *TerminalManager::instance()
-{
-    return s_instance;
-}
-
 TerminalManager::TerminalManager(QObject *parent) : QObject(parent)
 {
-    s_instance = this;
+    WindowRegistry::instance().add(this);
     if (QCoreApplication *application = QCoreApplication::instance()) {
         application->installEventFilter(this);
     }
@@ -116,9 +112,12 @@ TerminalManager::~TerminalManager()
             QThread::msleep(25);
         }
     });
-    if (s_instance == this) {
-        s_instance = nullptr;
-    }
+    WindowRegistry::instance().remove(this);
+}
+
+void TerminalManager::setWindow(QObject *window)
+{
+    m_window = window;
 }
 
 bool TerminalManager::eventFilter(QObject *watched, QEvent *event)
@@ -126,7 +125,12 @@ bool TerminalManager::eventFilter(QObject *watched, QEvent *event)
     if (event->type() == QEvent::KeyRelease) {
         const auto *keyEvent = static_cast<QKeyEvent *>(event);
         if (keyEvent->key() == Qt::Key_Control || keyEvent->key() == Qt::Key_Meta) {
-            commitActivationHistory();
+            // Only the manager whose window is focused commits its activation
+            // history; with several windows, each manager sees the same key
+            // release, and only the focused one should act on it.
+            if (qobject_cast<QWindow *>(m_window) == QGuiApplication::focusWindow()) {
+                commitActivationHistory();
+            }
         }
     }
     return QObject::eventFilter(watched, event);

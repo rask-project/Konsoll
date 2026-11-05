@@ -11,6 +11,7 @@ Item {
 
     signal saveBufferRequested(var session)
 
+    required property var sessionManager
     required property font terminalFont
 
     property real safeTop: 0
@@ -34,27 +35,28 @@ Item {
         trailingInset: workspace.safeRight
 
         windowTranslucency: workspace.windowTranslucency
-        tabs: SessionManager.workspaces
-        currentIndex: SessionManager.activeWorkspaceIndex
+        sessionManager: sessionManager
+        tabs: sessionManager.workspaces
+        currentIndex: sessionManager.activeWorkspaceIndex
 
-        onActivateRequested: index => SessionManager.setActiveWorkspace(index)
+        onActivateRequested: index => sessionManager.setActiveWorkspace(index)
         onCloseRequested: workspace => {
-            if (SessionManager.workspaceHasRunningCommand(workspace) && !NativeDialogs.confirmClose()) {
+            if (sessionManager.workspaceHasRunningCommand(workspace) && !NativeDialogs.confirmClose()) {
                 return;
             }
-            SessionManager.closeWorkspace(workspace);
+            sessionManager.closeWorkspace(workspace);
         }
-        onReorderRequested: (fromIndex, toIndex) => SessionManager.moveWorkspace(fromIndex, toIndex)
-        onAddRequested: SessionManager.addWorkspace()
+        onReorderRequested: (fromIndex, toIndex) => sessionManager.moveWorkspace(fromIndex, toIndex)
+        onAddRequested: sessionManager.addWorkspace()
     }
 
     StackLayout {
         anchors.fill: parent
         anchors.topMargin: workspace.titleBarHeight + tabStrip.y
-        currentIndex: SessionManager.activeWorkspaceIndex
+        currentIndex: sessionManager.activeWorkspaceIndex
 
         Repeater {
-            model: SessionManager.workspaces
+            model: sessionManager.workspaces
 
             delegate: Item {
                 id: item
@@ -63,6 +65,7 @@ Item {
 
                 Controls.TerminalPaneLayout {
                     anchors.fill: parent
+                    sessionManager: sessionManager
                     node: item.modelData.rootNode
                     terminalFont: workspace.terminalFont
                     onSaveBufferRequested: session => workspace.saveBufferRequested(session)

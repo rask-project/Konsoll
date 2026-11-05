@@ -5,6 +5,7 @@ import "." as Controls
 TabButton {
     id: tab
 
+    required property var sessionManager
     required property var workspace
     required property bool active
 
@@ -28,7 +29,7 @@ TabButton {
 
         Controls.MenuItem {
             text: qsTr("New workspace")
-            onTriggered: SessionManager.addWorkspace()
+            onTriggered: sessionManager.addWorkspace()
         }
 
         Controls.MenuItem {
@@ -36,16 +37,16 @@ TabButton {
             onTriggered: {
                 const result = NativeDialogs.promptWorkspaceRename(tab.workspace.customTitle);
                 if (result.accepted)
-                    SessionManager.renameWorkspace(tab.workspace, result.title);
+                    sessionManager.renameWorkspace(tab.workspace, result.title);
             }
         }
 
         Controls.MenuItem {
             text: qsTr("Close workspace")
             onTriggered: {
-                if (SessionManager.workspaceHasRunningCommand(tab.workspace) && !NativeDialogs.confirmClose())
+                if (sessionManager.workspaceHasRunningCommand(tab.workspace) && !NativeDialogs.confirmClose())
                     return;
-                SessionManager.closeWorkspace(tab.workspace);
+                sessionManager.closeWorkspace(tab.workspace);
             }
         }
     }

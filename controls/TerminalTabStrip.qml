@@ -14,6 +14,7 @@ Rectangle {
     property real trailingInset: 0
     property real minimumTabWidth: 88
     property var windowTranslucency: null
+    required property var sessionManager
     property bool tabPointerPressed: false
     property int dragSourceIndex: -1
     property int dragTargetIndex: -1
@@ -228,6 +229,7 @@ Rectangle {
             workspace: modelData
             active: index === strip.currentIndex
             tabStrip: strip
+            sessionManager: strip.sessionManager
 
             onClicked: {
                 if (!dragged)
@@ -256,6 +258,7 @@ Rectangle {
         active: strip.dragWorkspaceActive
         dragging: false
         dragged: false
+        sessionManager: strip.sessionManager
     }
 
     Controls.ToolButton {

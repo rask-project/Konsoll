@@ -2,7 +2,7 @@
 
 #include "AppQuitGuard.h"
 #include "NativeDialogs.h"
-#include "TerminalManager.h"
+#include "WindowRegistry.h"
 
 // ObjC delegate that routes the macOS app-quit decision to the C++ logic.
 // It is installed after the Qt launch has completed, so only the quit-related
@@ -20,10 +20,10 @@
     if (konsoll::NativeDialogs::consumeQuitApproval()) {
         return NSTerminateNow;
     }
-    konsoll::TerminalManager *const manager = konsoll::TerminalManager::instance();
-    const bool activeProcess = manager != nullptr && manager->anySessionHasActiveProcess();
-    const int sessions = manager != nullptr ? manager->sessionCount() : -1;
-    if ((manager != nullptr) && (activeProcess || sessions > 1)) {
+    const auto &registry = konsoll::WindowRegistry::instance();
+    const bool activeProcess = registry.anySessionHasActiveProcess();
+    const int sessions = registry.totalSessionCount();
+    if (activeProcess || sessions > 1) {
         konsoll::NativeDialogs dialog;
         const bool confirmed = dialog.confirmQuit();
         if (!confirmed) {
