@@ -16,24 +16,24 @@ Window {
     color: "transparent"
 
     function requestQuit() {
-        const count = SessionManager.sessionCount()
-        const activeProcess = SessionManager.anySessionHasActiveProcess()
+        const count = SessionManager.sessionCount();
+        const activeProcess = SessionManager.anySessionHasActiveProcess();
         if ((count > 1 || activeProcess) && !NativeDialogs.confirmQuit()) {
-            return
+            return;
         }
-        NativeDialogs.approveQuit()
-        NativeDialogs.terminateApplication()
+        NativeDialogs.approveQuit();
+        NativeDialogs.terminateApplication();
     }
 
     onClosing: close => {
-        close.accepted = false
-        appWindow.requestQuit()
+        close.accepted = false;
+        appWindow.requestQuit();
     }
 
     Connections {
         target: SessionManager
         function onQuitRequested() {
-            appWindow.requestQuit()
+            appWindow.requestQuit();
         }
     }
 
@@ -58,34 +58,34 @@ Window {
     // monitor geometry and must not replace the user's restorable dimensions.
     onWidthChanged: {
         if (visibility === Window.Windowed)
-            appPreferences.windowWidth = width
+            appPreferences.windowWidth = width;
     }
     onHeightChanged: {
         if (visibility === Window.Windowed)
-            appPreferences.windowHeight = height
+            appPreferences.windowHeight = height;
     }
 
     onVisibilityChanged: {
         if (visibility === Window.FullScreen) {
-            appPreferences.windowState = "fullscreen"
+            appPreferences.windowState = "fullscreen";
         } else if (visibility === Window.Maximized) {
-            appPreferences.windowState = "maximized"
+            appPreferences.windowState = "maximized";
         } else if (visibility === Window.Windowed) {
-            appPreferences.windowState = "windowed"
+            appPreferences.windowState = "windowed";
         }
     }
 
     onScreenChanged: appPreferences.windowScreenName = windowScreen.currentScreenName()
 
     Component.onCompleted: {
-        windowScreen.restoreScreen(appPreferences.windowScreenName)
+        windowScreen.restoreScreen(appPreferences.windowScreenName);
         if (appPreferences.windowState === "fullscreen")
-            visibility = Window.FullScreen
+            visibility = Window.FullScreen;
         else if (appPreferences.windowState === "maximized")
-            visibility = Window.Maximized
+            visibility = Window.Maximized;
         else
-            visibility = Window.Windowed
-        SessionManager.start()
+            visibility = Window.Windowed;
+        SessionManager.start();
     }
 
     readonly property font terminalFont: Qt.font({
@@ -109,66 +109,73 @@ Window {
     }
 
     Shortcut {
+        enabled: SessionManager.workspaces.length > 0
+
         sequence: "Meta+Tab"
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: SessionManager.workspaces.length > 0
         onActivated: SessionManager.navigateActivationHistory(1)
     }
 
     Shortcut {
+        enabled: SessionManager.workspaces.length > 0
+
         sequence: "Meta+Shift+Tab"
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: SessionManager.workspaces.length > 0
         onActivated: SessionManager.navigateActivationHistory(-1)
     }
 
     Shortcut {
+        enabled: SessionManager.workspaces.length > 0
+
         sequence: "Ctrl+Tab"
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: SessionManager.workspaces.length > 0
         onActivated: SessionManager.navigateActivationHistory(1)
     }
 
     Shortcut {
+        enabled: SessionManager.workspaces.length > 0
+
         sequence: "Ctrl+Shift+Tab"
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: SessionManager.workspaces.length > 0
         onActivated: SessionManager.navigateActivationHistory(-1)
     }
 
     Action {
         id: splitHorizontallyAction
 
+        enabled: SessionManager.activeSession !== null
+
         text: qsTr("Split Horizontally")
         shortcut: "Ctrl+D"
-        enabled: SessionManager.activeSession !== null
         onTriggered: SessionManager.splitActive(Qt.Horizontal)
     }
 
     Action {
         id: splitVerticallyAction
 
+        enabled: SessionManager.activeSession !== null
+
         text: qsTr("Split Vertically")
         shortcut: "Ctrl+Shift+D"
-        enabled: SessionManager.activeSession !== null
         onTriggered: SessionManager.splitActive(Qt.Vertical)
     }
 
     Action {
         id: closeSessionAction
 
+        enabled: SessionManager.activeSession !== null
+
         text: qsTr("Close Session")
         shortcut: "Ctrl+W"
-        enabled: SessionManager.activeSession !== null
         onTriggered: {
             if (SessionManager.activeSession.commandRunning && !NativeDialogs.confirmClose()) {
-                return
+                return;
             }
-            SessionManager.closeSession(SessionManager.activeSession)
+            SessionManager.closeSession(SessionManager.activeSession);
         }
     }
 
@@ -184,44 +191,49 @@ Window {
     Action {
         id: clearBufferAction
 
+        enabled: SessionManager.activeSession !== null
+
         text: qsTr("Clear Buffer")
         shortcut: "Meta+K"
-        enabled: SessionManager.activeSession !== null
         onTriggered: SessionManager.activeSession.clearBuffer()
     }
 
     Action {
         id: copyAction
 
+        enabled: SessionManager.activeSession !== null
+
         text: qsTr("Copy")
         shortcut: StandardKey.Copy
-        enabled: SessionManager.activeSession !== null
         onTriggered: SessionManager.activeSession.copySelection()
     }
 
     Action {
         id: pasteAction
 
+        enabled: SessionManager.activeSession !== null
+
         text: qsTr("Paste")
         shortcut: StandardKey.Paste
-        enabled: SessionManager.activeSession !== null
         onTriggered: SessionManager.activeSession.paste()
     }
 
     Action {
         id: selectAllAction
 
+        enabled: SessionManager.activeSession !== null
+
         text: qsTr("Select All")
         shortcut: StandardKey.SelectAll
-        enabled: SessionManager.activeSession !== null
         onTriggered: SessionManager.activeSession.selectAll()
     }
 
     Action {
         id: saveTextAction
 
-        text: qsTr("Save Buffer or Selection…")
         enabled: SessionManager.activeSession !== null
+
+        text: qsTr("Save Buffer or Selection…")
         onTriggered: saveTextDialog.openFor(SessionManager.activeSession, appWindow.activeFocusItem)
     }
 
@@ -294,11 +306,11 @@ Window {
                 text: qsTr("Close Workspace")
                 enabled: SessionManager.activeWorkspaceIndex >= 0
                 onTriggered: {
-                    const workspace = SessionManager.workspaces[SessionManager.activeWorkspaceIndex]
+                    const workspace = SessionManager.workspaces[SessionManager.activeWorkspaceIndex];
                     if (SessionManager.workspaceHasRunningCommand(workspace) && !NativeDialogs.confirmClose()) {
-                        return
+                        return;
                     }
-                    SessionManager.closeWorkspace(workspace)
+                    SessionManager.closeWorkspace(workspace);
                 }
             }
         }
@@ -371,7 +383,7 @@ Window {
     Connections {
         target: SessionManager
         function onQuitRequested() {
-            appWindow.requestQuit()
+            appWindow.requestQuit();
         }
     }
 }
