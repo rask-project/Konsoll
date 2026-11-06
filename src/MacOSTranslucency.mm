@@ -103,7 +103,10 @@ void setWindowBlurEnabled(WId winId, bool enabled, qreal alpha)
                 return;
             }
 
-            NSRect const effectFrame = [contentView convertRect:[contentView bounds] toView:parentView];
+            // The superview is the window's frame view, which also contains
+            // the native title bar/toolbar area. Using contentView's bounds
+            // leaves that area transparent but unblurred.
+            NSRect const effectFrame = [parentView bounds];
             effectView = [[NSVisualEffectView alloc] initWithFrame:effectFrame];
             [effectView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
             [effectView setBlendingMode:NSVisualEffectBlendingModeBehindWindow];
