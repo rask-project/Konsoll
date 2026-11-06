@@ -29,24 +29,20 @@ Window {
     color: "transparent"
 
     function requestQuit() {
-        const count = sessionManager.sessionCount();
-        const activeProcess = sessionManager.anySessionHasActiveProcess();
-        if ((count > 1 || activeProcess) && !NativeDialogs.confirmQuit()) {
-            return;
-        }
-        NativeDialogs.approveQuit();
+        // The AppKit terminate delegate aggregates sessions across every
+        // window and owns the confirmation flow.
         NativeDialogs.terminateApplication();
     }
 
     onClosing: close => {
-        close.accepted = false;
-        appWindow.requestQuit();
+        close.accepted = true;
+        appWindow.windowManager.windowClosed(appWindow);
     }
 
     Connections {
         target: sessionManager
-        function onQuitRequested() {
-            appWindow.requestQuit();
+        function onWindowShouldClose() {
+            appWindow.windowManager.closeWindow(appWindow);
         }
     }
 

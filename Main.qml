@@ -25,28 +25,26 @@ Item {
         }
     }
 
-    Connections {
-        target: AppController
-        function onWindowOpenRequested() {
-            manager.openWindow();
-        }
-    }
-
     function openWindow() {
         const w = windowTemplate.createObject(manager);
         manager.windows.push(w);
+        w.show();
         return w;
     }
 
     function closeWindow(w) {
+        if (w)
+            w.close();
+    }
+
+    function windowClosed(w) {
         const i = manager.windows.indexOf(w);
         if (i >= 0)
             manager.windows.splice(i, 1);
-        w.destroy();
+        Qt.callLater(() => w.destroy());
     }
 
     Component.onCompleted: {
         const w = manager.openWindow();
-        w.show();
     }
 }

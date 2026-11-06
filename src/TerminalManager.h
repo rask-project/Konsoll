@@ -126,7 +126,7 @@ signals:
     void workspacesChanged();
     void activeWorkspaceChanged();
     void activeSessionChanged();
-    void quitRequested();
+    void windowShouldClose();
 
 private:
     TerminalBackend *createSession();

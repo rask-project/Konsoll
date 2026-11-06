@@ -329,7 +329,7 @@ void TerminalManager::closeWorkspace(QObject *workspaceObject)
     emit workspacesChanged();
     emit activeWorkspaceChanged();
     if (m_sessions.empty()) {
-        emit quitRequested();
+        emit windowShouldClose();
     }
 }
 
@@ -407,7 +407,7 @@ void TerminalManager::closeSession(QObject *sessionObject)
     emit activeWorkspaceChanged();
 
     if (m_sessions.empty()) {
-        emit quitRequested();
+        emit windowShouldClose();
     }
 }
 

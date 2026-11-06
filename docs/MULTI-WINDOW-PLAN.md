@@ -1,43 +1,41 @@
 # Konsoll — Multi-Window Plan
 
-> Multi-window support for the currently single-window terminal.
+> Multi-window support and per-window restoration for Konsoll.
 > Last updated: 2026-11-05
-> Status: planning (not started)
+> Status: in progress — Phases 1–3 implemented; Phase 4 not started; manual acceptance pending
 
 ## 1. Goal
 
 Let the user open, manage, and close **multiple independent windows**, each with
 its own set of workspaces/sessions, while the app behaves like a native macOS
-terminal (iTerm2-style): a shared app menu that acts on the focused window, the
-app staying alive after the last window closes, and per-window state restored on
-relaunch.
+terminal (iTerm2-style): a shared app menu that acts on the focused window and
+per-window state restored on relaunch.
 
 Confirmed scope decisions:
 
 - **Window state:** each window persists its own geometry + session layout and is
   restored on relaunch (iTerm2-style).
-- **Last window:** closing the last window does **not** quit the app; the app stays
-  alive and `Cmd+N` / dock click reopens a window.
+- **Last window:** closing the last window quits the app. Closing one window while
+  others remain open leaves those windows and sessions untouched.
 
-## 2. Current architecture (single window)
+## 2. Current implementation
 
-- `Main.qml` is the **root scene and the only `Window`**. It holds the `MenuBar`
-  (native macOS menu bar), the `Settings` (QSettings), `WindowTranslucency`,
-  `WindowScreen`, the `TerminalWorkspace`, and the dialogs.
-- `SessionManager` is `TerminalManager`, a **`QML_SINGLETON`** — one global model
-  that owns *all* workspaces and sessions (`m_workspaces`, `m_sessions`).
-- `TerminalManager::instance()` is a **static pointer** used by
-  `src/AppQuitGuard.mm` (the `NSApplicationDelegate`) to decide app quit
-  (`anySessionHasActiveProcess()`, `sessionCount()`).
-- `WindowTranslucency` and `WindowScreen` are already **per-window** C++
-  `QML_ELEMENT`s (they take a `window` property) — they are reusable as-is.
-- `main.cpp` sets `app.setQuitOnLastWindowClosed(false)` and loads `Main`.
-- The session model is already multi-session capable: each session owns its own
-  worker thread (`PtyWorker`), `Terminal`/`Screen`, and PTY. Only the *grouping*
-  (one global manager) is single-window.
-
-The two things that make it single-window are: (a) one global `TerminalManager`,
-and (b) `Main.qml` being the `Window` itself.
+- `Main.qml` is an invisible `Item` manager. It owns shared `AppSettings`, the
+  app-level dialogs, the `TerminalWindow` component, and the list of open windows.
+- `TerminalWindow.qml` is the per-window `Window`; it owns one `TerminalManager`,
+  its `TerminalWorkspace`, translucency/screen helpers, save dialog, menu, and
+  window-scoped shortcuts.
+- `TerminalManager` is a regular `QML_ELEMENT`, not a singleton. Each window owns
+  independent workspaces, sessions, PTY workers, and split layouts.
+- `WindowRegistry` tracks the live managers for app-wide quit confirmation.
+- `WindowTranslucency` and `WindowScreen` are per-window C++ `QML_ELEMENT`s.
+- Geometry is not yet per-window: every `TerminalWindow` reads and writes the
+  same width, height, state, and screen keys from shared `AppSettings`.
+- `main.cpp` enables Qt quit on the last window. The AppKit delegate returns `NO`
+  from `applicationShouldTerminateAfterLastWindowClosed:` so Qt is the sole
+  owner of that shutdown transition.
+- When a manager loses its final session, it requests closure of its own window.
+  Closing the final app window then exits the app.
 
 ## 3. How iTerm2 does it (reference model)
 
@@ -57,19 +55,17 @@ iTerm2 is an AppKit/Cocoa app. Its structure:
   its tab/split layout, including each terminal's working directory and profile. On
   relaunch, iTerm2 reopens every window and restarts the shells in the same
   directories.
-- **Keep running** — the app stays alive after the last window closes; the dock icon
-  or ⌘N reopens a window.
 
 Mapping to Konsoll:
 
 | iTerm2 | Konsoll |
 |---|---|
-| `AppController` (owns the windows) | `Main.qml` manager root + C++ `AppController`/`WindowRegistry` |
+| `AppController` (owns the windows) | `Main.qml` manager root + C++ `WindowRegistry` |
 | `WindowController` + `NSWindow` | `TerminalWindow.qml` (a `Window`) |
 | `TabController` → `TabGroup` → `Terminal` | `TerminalManager` → workspaces → split tree → `TerminalBackend` (sessions) |
 | App-level `NSMenu` → key window | Per-window QML `MenuBar`, shown while that window is active |
 | Window state restoration | Per-window state persistence (new, Phase 4) |
-| Keep running / dock reopen | `AppQuitGuard` (NO on last close) + `applicationShouldHandleReopen:` |
+| Quit after last close | Qt `setQuitOnLastWindowClosed(true)`; AppKit's automatic path is disabled |
 
 ## 4. Target architecture
 
@@ -89,12 +85,10 @@ Mapping to Konsoll:
   `QML_SINGLETON`). Each `TerminalWindow` instantiates exactly one.
 - **`WindowRegistry`** (new C++ app-level singleton) tracks the live
   `TerminalManager`s so the AppKit quit guard can aggregate across all windows.
-- **`AppController`** (C++ singleton) bridges AppKit → QML for "open a window"
-  (dock click / ⌘N when there are zero windows).
 
 Why the manager, not a `Window`: a `Window` is one window. To own *several*
 windows, `Main` must be the thing that creates them — the same reason iTerm2 has
-an `AppController` above the per-window `WindowController`s. The menu follows from
+an app-level controller above the per-window `WindowController`s. The menu follows from
 this: each `TerminalWindow` carries its own `MenuBar`, and macOS shows the
 **active** window's menu bar — which is exactly iTerm2's "one app menu acting on
 the key window."
@@ -111,9 +105,10 @@ the key window."
 3. **App-level aggregation in C++.** A `WindowRegistry` gives the AppKit quit guard
    a view across all windows (total session count, any active process) without
    reintroducing a single global model.
-4. **Keep running + reopen.** `applicationShouldTerminateAfterLastWindowClosed:`
-   returns `NO`; `applicationShouldHandleReopen:` opens a window. `main.cpp`
-   already sets `setQuitOnLastWindowClosed(false)`.
+4. **Quit after last close.** Qt's `setQuitOnLastWindowClosed(true)` owns this
+   transition. The AppKit delegate returns `NO` from
+   `applicationShouldTerminateAfterLastWindowClosed:` to avoid a second,
+   competing termination path.
 5. **Settings split.** Font + translucency alpha/blur are app-global (shared).
    Window geometry + session layout are per-window (restored, Phase 4).
 6. **Dialogs split.** `AboutDialog`/`SettingsDialog` are app-global (owned by the
@@ -124,7 +119,7 @@ the key window."
 
 Each phase is independently buildable; later phases build on earlier ones.
 
-### Phase 1 — Per-window session model (C++)
+### Phase 1 — Per-window session model (C++) — implemented
 
 Files: `src/TerminalManager.h/.cpp`, `src/AppQuitGuard.mm`, new
 `src/WindowRegistry.h/.cpp`, `src/selftest.cpp`.
@@ -144,7 +139,7 @@ Files: `src/TerminalManager.h/.cpp`, `src/AppQuitGuard.mm`, new
 - `selftest.cpp`: it already constructs a local `TerminalManager`; it must keep
   passing (a manager is now an ordinary object).
 
-### Phase 2 — QML window template + manager root
+### Phase 2 — QML window template + manager root — implemented
 
 Files: `Main.qml`, new `TerminalWindow.qml`, `TerminalWorkspace.qml`,
 `TerminalPaneLayout.qml`, `TerminalView.qml`, `controls/TerminalTabButton.qml`,
@@ -165,59 +160,71 @@ Files: `Main.qml`, new `TerminalWindow.qml`, `TerminalWorkspace.qml`,
   "New Window"/"Close Window" menu items.
 - `CMakeLists.txt`: add `TerminalWindow.qml` to `QML_FILES`.
 
-### Phase 3 — App-level window management + lifecycle
+### Phase 3 — App-level window management + lifecycle — implemented; needs manual acceptance pass
 
-Files: new `src/AppController.h/.mm` (or fold into `WindowRegistry`),
-`src/AppQuitGuard.mm`, `main.cpp`.
+Files: `src/AppQuitGuard.mm`, `main.cpp`.
 
-- `AppController` (C++ singleton): `openWindow()` queued to the GUI thread → tells
-  `Main` to create a window.
 - `AppQuitGuard`:
-  - `applicationShouldTerminateAfterLastWindowClosed:` → `NO` (keep running).
-  - `applicationShouldHandleReopen:hasVisibleWindows:` → `openWindow()` (dock click).
+  - `applicationShouldTerminateAfterLastWindowClosed:` → `NO`; Qt owns last-window shutdown.
   - `applicationShouldTerminate:` aggregates across all windows (Phase 1 registry).
-- `main.cpp`: keep `setQuitOnLastWindowClosed(false)`.
+- `main.cpp`: set `setQuitOnLastWindowClosed(true)`.
 - Add the window menu items / shortcuts: ⌘N (new window), ⌘⌥W (close window).
-- Handle the **zero-windows** state: no active window means no QML `MenuBar`, so the
-  menu cannot create a window — the dock click (AppKit) is the reopen path.
+- `⌘N` creates another window while at least one window is open. Closing the last
+  window exits the app; opening it again from the Dock starts a fresh app instance.
+- The latest shutdown adjustment makes Qt the only last-window termination path;
+  verify manually that closing the last window exits cleanly without a delayed
+  crash report.
 
-### Phase 4 — Per-window state restoration (iTerm2-style)
+Implementation notes: `Main.qml` owns the window template and live list;
+`TerminalWindow.qml` owns its `TerminalManager`. New windows are shown on
+creation, the close button removes only that window, and app termination is
+delegated to the AppKit guard so its confirmation aggregates all managers.
+When a manager loses its final session, it requests closure of its own window;
+that event closes that window only; the app exits naturally when it was the last
+window.
 
-Files: new `src/WindowState.h/.cpp` (or `Settings`-backed QML), `TerminalWindow.qml`,
-`TerminalManager` (layout serialization).
+### Phase 4 — Per-window state restoration (iTerm2-style) — not implemented
 
-- Persist **per window**: geometry (frame, maximized/fullscreen) and the session
-  layout (workspaces, split tree, each session's working directory).
-- Save on app quit and on window close; load on launch.
-- On relaunch, restore each window: recreate its `TerminalManager` with the saved
-  layout and start each session in the saved working directory.
+Files: `src/WindowState.h/.cpp`, `TerminalWindow.qml`, `Main.qml`,
+`AppSettings.qml`, and `TerminalManager` (layout serialization). `src/WindowState.h`
+exists as an unintegrated declaration only: there is no `.cpp` implementation,
+no CMake registration, and no QML usage.
 
-### Phase 5 — Acceptance + polish
+- [ ] Add stable IDs for windows and persist the collection of open window IDs.
+- [ ] Persist **per window** geometry (position/size, maximized/fullscreen,
+  screen) instead of sharing the current geometry keys in `AppSettings.qml`.
+- [ ] Serialize each window's workspaces, custom titles, split orientations, and
+  each session's working directory.
+- [ ] Save state when a window closes and before app shutdown; restore every saved
+  window on launch, recreating its manager and sessions.
+- [ ] Handle missing displays and invalid/corrupt saved layout data safely.
+- [ ] Verify restored sessions start in their saved working directories.
 
-- Manual pass over §8; fix focus, translucency, and menu-dispatch regressions.
+### Phase 5 — Acceptance + polish — pending
+
+- [ ] Manual pass over §8; fix focus, translucency, and menu-dispatch regressions.
+- [ ] Verify last-window close exits without the delayed crash report mentioned
+  during implementation; this has not yet been reproduced after the shutdown fix.
+- [ ] Verify shutdown terminates and reaps every shell across all windows.
 
 ## 7. Risks and open details
 
-- **App-global event filter.** `TerminalManager` installs an app-level event filter
-  that commits the activation history on Ctrl/Meta release. With several managers,
-  each would see the same key release and commit its *own* history. Scope the commit
-  to the focused window (e.g. only the manager whose window is active commits), or
-  move the filter onto the window.
-- **Menu bar with zero windows.** No active window ⇒ no QML `MenuBar` ⇒ no ⌘N from
-  the menu. The dock click is the only reopen path in that state (iTerm2 behaves the
-  same). Document this in the UI.
-- **`Settings` (QSettings) location.** It currently lives inside `Main.qml`'s
-  `Window`. It must move to the manager root so all windows share it; confirm the
-  `category`/keys are unchanged.
-- **Dialog parenting.** `SettingsDialog`/`AboutDialog` are app-global and must open
-  over the *active* window; `SaveTextDialog` is per-window and restores focus to
-  that window's terminal.
-- **C++ rules.** Keep `WindowRegistry`/`AppController` conformant: smart pointers
+- **App-global event filter — resolved.** The manager commits activation history
+  only when its own `QWindow` is focused.
+- **Window menu lifecycle — resolved.** The app exits when no windows remain, so
+  there is no windowless state that needs an in-process reopen action.
+- **`Settings` (QSettings) location.** It lives in `Main.qml`'s manager root and is
+  shared by all windows; keep the `category`/keys unchanged.
+- **Dialog parenting — manual verification pending.** `SettingsDialog`/`AboutDialog`
+  are app-global and should open over the active window; `SaveTextDialog` is
+  per-window and should restore focus to that window's terminal.
+- **C++ rules.** Keep `WindowRegistry` conformant: smart pointers
   only, no exceptions, `std::` algorithms, members ordered heaviest-alignment first
   (Debug enables `-Wpadded`), and clang-tidy clean (cognitive complexity, no
   do-while, no `NOLINT`).
 - **Restoration size.** Per-window layout serialization (split tree + working
-  directories) is the largest new piece of code; keep it a focused, testable unit.
+  directories) remains the largest unimplemented piece; keep it a focused,
+  testable unit.
 
 ## 8. Acceptance criteria
 
@@ -227,8 +234,10 @@ Files: new `src/WindowState.h/.cpp` (or `Settings`-backed QML), `TerminalWindow.
   actions act on that window's sessions.
 - Closing a window (red button / ⌘⌥W) closes only that window's sessions; other
   windows keep running.
-- Closing the **last** window does not quit the app; the dock icon (or a new-window
-  path) reopens a window.
+- Closing the **last** window quits the app. Closing any other window leaves the
+  remaining windows and sessions intact.
+- Closing the last workspace/session in one window closes only that window; other
+  windows remain intact. Closing the final window exits the app cleanly.
 - App quit (⌘Q / menu) still honors the running-command confirm dialog, aggregating
   across **all** windows.
 - Translucency tint follows each window's own active session background; alpha/blur

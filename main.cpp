@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
     }
 
     QGuiApplication app(argc, argv);
-    app.setQuitOnLastWindowClosed(false);
+    app.setQuitOnLastWindowClosed(true);
     if (selfTest) {
         return konsoll::runSelfTest();
     }
