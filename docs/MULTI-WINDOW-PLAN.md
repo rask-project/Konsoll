@@ -143,7 +143,7 @@ Files: `src/TerminalManager.h/.cpp`, `src/AppQuitGuard.mm`, new
 
 Files: `Main.qml`, new `TerminalWindow.qml`, `TerminalWorkspace.qml`,
 `TerminalPaneLayout.qml`, `TerminalView.qml`, `controls/TerminalTabButton.qml`,
-`CMakeLists.txt`.
+`controls/TerminalTabStrip.qml`, `CMakeLists.txt`.
 
 - Extract the body of `Main.qml` into `TerminalWindow.qml` (a `Window`): its
   `TerminalManager { id: sessionManager }`, `TerminalWorkspace`,
@@ -185,10 +185,10 @@ window.
 
 ### Phase 4 — Per-window state restoration (iTerm2-style) — not implemented
 
-Files: `src/WindowState.h/.cpp`, `TerminalWindow.qml`, `Main.qml`,
-`AppSettings.qml`, and `TerminalManager` (layout serialization). `src/WindowState.h`
-exists as an unintegrated declaration only: there is no `.cpp` implementation,
-no CMake registration, and no QML usage.
+Files: new `src/WindowState.h/.cpp`, `TerminalWindow.qml`, `Main.qml`,
+`AppSettings.qml`, and `TerminalManager` (layout serialization).
+`src/WindowState.h/.cpp` does not exist yet and must be created from scratch
+(no declaration, no implementation, no CMake registration, no QML usage).
 
 - [ ] Add stable IDs for windows and persist the collection of open window IDs.
 - [ ] Persist **per window** geometry (position/size, maximized/fullscreen,
