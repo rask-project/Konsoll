@@ -6,10 +6,11 @@ Window {
     id: appWindow
 
     // Back-references to the app-level manager root (Main.qml).
-    required property var windowManager
+    required property Main windowManager
     required property AppSettings settings
     required property AboutDialog aboutDialog
     required property SettingsDialog settingsDialog
+    readonly property WindowState windowState: windowStateObject
 
     readonly property font terminalFont: Qt.font({
         family: appWindow.settings.fontFamily,
@@ -20,8 +21,8 @@ Window {
 
     visibility: Window.Hidden
 
-    width: appWindow.settings.windowWidth
-    height: appWindow.settings.windowHeight
+    width: 1024
+    height: 768
     minimumWidth: 200
     minimumHeight: 250
 
@@ -29,8 +30,9 @@ Window {
     color: "transparent"
 
     function requestQuit() {
-        // The AppKit terminate delegate aggregates sessions across every
-        // window and owns the confirmation flow.
+        // Persist every open window before the AppKit terminate delegate
+        // aggregates sessions and owns the confirmation flow.
+        appWindow.windowManager.saveAllOpenWindows();
         NativeDialogs.terminateApplication();
     }
 
@@ -50,34 +52,25 @@ Window {
     // monitor geometry and must not replace the user's restorable dimensions.
     onWidthChanged: {
         if (visibility === Window.Windowed)
-            appWindow.settings.windowWidth = width;
+            windowState.width = width;
     }
     onHeightChanged: {
         if (visibility === Window.Windowed)
-            appWindow.settings.windowHeight = height;
+            windowState.height = height;
     }
-
-    onVisibilityChanged: {
-        if (visibility === Window.FullScreen) {
-            appWindow.settings.windowState = "fullscreen";
-        } else if (visibility === Window.Maximized) {
-            appWindow.settings.windowState = "maximized";
-        } else if (visibility === Window.Windowed) {
-            appWindow.settings.windowState = "windowed";
-        }
-    }
-
-    onScreenChanged: appWindow.settings.windowScreenName = windowScreen.currentScreenName()
+    onXChanged: windowState.x = x;
+    onYChanged: windowState.y = y;
 
     Component.onCompleted: {
-        windowScreen.restoreScreen(appWindow.settings.windowScreenName);
-        if (appWindow.settings.windowState === "fullscreen")
-            appWindow.visibility = Window.FullScreen;
-        else if (appWindow.settings.windowState === "maximized")
-            appWindow.visibility = Window.Maximized;
-        else
-            appWindow.visibility = Window.Windowed;
-        sessionManager.start();
+        const restored = windowState.load();
+        if (restored) {
+            appWindow.width = windowState.width;
+            appWindow.height = windowState.height;
+            appWindow.x = windowState.x;
+            appWindow.y = windowState.y;
+        }
+        if (sessionManager.workspaces.length === 0)
+            sessionManager.start();
     }
 
     Shortcut {
@@ -369,8 +362,8 @@ Window {
         fullScreen: appWindow.visibility === Window.FullScreen
     }
 
-    WindowScreen {
-        id: windowScreen
+    WindowState {
+        id: windowStateObject
         window: appWindow
     }
 

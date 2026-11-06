@@ -30,6 +30,13 @@ std::vector<Line> resizeGrid(const std::vector<Line> &old, int rows, int cols)
     return grid;
 }
 
+bool isBlankLine(const Line &line)
+{
+    return std::ranges::all_of(line, [](const Cell &cell) {
+        return cell.ch == ' ' && cell.fg == 0u && cell.bg == 0u && cell.flags == CellFlag::None;
+    });
+}
+
 // Add hard-break flags for newly allocated rows without dropping existing
 // rows. Reflow needs the complete old screen to preserve its contents.
 void ensureWrappedFlags(std::vector<bool> &flags, size_t rows)
@@ -69,12 +76,19 @@ void Screen::resize(int rows, int cols)
         ensureRows(m_mainSaved, rows, oldCols);
         ensureWrappedFlags(m_mainSavedWrapped, m_mainSaved.size());
     } else {
-        const bool emptyScreen = m_scrollback.empty() && std::ranges::all_of(m_main, [](const Line &line) {
-                                     return std::ranges::all_of(line, [](const Cell &cell) { return cell.ch == ' '; });
-                                 });
+        if (std::ranges::all_of(m_scrollback, isBlankLine)) {
+            m_scrollback.clear();
+            m_scrollbackWrapped.clear();
+            m_scrollOffset = 0;
+        }
+        const bool emptyScreen = std::ranges::all_of(m_scrollback, isBlankLine) &&
+                                 std::ranges::all_of(m_main, isBlankLine);
         if (emptyScreen) {
             // A smaller pane must not turn unused blank screen rows into
             // scrollback; that makes an idle terminal appear scrollable.
+            m_scrollback.clear();
+            m_scrollbackWrapped.clear();
+            m_scrollOffset = 0;
             m_main = makeGrid(rows, cols);
             m_mainWrapped.assign(rows, false);
         } else {
@@ -591,13 +605,19 @@ void Screen::reflow()
 //    (top -> bottom).
 void Screen::collectPhysicalLines(std::vector<Line> &phys, std::vector<bool> &wrapped) const
 {
-    phys.reserve(m_scrollback.size() + m_main.size());
-    wrapped.reserve(m_scrollback.size() + m_main.size());
+    size_t screenRows = std::min(m_main.size(), static_cast<size_t>(m_cursorRow + 1));
+    for (size_t row = screenRows; row < m_main.size(); ++row) {
+        if (!isBlankLine(m_main[row])) {
+            screenRows = row + 1;
+        }
+    }
+    phys.reserve(m_scrollback.size() + screenRows);
+    wrapped.reserve(m_scrollback.size() + screenRows);
     for (size_t i = 0; i < m_scrollback.size(); ++i) {
         phys.push_back(m_scrollback[i]);
         wrapped.push_back(m_scrollbackWrapped[i]);
     }
-    for (size_t r = 0; r < m_main.size(); ++r) {
+    for (size_t r = 0; r < screenRows; ++r) {
         phys.push_back(m_main[r]);
         wrapped.push_back(m_mainWrapped[r]);
     }
@@ -691,6 +711,8 @@ void Screen::redistribute(const ReflowedScreen &rewrapped, size_t cursorNewPhys,
         m_maxScrollback > 0 ? static_cast<size_t>(m_rows) + static_cast<size_t>(m_maxScrollback) : total;
     const size_t keepFrom = total > maxTotal ? total - maxTotal : 0;
     const size_t screenStart = total > static_cast<size_t>(m_rows) ? total - static_cast<size_t>(m_rows) : 0;
+    m_main.resize(static_cast<size_t>(m_rows));
+    m_mainWrapped.resize(static_cast<size_t>(m_rows), false);
     m_scrollback.clear();
     m_scrollbackWrapped.clear();
     for (size_t i = keepFrom; i < screenStart; ++i) {

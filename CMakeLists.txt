@@ -106,6 +106,8 @@ qt_add_qml_module(konsoll
         src/WindowScreen.h
         src/WindowRegistry.cpp
         src/WindowRegistry.h
+        src/WindowState.cpp
+        src/WindowState.h
 )
 
 qt_add_resources(konsoll "/"

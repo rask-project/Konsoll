@@ -13,6 +13,7 @@ Item {
     property AppSettings settings: AppSettings {}
 
     property var windows: []
+    property TerminalWindow createdWindow: null
 
     Component {
         id: windowTemplate
@@ -26,25 +27,40 @@ Item {
     }
 
     function openWindow() {
-        const w = windowTemplate.createObject(manager);
-        manager.windows.push(w);
+        manager.createdWindow = windowTemplate.createObject(manager);
+        const w = manager.createdWindow;
+        manager.windows = manager.windows.concat([w]);
         w.show();
         return w;
     }
 
-    function closeWindow(w) {
+    function closeWindow(w: TerminalWindow) {
         if (w)
             w.close();
     }
 
-    function windowClosed(w) {
-        const i = manager.windows.indexOf(w);
-        if (i >= 0)
-            manager.windows.splice(i, 1);
+    function saveWindow(window: TerminalWindow) {
+        window.windowState.save();
+    }
+
+    function isActiveWindow(window: TerminalWindow): bool {
+        return window.active;
+    }
+
+    function saveAllOpenWindows() {
+        const focusedWindow = manager.windows.find(manager.isActiveWindow);
+        const windowToSave = focusedWindow ?? manager.windows[manager.windows.length - 1];
+        if (windowToSave)
+            manager.saveWindow(windowToSave);
+    }
+
+    function windowClosed(w: TerminalWindow) {
+        manager.saveWindow(w);
+        manager.windows = manager.windows.filter(window => window !== w);
         Qt.callLater(() => w.destroy());
     }
 
     Component.onCompleted: {
-        const w = manager.openWindow();
+        manager.openWindow();
     }
 }

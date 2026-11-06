@@ -39,14 +39,15 @@ Item {
                 colorGroup: SystemPalette.Active
             }
 
-            Column {
+            Item {
                 anchors.fill: parent
-                spacing: 5
-                topPadding: 5
 
                 Rectangle {
+                    id: sessionHeader
+
                     width: parent.width - 10
                     height: 32
+                    y: 5
                     anchors.horizontalCenter: parent.horizontalCenter
 
                     color: Qt.rgba(systemPalette.window.r, systemPalette.window.g, systemPalette.window.b, 0.50)
@@ -145,8 +146,11 @@ Item {
                 }
 
                 Controls.TerminalView {
-                    width: parent.width
-                    height: Math.max(0, parent.height - 42)
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: sessionHeader.bottom
+                    anchors.topMargin: 5
+                    anchors.bottom: parent.bottom
 
                     sessionManager: pane.sessionManager
                     session: leafItem.session

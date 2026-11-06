@@ -707,4 +707,148 @@ void TerminalManager::commitActivationHistory()
     }
 }
 
+QJsonArray TerminalManager::serializeState() const
+{
+    QJsonArray workspaces;
+    for (const auto &workspace : m_workspaces) {
+        QJsonObject workspaceJson;
+        workspaceJson[QStringLiteral("customTitle")] = workspace->customTitle();
+        workspaceJson[QStringLiteral("layout")] = serializeLayout(workspace->root().get());
+        workspaces.append(workspaceJson);
+    }
+    return workspaces;
+}
+
+QJsonObject TerminalManager::serializeLayout(TerminalLayoutNode *root) const
+{
+    if (root == nullptr) {
+        return QJsonObject();
+    }
+
+    std::vector<QJsonObject> pool;
+    struct Link {
+        int self;
+        int first;
+        int second;
+    };
+    std::vector<Link> links;
+    struct Work {
+        TerminalLayoutNode *node;
+        int index;
+    };
+    std::vector<Work> pending;
+
+    pool.emplace_back();
+    pending.push_back({root, 0});
+
+    while (!pending.empty()) {
+        const Work work = pending.back();
+        pending.pop_back();
+        const int index = work.index;
+        if (work.node->m_session != nullptr) {
+            QJsonObject leaf;
+            leaf[QStringLiteral("d")] = work.node->m_session->currentDirectory();
+            pool[index] = std::move(leaf);
+        } else {
+            const int firstIndex = static_cast<int>(pool.size());
+            pool.emplace_back();
+            const int secondIndex = static_cast<int>(pool.size());
+            pool.emplace_back();
+            QJsonObject split;
+            split[QStringLiteral("o")] = work.node->orientation();
+            pool[index] = std::move(split);
+            links.push_back({index, firstIndex, secondIndex});
+            pending.push_back({work.node->m_second.get(), secondIndex});
+            pending.push_back({work.node->m_first.get(), firstIndex});
+        }
+    }
+
+    for (const Link &link : links) {
+        pool[static_cast<std::size_t>(link.self)][QStringLiteral("a")] = pool[static_cast<std::size_t>(link.first)];
+        pool[static_cast<std::size_t>(link.self)][QStringLiteral("b")] = pool[static_cast<std::size_t>(link.second)];
+    }
+
+    return pool.front();
+}
+
+void TerminalManager::restoreState(const QJsonArray &state)
+{
+    m_workspaces.clear();
+    m_sessions.clear();
+    m_activationHistory.clear();
+    m_activeSession = nullptr;
+    m_nextWorkspaceNumber = 1;
+
+    for (const QJsonValue &workspaceValue : state) {
+        const QJsonObject workspaceJson = workspaceValue.toObject();
+        auto root = buildLayoutNode(workspaceJson[QStringLiteral("layout")].toObject());
+        auto workspace = std::make_unique<TerminalWorkspaceModel>(
+            QStringLiteral("Workspace %1").arg(m_nextWorkspaceNumber++),
+            std::move(root)
+        );
+        workspace->setCustomTitle(workspaceJson[QStringLiteral("customTitle")].toString());
+        m_workspaces.push_back(std::move(workspace));
+    }
+
+    if (!m_workspaces.empty()) {
+        setActiveSession(firstSession(m_workspaces.front()->root().get()), false);
+    }
+
+    emit workspacesChanged();
+    emit activeWorkspaceChanged();
+}
+
+static bool isSplitNode(const QJsonObject &json)
+{
+    return json.contains(QStringLiteral("a")) && json.contains(QStringLiteral("b"));
+}
+
+std::unique_ptr<TerminalLayoutNode> TerminalManager::buildLayoutNode(const QJsonObject &rootJson)
+{
+    struct Frame {
+        QJsonObject json;
+        std::unique_ptr<TerminalLayoutNode> *slot;
+        bool entered;
+        std::unique_ptr<TerminalLayoutNode> first;
+        std::unique_ptr<TerminalLayoutNode> second;
+    };
+
+    std::unique_ptr<TerminalLayoutNode> result;
+    std::deque<Frame> stack;
+    stack.push_back({rootJson, &result, false, {}, {}});
+
+    while (!stack.empty()) {
+        Frame &frame = stack.back();
+        if (!frame.entered) {
+            frame.entered = true;
+            const QJsonObject &json = frame.json;
+            if (isSplitNode(json)) {
+                const QJsonObject firstJson = json[QStringLiteral("a")].toObject();
+                const QJsonObject secondJson = json[QStringLiteral("b")].toObject();
+                stack.push_back({secondJson, &frame.second, false, {}, {}});
+                stack.push_back({firstJson, &frame.first, false, {}, {}});
+            } else {
+                TerminalBackend *session = createSession();
+                session->start(json[QStringLiteral("d")].toString());
+                *frame.slot = std::make_unique<TerminalLayoutNode>(session);
+            }
+            continue;
+        }
+        if (isSplitNode(frame.json)) {
+            if (frame.first && frame.second) {
+                *frame.slot = std::make_unique<TerminalLayoutNode>(
+                    static_cast<Qt::Orientation>(frame.json[QStringLiteral("o")].toInt()),
+                    std::move(frame.first),
+                    std::move(frame.second)
+                );
+                stack.pop_back();
+            }
+        } else {
+            stack.pop_back();
+        }
+    }
+
+    return result;
+}
+
 } // namespace konsoll

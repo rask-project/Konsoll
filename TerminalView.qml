@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Basic as Basic
 import QtCanvas2D
 
 import "controls" as Controls
@@ -13,10 +14,11 @@ Item {
     readonly property real terminalFontSize: terminalFont.pixelSize > 0 ? terminalFont.pixelSize : terminalFont.pointSize * (4 / 3)
     readonly property real cellWidth: terminalFontSize * 0.6
     readonly property real cellHeight: terminalFontSize * 1.2
+    readonly property real canvasInset: 5
     readonly property string nerdFont: "'JetBrainsMono Nerd Font Mono'"
     readonly property string fontFamily: "'" + terminalFont.family.replace(/'/g, "\\'") + "', " + nerdFont
-    readonly property int cols: Math.max(2, Math.floor(canvas.width / cellWidth))
-    readonly property int rows: Math.max(2, Math.floor(canvas.height / cellHeight))
+    readonly property int cols: Math.max(2, Math.floor((width - 2 * canvasInset) / cellWidth))
+    readonly property int rows: Math.max(2, Math.floor((height - 2 * canvasInset) / cellHeight))
     readonly property color systemBackground: appPalette.window
     readonly property color systemForeground: appPalette.windowText
     readonly property int totalLines: view.session ? view.session.maxScrollOffset + view.session.rows : 0
@@ -30,8 +32,8 @@ Item {
     onSystemBackgroundChanged: applySystemColors()
     onSystemForegroundChanged: applySystemColors()
 
-    onColsChanged: syncSessionSize()
-    onRowsChanged: syncSessionSize()
+    onColsChanged: scheduleSessionResize()
+    onRowsChanged: scheduleSessionResize()
     onTerminalFontChanged: canvas.requestPaint()
     onSessionChanged: {
         if (session) {
@@ -39,12 +41,20 @@ Item {
             applySystemColors();
         }
     }
-    onVisibleChanged: syncSessionSize()
+    onVisibleChanged: scheduleSessionResize()
     onActiveChanged: focusInputIfActive()
 
     SystemPalette {
         id: appPalette
         colorGroup: SystemPalette.Active
+    }
+
+    Timer {
+        id: resizeTimer
+
+        interval: 0
+        repeat: false
+        onTriggered: view.syncSessionSize()
     }
 
     Component.onCompleted: focusInputIfActive()
@@ -64,8 +74,13 @@ Item {
     }
 
     function syncSessionSize() {
-        if (session && canvas.width >= cellWidth * 2 && canvas.height >= cellHeight * 2)
+        if (session && width >= cellWidth * 2 + 2 * canvasInset && height >= cellHeight * 2 + 2 * canvasInset)
             session.resize(cols, rows);
+    }
+
+    function scheduleSessionResize() {
+        if (session && visible)
+            resizeTimer.restart();
     }
 
     // Invisible focus target that receives composed text from the macOS text
@@ -241,7 +256,7 @@ Item {
         id: canvas
 
         anchors.fill: parent
-        anchors.margins: 5
+        anchors.margins: view.canvasInset
         fillColor: "transparent"
         alphaBlending: true
 
@@ -254,19 +269,14 @@ Item {
             const ctx = getContext("2d");
             if (!view.session)
                 return;
-            // Canvas2D retains pixels between paints. Clear the previous
-            // frame first so cells that became blank (or changed from a
-            // colored background to the default background) don't leave
-            // stale text behind when a pager redraws the screen.
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
             const data = view.session.snapshot();
             const cw = view.cellWidth;
             const ch = view.cellHeight;
             // |0 coerces to signed 32-bit so it matches the signed ints the
             // snapshot sends (C++ static_cast<int> of 0xAARRGGBB).
             const bg = view.session.backgroundColor | 0;
-            const cols = view.cols;
-            const rows = view.rows;
+            const cols = view.session.cols;
+            const rows = view.session.rows;
             const selectedText = appPalette.highlightedText;
             const selectedForeground = (Math.round(selectedText.r * 255) << 16) | (Math.round(selectedText.g * 255) << 8) | Math.round(selectedText.b * 255);
             ctx.textAlign = "left";
@@ -705,7 +715,7 @@ Item {
     // syncScrollBar below) so 0 = oldest line and 1 - size = the live cursor
     // at the bottom. The style keeps it thin and fatter on hover; it only
     // shows when there is scrollback.
-    ScrollBar {
+    Basic.ScrollBar {
         id: scrollBar
 
         visible: view.session && view.session.maxScrollOffset > 0

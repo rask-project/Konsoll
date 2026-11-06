@@ -3,11 +3,14 @@
 #include "TerminalBackend.h"
 
 #include <QEvent>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QObject>
 #include <QVariantList>
 #include <QWindow>
 #include <QtQml>
 
+#include <deque>
 #include <memory>
 #include <vector>
 
@@ -122,6 +125,9 @@ public:
     Q_INVOKABLE void routeKeyPress(QObject *session, int key, const QString &text, int modifiers);
     Q_INVOKABLE void routeTextInput(QObject *session, const QString &text);
 
+    QJsonArray serializeState() const;
+    void restoreState(const QJsonArray &state);
+
 signals:
     void workspacesChanged();
     void activeWorkspaceChanged();
@@ -142,6 +148,8 @@ private:
     void pruneSession(TerminalBackend *session);
     void removeSessionFromLayouts(TerminalBackend *session);
     void commitActivationHistory();
+    QJsonObject serializeLayout(TerminalLayoutNode *root) const;
+    std::unique_ptr<TerminalLayoutNode> buildLayoutNode(const QJsonObject &rootJson);
 
     std::vector<std::unique_ptr<TerminalBackend>> m_sessions;
     std::vector<std::unique_ptr<TerminalWorkspaceModel>> m_workspaces;
