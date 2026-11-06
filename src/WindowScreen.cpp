@@ -1,11 +1,12 @@
 #include "WindowScreen.h"
 
-#include <algorithm>
 #include <QGuiApplication>
 #include <QScreen>
 #include <QWindow>
+#include <algorithm>
 
-namespace konsoll {
+namespace konsoll
+{
 
 WindowScreen::WindowScreen(QObject *parent) : QObject(parent) {}
 
@@ -23,7 +24,7 @@ QString WindowScreen::currentScreenName() const
 {
     auto const *window = qobject_cast<QWindow *>(m_window);
     auto const *screen = window != nullptr ? window->screen() : nullptr;
-    return screen != nullptr ? screen->name() : QString {};
+    return screen != nullptr ? screen->name() : QString{};
 }
 
 bool WindowScreen::restoreScreen(const QString &name) const
@@ -34,9 +35,8 @@ bool WindowScreen::restoreScreen(const QString &name) const
     }
 
     auto const screens = QGuiApplication::screens();
-    auto const screen = std::ranges::find_if(screens, [&name](QScreen *candidate) {
-        return candidate->name() == name;
-    });
+    auto const screen =
+        std::ranges::find_if(screens, [&name](QScreen *candidate) { return candidate->name() == name; });
     if (screen == screens.end()) {
         return false;
     }

@@ -238,7 +238,7 @@ Window {
 
         text: qsTr("New Window")
         shortcut: "Ctrl+N"
-        onTriggered: windowManager.openWindow()
+        onTriggered: appWindow.windowManager.openWindow()
     }
 
     Action {
@@ -246,7 +246,7 @@ Window {
 
         text: qsTr("Close Window")
         shortcut: "Ctrl+Alt+W"
-        onTriggered: windowManager.closeWindow(appWindow)
+        onTriggered: appWindow.windowManager.closeWindow(appWindow)
     }
 
     // On macOS (Qt >= 6.8, native menu bar) a Menu whose title equals the

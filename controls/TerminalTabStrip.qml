@@ -44,7 +44,7 @@ Rectangle {
     onWindowTranslucencyChanged: updateWindowMovable()
     Component.onCompleted: updateWindowMovable()
 
-    color: Qt.rgba(systemPalette.window.r, systemPalette.window.g, systemPalette.window.b, 0.25)
+    color: Qt.rgba(systemPalette.window.r, systemPalette.window.g, systemPalette.window.b, 0.50)
 
     SystemPalette {
         id: systemPalette
