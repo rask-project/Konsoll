@@ -26,10 +26,15 @@ Item {
         }
     }
 
-    function openWindow() {
-        manager.createdWindow = windowTemplate.createObject(manager);
+    function openWindow(windowId) {
+        if (!windowId)
+            windowId = WindowStateStore.generateWindowId();
+        manager.createdWindow = windowTemplate.createObject(manager, {
+            windowId: windowId
+        });
         const w = manager.createdWindow;
         manager.windows = manager.windows.concat([w]);
+        manager.persistCollection();
         w.show();
         return w;
     }
@@ -39,28 +44,32 @@ Item {
             w.close();
     }
 
-    function saveWindow(window: TerminalWindow) {
-        window.windowState.save();
-    }
-
-    function isActiveWindow(window: TerminalWindow): bool {
-        return window.active;
+    function persistCollection() {
+        WindowStateStore.saveCollection(manager.windows.map(w => w.windowId));
     }
 
     function saveAllOpenWindows() {
-        const focusedWindow = manager.windows.find(manager.isActiveWindow);
-        const windowToSave = focusedWindow ?? manager.windows[manager.windows.length - 1];
-        if (windowToSave)
-            manager.saveWindow(windowToSave);
+        for (const w of manager.windows)
+            w.windowState.save();
+        manager.persistCollection();
     }
 
     function windowClosed(w: TerminalWindow) {
-        manager.saveWindow(w);
         manager.windows = manager.windows.filter(window => window !== w);
+        if (!WindowStateStore.terminating()) {
+            w.windowState.removeState();
+            manager.persistCollection();
+        }
         Qt.callLater(() => w.destroy());
     }
 
     Component.onCompleted: {
-        manager.openWindow();
+        const ids = WindowStateStore.listWindowIds();
+        if (ids.length > 0) {
+            for (const id of ids)
+                manager.openWindow(id);
+        } else {
+            manager.openWindow();
+        }
     }
 }

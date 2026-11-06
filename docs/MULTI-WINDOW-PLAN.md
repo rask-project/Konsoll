@@ -1,8 +1,8 @@
 # Konsoll — Multi-Window Plan
 
 > Multi-window support and per-window restoration for Konsoll.
-> Last updated: 2026-11-05
-> Status: in progress — Phases 1–3 implemented; Phase 4 not started; manual acceptance pending
+> Last updated: 2026-11-06
+> Status: Phases 1–4 implemented; manual acceptance (Phase 5) pending
 
 ## 1. Goal
 
@@ -29,8 +29,11 @@ Confirmed scope decisions:
   independent workspaces, sessions, PTY workers, and split layouts.
 - `WindowRegistry` tracks the live managers for app-wide quit confirmation.
 - `WindowTranslucency` and `WindowScreen` are per-window C++ `QML_ELEMENT`s.
-- Geometry is not yet per-window: every `TerminalWindow` reads and writes the
-  same width, height, state, and screen keys from shared `AppSettings`.
+- Geometry + session layout live in a per-window `WindowState` `QML_ELEMENT`
+  (no longer in `AppSettings`, which now holds only font + translucency). Each
+  `WindowState` persists to its own `windows/<id>.json`; the app-level
+  `WindowStateStore` singleton owns the persisted collection of open window IDs
+  (`windows/index.json`).
 - `main.cpp` enables Qt quit on the last window. The AppKit delegate returns `NO`
   from `applicationShouldTerminateAfterLastWindowClosed:` so Qt is the sole
   owner of that shutdown transition.
@@ -64,7 +67,7 @@ Mapping to Konsoll:
 | `WindowController` + `NSWindow` | `TerminalWindow.qml` (a `Window`) |
 | `TabController` → `TabGroup` → `Terminal` | `TerminalManager` → workspaces → split tree → `TerminalBackend` (sessions) |
 | App-level `NSMenu` → key window | Per-window QML `MenuBar`, shown while that window is active |
-| Window state restoration | Per-window state persistence (new, Phase 4) |
+| Window state restoration | Per-window state persistence (Phase 4) |
 | Quit after last close | Qt `setQuitOnLastWindowClosed(true)`; AppKit's automatic path is disabled |
 
 ## 4. Target architecture
@@ -183,22 +186,44 @@ When a manager loses its final session, it requests closure of its own window;
 that event closes that window only; the app exits naturally when it was the last
 window.
 
-### Phase 4 — Per-window state restoration (iTerm2-style) — not implemented
+### Phase 4 — Per-window state restoration (iTerm2-style) — done
 
-Files: new `src/WindowState.h/.cpp`, `TerminalWindow.qml`, `Main.qml`,
-`AppSettings.qml`, and `TerminalManager` (layout serialization).
-`src/WindowState.h/.cpp` does not exist yet and must be created from scratch
-(no declaration, no implementation, no CMake registration, no QML usage).
+Files: `src/WindowState.h/.cpp` (new), `src/WindowStateStore.h/.cpp` (new,
+app-level singleton), `TerminalWindow.qml`, `Main.qml`, `TerminalManager`
+(layout serialization), `AppQuitGuard.mm`. `AppSettings.qml` no longer holds
+geometry keys (they moved into `WindowState`).
 
-- [ ] Add stable IDs for windows and persist the collection of open window IDs.
-- [ ] Persist **per window** geometry (position/size, maximized/fullscreen,
-  screen) instead of sharing the current geometry keys in `AppSettings.qml`.
-- [ ] Serialize each window's workspaces, custom titles, split orientations, and
-  each session's working directory.
-- [ ] Save state when a window closes and before app shutdown; restore every saved
-  window on launch, recreating its manager and sessions.
-- [ ] Handle missing displays and invalid/corrupt saved layout data safely.
-- [ ] Verify restored sessions start in their saved working directories.
+Done:
+- **Per-window `WindowState`** — per-window `QML_ELEMENT`
+  (`window`/`manager`/`windowId`/`width`/`height`/`x`/`y`/`layout`/`hasLayout` +
+  `load()`/`save()`/`removeState()`), registered in `CMakeLists.txt` and
+  instantiated per `TerminalWindow`. Persists width/height/x/y + `QScreen` name +
+  serialized layout to its own `windows/<id>.json`. `TerminalWindow` records
+  geometry on change (only while `Windowed`, so maximized/fullscreen sizes don't
+  clobber the restorable dimensions) and restores it in `Component.onCompleted`.
+- **App-level `WindowStateStore`** — `QML_SINGLETON` owning the persisted
+  collection of open window IDs (`windows/index.json`): `listWindowIds()`,
+  `generateWindowId()`, `saveCollection(ids)`, and a C++-owned `terminating()`
+  flag (set only on a confirmed quit by `AppQuitGuard`) so `windowClosed()` can
+  distinguish a mid-session close (removes the ID + deletes the file) from a
+  quit-time close (skips disk ops).
+- **Stable per-window IDs** — `Main.qml::openWindow(windowId)` generates a UUID
+  when none is passed; each window is keyed on its own ID.
+- **C++ layout serialization** — `TerminalManager::serializeState()` /
+  `restoreState(const QJsonArray &state)` + `serializeLayout()` /
+  `buildLayoutNode()` capture workspaces, custom titles, split trees
+  (orientation + children), and each session's working directory;
+  `restoreState()` recreates sessions via `session->start(dir)`.
+- **Save/restore wiring** — `Main.qml::requestQuit()` → `saveAllOpenWindows()`
+  (saves every open window + the collection) → `terminateApplication()`;
+  `windowClosed(w)` removes the ID + file on a mid-session close (only when not
+  terminating); `Component.onCompleted` reopens one window per persisted ID (or a
+  single fresh window when none). `TerminalWindow` calls `windowState.load()` then
+  `sessionManager.restoreState(windowState.layout)` on launch (fresh session when
+  no saved layout).
+- **Robustness** — missing/corrupt `windows/<id>.json` and missing/corrupt
+  `index.json` are handled gracefully (fresh window); restored sessions start in
+  their saved working directories.
 
 ### Phase 5 — Acceptance + polish — pending
 
@@ -223,8 +248,9 @@ Files: new `src/WindowState.h/.cpp`, `TerminalWindow.qml`, `Main.qml`,
   (Debug enables `-Wpadded`), and clang-tidy clean (cognitive complexity, no
   do-while, no `NOLINT`).
 - **Restoration size.** Per-window layout serialization (split tree + working
-  directories) remains the largest unimplemented piece; keep it a focused,
-  testable unit.
+  directories) is implemented in C++ (`serializeState`/`restoreState`); stable
+  per-window IDs, the persisted collection, and the save/restore wiring into QML
+  are all done. Keep restoration a focused, testable unit.
 
 ## 8. Acceptance criteria
 

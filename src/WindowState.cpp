@@ -1,5 +1,7 @@
 #include "WindowState.h"
 
+#include "TerminalManager.h"
+
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
@@ -22,6 +24,36 @@ QObject *WindowState::window() const
 void WindowState::setWindow(QObject *window)
 {
     m_window = window;
+}
+
+QObject *WindowState::manager() const
+{
+    return m_manager;
+}
+
+void WindowState::setManager(QObject *manager)
+{
+    m_manager = manager;
+}
+
+QString WindowState::windowId() const
+{
+    return m_windowId;
+}
+
+void WindowState::setWindowId(QString windowId)
+{
+    m_windowId = std::move(windowId);
+}
+
+QJsonArray WindowState::layout() const
+{
+    return m_layout;
+}
+
+bool WindowState::hasLayout() const
+{
+    return !m_layout.isEmpty();
 }
 
 int WindowState::width() const
@@ -80,7 +112,10 @@ void WindowState::setY(int y)
     emit changed();
 }
 
-static QString stateDir()
+namespace
+{
+
+QString stateDir()
 {
     const QString dir =
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/windows");
@@ -88,12 +123,12 @@ static QString stateDir()
     return dir;
 }
 
-static QString statePath(const QString &id)
+QString statePath(const QString &id)
 {
     return stateDir() + QStringLiteral("/") + id + QStringLiteral(".json");
 }
 
-static QJsonObject readState(const QString &id)
+QJsonObject readState(const QString &id)
 {
     const QString path = statePath(id);
     if (!QFile::exists(path)) {
@@ -109,7 +144,7 @@ static QJsonObject readState(const QString &id)
     return doc.isObject() ? doc.object() : QJsonObject();
 }
 
-static void writeState(const QString &id, const QJsonObject &state)
+void writeState(const QString &id, const QJsonObject &state)
 {
     QFile file(statePath(id));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -119,9 +154,11 @@ static void writeState(const QString &id, const QJsonObject &state)
     file.close();
 }
 
+} // namespace
+
 bool WindowState::load()
 {
-    const QJsonObject state = readState(QStringLiteral("last"));
+    const QJsonObject state = readState(m_windowId);
     if (state.isEmpty()) {
         return false;
     }
@@ -131,6 +168,8 @@ bool WindowState::load()
     setHeight(geometry[QStringLiteral("height")].toInt(768));
     setX(geometry[QStringLiteral("x")].toInt());
     setY(geometry[QStringLiteral("y")].toInt());
+    m_layout = state[QStringLiteral("layout")].toArray();
+    emit changed();
 
     if (QWindow *window = qobject_cast<QWindow *>(m_window)) {
         const QString screenName = geometry[QStringLiteral("screen")].toString();
@@ -165,7 +204,16 @@ void WindowState::save()
     }
     state[QStringLiteral("geometry")] = geometry;
 
-    writeState(QStringLiteral("last"), state);
+    if (TerminalManager *manager = qobject_cast<TerminalManager *>(m_manager)) {
+        state[QStringLiteral("layout")] = manager->serializeState();
+    }
+
+    writeState(m_windowId, state);
+}
+
+void WindowState::removeState()
+{
+    QFile::remove(statePath(m_windowId));
 }
 
 } // namespace konsoll

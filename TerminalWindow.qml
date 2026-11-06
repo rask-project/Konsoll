@@ -10,6 +10,7 @@ Window {
     required property AppSettings settings
     required property AboutDialog aboutDialog
     required property SettingsDialog settingsDialog
+    property string windowId: ""
     readonly property WindowState windowState: windowStateObject
 
     readonly property font terminalFont: Qt.font({
@@ -69,8 +70,11 @@ Window {
             appWindow.x = windowState.x;
             appWindow.y = windowState.y;
         }
-        if (sessionManager.workspaces.length === 0)
+        if (windowState.hasLayout) {
+            sessionManager.restoreState(windowState.layout);
+        } else if (sessionManager.workspaces.length === 0) {
             sessionManager.start();
+        }
     }
 
     Shortcut {
@@ -365,6 +369,8 @@ Window {
     WindowState {
         id: windowStateObject
         window: appWindow
+        windowId: appWindow.windowId
+        manager: sessionManager
     }
 
     TerminalManager {

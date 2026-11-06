@@ -779,7 +779,7 @@ void TerminalManager::restoreState(const QJsonArray &state)
     m_activeSession = nullptr;
     m_nextWorkspaceNumber = 1;
 
-    for (const QJsonValue &workspaceValue : state) {
+    for (const QJsonValue workspaceValue : state) {
         const QJsonObject workspaceJson = workspaceValue.toObject();
         auto root = buildLayoutNode(workspaceJson[QStringLiteral("layout")].toObject());
         auto workspace = std::make_unique<TerminalWorkspaceModel>(
@@ -798,10 +798,15 @@ void TerminalManager::restoreState(const QJsonArray &state)
     emit activeWorkspaceChanged();
 }
 
-static bool isSplitNode(const QJsonObject &json)
+namespace
+{
+
+bool isSplitNode(const QJsonObject &json)
 {
     return json.contains(QStringLiteral("a")) && json.contains(QStringLiteral("b"));
 }
+
+} // namespace
 
 std::unique_ptr<TerminalLayoutNode> TerminalManager::buildLayoutNode(const QJsonObject &rootJson)
 {

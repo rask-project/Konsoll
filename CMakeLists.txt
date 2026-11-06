@@ -108,6 +108,8 @@ qt_add_qml_module(konsoll
         src/WindowRegistry.h
         src/WindowState.cpp
         src/WindowState.h
+        src/WindowStateStore.cpp
+        src/WindowStateStore.h
 )
 
 qt_add_resources(konsoll "/"

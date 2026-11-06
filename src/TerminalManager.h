@@ -126,7 +126,7 @@ public:
     Q_INVOKABLE void routeTextInput(QObject *session, const QString &text);
 
     QJsonArray serializeState() const;
-    void restoreState(const QJsonArray &state);
+    Q_INVOKABLE void restoreState(const QJsonArray &state);
 
 signals:
     void workspacesChanged();

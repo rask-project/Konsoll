@@ -3,6 +3,7 @@
 #include "AppQuitGuard.h"
 #include "NativeDialogs.h"
 #include "WindowRegistry.h"
+#include "WindowStateStore.h"
 
 // ObjC delegate that routes the macOS app-quit decision into the C++ logic.
 // It is installed after the Qt launch has completed.
@@ -17,6 +18,7 @@
 {
     Q_UNUSED(sender);
     if (konsoll::NativeDialogs::consumeQuitApproval()) {
+        konsoll::WindowStateStore::setTerminating(true);
         return NSTerminateNow;
     }
     const auto &registry = konsoll::WindowRegistry::instance();
@@ -29,6 +31,7 @@
             return NSTerminateCancel;
         }
     }
+    konsoll::WindowStateStore::setTerminating(true);
     return NSTerminateNow;
 }
 
