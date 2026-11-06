@@ -381,7 +381,11 @@ void TerminalBackend::onData(const QByteArray &data)
     }
 
     checkScrollOffsetChanged();
-    scheduleFrame();
+    if (m_terminal->synchronizedUpdates()) {
+        m_frameTimer.stop();
+    } else {
+        scheduleFrame();
+    }
     // Acknowledge consumption to the worker so it can resume paused reads.
     if (m_worker) {
         QMetaObject::invokeMethod(m_worker.get(), &PtyWorker::outputDelivered, Qt::QueuedConnection,
@@ -437,6 +441,9 @@ void TerminalBackend::resizePty(int columns, int rows)
 
 void TerminalBackend::onFrameTimer()
 {
+    if (m_terminal && m_terminal->synchronizedUpdates()) {
+        return;
+    }
     emit frameReady();
 }
 

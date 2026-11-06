@@ -422,6 +422,10 @@ void Terminal::handleDec(char final, const std::vector<int> &params)
             m_extraFlags = set ? static_cast<unsigned char>(m_extraFlags | BracketedPasteEnabled)
                                : static_cast<unsigned char>(m_extraFlags & ~BracketedPasteEnabled);
             break;
+        case 2026:
+            m_extraFlags = set ? static_cast<unsigned char>(m_extraFlags | SynchronizedUpdates)
+                               : static_cast<unsigned char>(m_extraFlags & ~SynchronizedUpdates);
+            break;
         case 6: // Origin mode: ignored.
         default:
             break;

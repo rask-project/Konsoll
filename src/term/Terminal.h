@@ -71,6 +71,7 @@ public:
     bool applicationCursorKeys() const { return m_applicationCursorKeys; }
     bool keyboardProtocolQueryPending() const { return m_keyboardProtocolQueryPending; }
     void clearKeyboardProtocolQueryPending() { m_keyboardProtocolQueryPending = false; }
+    bool synchronizedUpdates() const { return (m_extraFlags & SynchronizedUpdates) != 0; }
     QByteArray mouseReport(int button, int row, int col, int event, unsigned int modifiers) const;
 
     // OSC 10/11 foreground/background color queries from full-screen apps.
@@ -81,6 +82,7 @@ public:
 private:
     static constexpr unsigned char RemoteHostDirty = 0x01;
     static constexpr unsigned char BracketedPasteEnabled = 0x02;
+    static constexpr unsigned char SynchronizedUpdates = 0x04;
 
     enum class State : std::uint8_t {
         Ground,
