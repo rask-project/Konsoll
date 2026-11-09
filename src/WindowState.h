@@ -21,6 +21,9 @@ class WindowState : public QObject
     Q_PROPERTY(int height READ height WRITE setHeight NOTIFY changed)
     Q_PROPERTY(int x READ x WRITE setX NOTIFY changed)
     Q_PROPERTY(int y READ y WRITE setY NOTIFY changed)
+    // "windowed", "maximized" or "fullscreen": how the window was shown when
+    // last saved. width/height/x/y always hold the normal (windowed) geometry.
+    Q_PROPERTY(QString state READ state NOTIFY changed)
     Q_PROPERTY(QJsonArray layout READ layout NOTIFY changed)
     Q_PROPERTY(bool hasLayout READ hasLayout NOTIFY changed)
 
@@ -41,6 +44,7 @@ public:
     void setX(int x);
     int y() const;
     void setY(int y);
+    QString state() const { return m_state; }
     QJsonArray layout() const;
     bool hasLayout() const;
 
@@ -56,6 +60,7 @@ private:
     QObject *m_manager{};
     QJsonArray m_layout;
     QString m_windowId;
+    QString m_state{QStringLiteral("windowed")};
     int m_width{1024};
     int m_height{768};
     int m_x{0};

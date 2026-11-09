@@ -38,7 +38,7 @@ Item {
         manager.windows = manager.windows.concat([w]);
         manager.lastActiveWindowId = w.windowId;
         manager.persistCollection();
-        w.show();
+        w.showSaved();
         return w;
     }
 

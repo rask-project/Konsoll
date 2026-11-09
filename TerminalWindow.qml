@@ -64,43 +64,43 @@ Window {
             appWindow.windowManager.noteActiveWindow(appWindow);
     }
 
-    // Save only the normal window geometry. Maximized and fullscreen geometry
-    // is the monitor's and must not replace the user's restorable size and
-    // position.
-    onWidthChanged: {
-        if (visibility === Window.Windowed) {
-            windowState.width = width;
-            geometrySaveTimer.restart();
-        }
-    }
-    onHeightChanged: {
-        if (visibility === Window.Windowed) {
-            windowState.height = height;
-            geometrySaveTimer.restart();
-        }
-    }
-    onXChanged: {
-        if (visibility === Window.Windowed) {
-            windowState.x = x;
-            geometrySaveTimer.restart();
-        }
-    }
-    onYChanged: {
-        if (visibility === Window.Windowed) {
-            windowState.y = y;
-            geometrySaveTimer.restart();
-        }
-    }
+    // Geometry is committed once it settles: maximizing/fullscreen resizes the
+    // window before `visibility` changes, so recording on every change would
+    // store the maximized size as the normal one. The timer records the normal
+    // geometry only if the window is still windowed when it fires, and saves
+    // the state (including maximized/fullscreen) if this is the last active
+    // window (Main.qml keeps just that one).
+    onWidthChanged: geometrySaveTimer.restart()
+    onHeightChanged: geometrySaveTimer.restart()
+    onXChanged: geometrySaveTimer.restart()
+    onYChanged: geometrySaveTimer.restart()
+    onVisibilityChanged: geometrySaveTimer.restart()
 
-    // Debounced: a drag or resize emits a change per frame. Only the last
-    // active window's state is written (Main.qml keeps just that one).
     Timer {
         id: geometrySaveTimer
         interval: 500
         onTriggered: {
-            if (appWindow.windowManager.lastActiveWindowId === appWindow.windowId)
+            if (appWindow.visibility === Window.Windowed) {
+                windowState.x = appWindow.x;
+                windowState.y = appWindow.y;
+                windowState.width = appWindow.width;
+                windowState.height = appWindow.height;
+            }
+            if (appWindow.visibility !== Window.Hidden
+                    && appWindow.windowManager.lastActiveWindowId === appWindow.windowId)
                 appWindow.windowManager.saveLastActiveWindow();
         }
+    }
+
+    // Show the window the way it was saved: the normal geometry is applied in
+    // Component.onCompleted first, so leaving maximized/fullscreen returns to it.
+    function showSaved() {
+        if (windowState.state === "maximized")
+            appWindow.showMaximized();
+        else if (windowState.state === "fullscreen")
+            appWindow.showFullScreen();
+        else
+            appWindow.show();
     }
 
     Component.onCompleted: {

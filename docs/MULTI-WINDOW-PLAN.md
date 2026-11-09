@@ -243,6 +243,11 @@ Done:
   since `requestQuit()` → `saveLastActiveWindow()` already ran.
   `Component.onCompleted` reopens a single window keyed on the last active
   window's ID (or a fresh ID when none).
+  The saved geometry is the normal (windowed) frame plus the window state
+  (`geometry.state`: `windowed` / `maximized` / `fullscreen`); the normal frame
+  is committed only after a change settles while windowed, because maximizing
+  resizes the window before `visibility` changes. `openWindow()` shows the
+  window with `showSaved()` (normal frame first, then maximize/fullscreen).
   `TerminalWindow` calls `windowState.load()` and restores only the geometry
   (width/height/x/y) in `Component.onCompleted` — it never calls
   `sessionManager.restoreState()`, so sessions always start fresh.

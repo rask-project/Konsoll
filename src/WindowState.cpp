@@ -169,6 +169,7 @@ bool WindowState::load()
     setHeight(geometry[QStringLiteral("height")].toInt(768));
     setX(geometry[QStringLiteral("x")].toInt());
     setY(geometry[QStringLiteral("y")].toInt());
+    m_state = geometry[QStringLiteral("state")].toString(QStringLiteral("windowed"));
     m_layout = state[QStringLiteral("layout")].toArray();
     emit changed();
 
@@ -205,12 +206,28 @@ void WindowState::save()
         m_width = live.width();
         m_height = live.height();
     }
+    if (window != nullptr) {
+        switch (window->visibility()) {
+        case QWindow::Maximized:
+            m_state = QStringLiteral("maximized");
+            break;
+        case QWindow::FullScreen:
+            m_state = QStringLiteral("fullscreen");
+            break;
+        case QWindow::Windowed:
+            m_state = QStringLiteral("windowed");
+            break;
+        default: // Hidden/Minimized/AutomaticVisibility: keep the last shown state.
+            break;
+        }
+    }
 
     QJsonObject geometry;
     geometry[QStringLiteral("width")] = m_width;
     geometry[QStringLiteral("height")] = m_height;
     geometry[QStringLiteral("x")] = m_x;
     geometry[QStringLiteral("y")] = m_y;
+    geometry[QStringLiteral("state")] = m_state;
     if (window != nullptr) {
         if (QScreen *screen = window->screen()) {
             geometry[QStringLiteral("screen")] = screen->name();
