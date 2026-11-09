@@ -408,6 +408,10 @@ void Terminal::handleCsi(char final, bool privateMode)
         break;
     case 'm':
         handleSgr(p);
+        m_screen.setEraseBackground(m_bg);
+        break;
+    case 'X':
+        m_screen.eraseChars(paramAt(p, 0, 1));
         break;
     case 'P':
         m_screen.deleteColumns(paramAt(p, 0, 1));
@@ -756,6 +760,7 @@ void Terminal::handleEsc(char c)
         clearCommandBlocks();
         m_fg = 0;
         m_bg = 0;
+        m_screen.setEraseBackground(0);
         m_flags = CellFlag::None;
         m_applicationCursorKeys = false;
         break;

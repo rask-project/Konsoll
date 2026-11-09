@@ -353,21 +353,21 @@ void Screen::eraseInDisplay(int mode)
     if (mode == 0) {
         // Cursor to end of screen.
         for (int c = m_cursorCol; c < m_cols; ++c) {
-            g[m_cursorRow][c] = blankCell();
+            g[m_cursorRow][c] = eraseCell();
         }
         for (int r = m_cursorRow + 1; r < m_rows; ++r) {
-            g[r].assign(m_cols, blankCell());
+            g[r].assign(m_cols, eraseCell());
         }
     } else if (mode == 1) {
         // Start of screen to cursor.
         for (int r = 0; r < m_cursorRow; ++r) {
-            g[r].assign(m_cols, blankCell());
+            g[r].assign(m_cols, eraseCell());
         }
         for (int c = 0; c <= m_cursorCol; ++c) {
-            g[m_cursorRow][c] = blankCell();
+            g[m_cursorRow][c] = eraseCell();
         }
     } else if (mode == 2) {
-        g.assign(m_rows, Line(m_cols, blankCell()));
+        g.assign(m_rows, Line(m_cols, eraseCell()));
     }
 }
 
@@ -377,15 +377,24 @@ void Screen::eraseInLine(int mode)
     auto &g = grid();
     if (mode == 0) {
         for (int c = m_cursorCol; c < m_cols; ++c) {
-            g[m_cursorRow][c] = blankCell();
+            g[m_cursorRow][c] = eraseCell();
         }
     } else if (mode == 1) {
         for (int c = 0; c <= m_cursorCol; ++c) {
-            g[m_cursorRow][c] = blankCell();
+            g[m_cursorRow][c] = eraseCell();
         }
     } else if (mode == 2) {
-        g[m_cursorRow].assign(m_cols, blankCell());
+        g[m_cursorRow].assign(m_cols, eraseCell());
     }
+}
+
+void Screen::eraseChars(int count)
+{
+    const int last = std::min(m_cursorCol + std::max(count, 1), m_cols) - 1;
+    breakWideAt(m_cursorCol);
+    breakWideAt(last);
+    Line &line = grid()[m_cursorRow];
+    std::fill(line.begin() + m_cursorCol, line.begin() + last + 1, eraseCell());
 }
 
 void Screen::scrollUp(int count)
@@ -418,7 +427,7 @@ void Screen::insertLines(int count)
     const auto middle = g.begin() + m_scrollBottom - lineCount + 1;
     const auto last = g.begin() + m_scrollBottom + 1;
     std::move_backward(first, middle, last);
-    std::fill(g.begin() + m_cursorRow, g.begin() + m_cursorRow + lineCount, Line(m_cols, blankCell()));
+    std::fill(g.begin() + m_cursorRow, g.begin() + m_cursorRow + lineCount, Line(m_cols, eraseCell()));
 
     if (!m_inAlt) {
         const auto wrappedFirst = m_mainWrapped.begin() + m_cursorRow;
@@ -443,7 +452,7 @@ void Screen::deleteLines(int count)
 
     auto &g = grid();
     std::move(g.begin() + m_cursorRow + lineCount, g.begin() + m_scrollBottom + 1, g.begin() + m_cursorRow);
-    std::fill(g.begin() + m_scrollBottom - lineCount + 1, g.begin() + m_scrollBottom + 1, Line(m_cols, blankCell()));
+    std::fill(g.begin() + m_scrollBottom - lineCount + 1, g.begin() + m_scrollBottom + 1, Line(m_cols, eraseCell()));
 
     if (!m_inAlt) {
         std::move(
@@ -489,14 +498,14 @@ void Screen::deleteColumns(int count)
     auto &g = grid();
     Line &row = g[m_cursorRow];
     if (count >= m_cols) {
-        row.assign(m_cols, blankCell());
+        row.assign(m_cols, eraseCell());
         return;
     }
     // Shift [cursorCol .. end-count] left by `count`.
     for (int c = m_cursorCol; c + count < m_cols; ++c) {
         row[c] = row[c + count];
     }
-    std::fill(row.end() - count, row.end(), blankCell());
+    std::fill(row.end() - count, row.end(), eraseCell());
 }
 
 void Screen::insertColumns(int count)
@@ -509,7 +518,7 @@ void Screen::insertColumns(int count)
     auto &g = grid();
     Line &row = g[m_cursorRow];
     if (count >= m_cols) {
-        row.assign(m_cols, blankCell());
+        row.assign(m_cols, eraseCell());
         return;
     }
     // Shift [cursorCol .. end] right by `count` (overflow dropped).
@@ -517,7 +526,7 @@ void Screen::insertColumns(int count)
         row[c] = row[c - count];
     }
     for (int c = m_cursorCol; c < m_cursorCol + count; ++c) {
-        row[c] = blankCell();
+        row[c] = eraseCell();
     }
 }
 
@@ -613,7 +622,14 @@ void Screen::scrollDownOne(int top, int bottom) // NOLINT: top/bottom are inhere
 
 void Screen::blankLine(int row)
 {
-    grid()[row].assign(m_cols, blankCell());
+    grid()[row].assign(m_cols, eraseCell());
+}
+
+Cell Screen::eraseCell() const
+{
+    Cell cell = blankCell();
+    cell.bg = m_eraseBg;
+    return cell;
 }
 
 void Screen::pushScrollback(const Line &line, bool wrapped)

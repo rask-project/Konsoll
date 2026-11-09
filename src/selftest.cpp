@@ -113,6 +113,23 @@ int runSelfTest()
               "csi: CSI > 4;2 m (modifyOtherKeys) is not SGR");
     }
 
+    // 0c. Background Color Erase + ECH: Neovim paints its theme background with
+    // erase sequences after setting the SGR background.
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        const Screen &screen = term.screen();
+        term.write(QByteArray("abcdef\x1b[48;2;1;2;3m\r\x1b[2X\x1b[4G\x1b[K"));
+        constexpr unsigned int kBg = 0x80010203u;
+        check(failures,
+              screen.cellAt(0, 0).ch == ' ' && screen.cellAt(0, 0).bg == kBg && screen.cellAt(0, 1).bg == kBg &&
+                  screen.cellAt(0, 2).ch == 'c' && screen.cellAt(0, 2).bg == 0u,
+              "erase: ECH blanks N cells with the current background");
+        check(failures, screen.cellAt(0, 3).ch == ' ' && screen.cellAt(0, 9).bg == kBg,
+              "erase: EL fills with the current background (BCE)");
+        term.write(QByteArray("\x1b[0m\x1b[2J"));
+        check(failures, screen.cellAt(1, 5).bg == 0u, "erase: SGR reset restores default-background erase");
+    }
+
     // 0b. Wide characters take two cells (lead + spacer), as TUIs assume.
     {
         const auto isWide = [](const Cell &cell) { return (cell.flags & konsoll::CellFlag::Wide) != 0u; };

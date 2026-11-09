@@ -60,6 +60,12 @@ public:
     // Erase.
     void eraseInDisplay(int mode); // 0,1,2,3
     void eraseInLine(int mode);    // 0,1,2
+    void eraseChars(int count);    // ECH: blank `count` cells from the cursor
+
+    // Background Color Erase: erased, inserted and scrolled-in cells take the
+    // current SGR background (as in xterm/iTerm2), so full-screen apps can
+    // paint their theme background with erase sequences.
+    void setEraseBackground(unsigned int bg) { m_eraseBg = bg; }
 
     // Scrolling within the current region.
     void scrollUp(int count);
@@ -114,6 +120,7 @@ private:
     void scrollDownOne(int top, int bottom);
     void blankLine(int row);
     int previousCharCol() const;
+    Cell eraseCell() const;
     // Blank both halves of the wide pair cell `col` of the cursor row belongs
     // to, so a partial overwrite never leaves half a wide character behind.
     void breakWideAt(int col);
@@ -147,6 +154,7 @@ private:
     std::vector<bool> m_mainSavedWrapped;
     int m_rows;
     int m_cols;
+    unsigned int m_eraseBg = 0; // encoded like Cell::bg; 0 = default
     int m_cursorRow = 0;
     int m_cursorCol = 0;
     int m_savedRow = 0;
