@@ -54,7 +54,8 @@ A working end-to-end terminal:
 - Default shell detection via `getpwuid_r()`
 - Minimal ANSI parser (table in §7)
 - Screen model (cell grid + scrollback)
-- `Canvas2D` rendering (Qt 6.12, GPU) with ~60 fps coalescing
+- Native Qt Quick scene-graph rendering (`TerminalRenderer`, C++) with
+  ~60 fps coalescing
 - Keyboard input (key-to-bytes mapping, IME/dead keys)
 - Window title via `OSC 0/2`
 - Scrollback with reflow on resize and user scrolling (current buffer is
@@ -64,8 +65,8 @@ A working end-to-end terminal:
 
 Tabs and nested horizontal/vertical splits are implemented; their remaining
 manual acceptance checks are in §§15.6 and 17. Splits give each pane an
-independent shell session. Bracketed paste, color profiles/themes, proper
-multi-cell grapheme rendering, autocomplete, and Figma design-system
+independent shell session. Bracketed paste, color profiles/themes, grapheme
+clustering (ZWJ sequences, skin tones), autocomplete, and Figma design-system
 integration remain in §16.
 Search, selection/clipboard, and mouse reporting are already implemented (see
 §14).
@@ -76,7 +77,7 @@ Search, selection/clipboard, and mouse reporting are already implemented (see
 ┌─────────────────────────────────────────────────────────┐
 │ QML                                                      │
 │  Main.qml ── TerminalView.qml                            │
-│    ├─ Canvas2D (renders the cell grid)                   │
+│    ├─ TerminalRenderer (C++ scene graph, cell grid)      │
 │    └─ FocusItem (keyPressed / inputMethod)              │
 └──────────────────────┬────────────────────────────────────┘
                  signals / properties
@@ -177,30 +178,77 @@ Rules:
 
 Screen model:
 
-- Grid of `Cell { QChar ch; uint fg, bg; flags bold|underline|dim|strike }`.
+- Grid of `Cell { uint fg, bg, ch; uchar flags }`: `ch` is a full code point;
+  flags are bold|dim|underline|strike|reverse|invisible plus `Wide` /
+  `WideSpacer` for two-cell characters.
 - Cursor with position + insert/overstrike modes.
 - Scroll regions (`DECSTBM`) honored.
-- **Character width:** each Unicode code point occupies one cell. This keeps
-  supplementary-plane Nerd Font icons aligned, but wide glyphs and grapheme
-  clusters (for example emoji and ZWJ sequences) are not measured/rendered as
-  multi-cell characters yet.
+- **Character width** (wcwidth semantics, so rows match what TUIs such as
+  OpenTUI/Ink/ncurses lay out):
+  - Zero-width code points (`Mn`/`Me`/`Cf` except soft hyphen, Hangul medial
+    jamo) take no cell. A combining mark folds into the previous character
+    when NFC has a precomposed form (`c` + U+0327 → `ç`, as in macOS NFD file
+    names); otherwise it is dropped. VS15 (U+FE0E) is dropped.
+  - Wide characters (East Asian Wide/Fullwidth, `Emoji_Presentation`; table in
+    `src/term/CharWidth.cpp`) take two cells: a `Wide` lead holding the code
+    point and a `WideSpacer` cell. VS16 (U+FE0F) widens the previous narrow
+    character.
+  - A wide character that does not fit in the last column wraps whole; the
+    left-over column becomes wrap padding (a `WideSpacer` with no lead),
+    dropped when reflow re-joins lines. Reflow never splits a pair, and
+    overwriting/erasing half of a pair blanks both halves.
+  - Copy/save skip spacer cells. Nerd Font icons (supplementary plane) stay
+    one cell.
+  - Not handled: grapheme clusters (ZWJ sequences, skin-tone modifiers) are
+    split into separate cells, so they can be wider than the application
+    expects.
+- **CSI private prefixes:** sequences whose parameters start with `<`, `=` or
+  `>` (other than kitty keyboard `CSI > u` / `CSI < u`) are ignored rather than
+  dispatched — e.g. modifyOtherKeys `CSI > 4 ; 2 m` must not be read as SGR.
 - Alternate screen: separate buffer, restore the main one on exit
   (vim/less).
 
-## 8. QML rendering
+## 8. Rendering
 
-- **`Canvas2D`** (Qt 6.12, GPU-accelerated) as the renderer: one `fillRect`
-  per cell for the background + `fillText` per cell for the text
-  (grouping consecutive runs with the same style to cut call count).
-- System monospace font: `SF Mono` (fallback `Menlo`), configurable size;
-  `letterSpacing` 0.
-- **Coalescing:** `TerminalBackend` emits `frameReady()` at most every
-  16 ms (QTimer in the GUI thread's event loop) — QML only repaints when
-  the screen is dirty.
-- Cursor: rect/caret drawn on the canvas; blink via `PropertyAnimation`
-  optional (MVP: solid cursor).
-- Fallback: if `Canvas2D` misbehaves on macOS 27, migrate to `Canvas`
-  (CPU) — the API is identical.
+The grid is drawn by **`TerminalRenderer`** (`src/TerminalRenderer.h/.cpp`), a
+C++ `QQuickItem` (`QML_ELEMENT`) that builds Qt Quick scene-graph nodes in
+`updatePaintNode()`. `TerminalView.qml` only places it and handles input,
+selection gestures and the scrollbar.
+
+- **Data flow:** on `TerminalBackend::frameReady()` the renderer pulls the
+  visible rows on the GUI thread (`visibleRowCells()`, colors already resolved:
+  palette, reverse video, contrast), bakes the selection text color and the
+  cursor glyph color into the cells, and diffs each row against the previous
+  frame. `updatePaintNode()` (render thread, GUI blocked) only consumes that
+  state. No per-cell data crosses into JavaScript.
+- **Node tree:**
+  - background — one `QSGGeometryNode` with `QSGVertexColorMaterial`
+    (premultiplied): cell backgrounds (default-background cells are left empty
+    so the window translucency shows through), search match, selection,
+    OSC 133 command highlight (fill + 1 px frame, square corners) and the
+    block cursor (two cells wide on a wide character);
+  - text — one `QSGTextNode` per visible row (`NativeRendering`), rebuilt only
+    when that row's cells changed. Each style run (same color, weight,
+    visibility) is one `QTextLayout` placed at its column. Wide characters and
+    glyphs the primary font lacks (fallback fonts have other advances) get
+    their own layout pinned to their cell;
+  - overlay — one `QSGGeometryNode`: underline, strike-through, link hover.
+- **Font and cell metrics:** the QML font is used as-is (point size
+  included), with `JetBrainsMono Nerd Font Mono` as fallback family, kerning
+  off and ligature/contextual features (`liga`, `clig`, `dlig`, `hlig`,
+  `calt`) disabled so each glyph stays in its cell. `cellWidth` = advance of
+  `M`, `cellHeight` = ⌈ascent + descent⌉; both are read-only renderer
+  properties the view uses for `cols`/`rows`, mouse mapping and scrolling.
+  Bold is pulled back onto the grid with a small letter-spacing correction.
+- **Coalescing:** `frameReady()` is the only repaint trigger. The backend
+  emits it from a trailing-edge 16 ms timer and holds it during DEC 2026
+  synchronized updates; selection/highlight changes schedule the same frame.
+  Repainting on any other signal (e.g. `scrollOffsetChanged`, emitted per PTY
+  chunk) paints torn mid-update frames.
+- **Ownership:** scene-graph nodes are created with `std::make_unique` and
+  handed to Qt with `release()` (the parent node owns them) — the Qt-API
+  exception to the raw-pointer rule.
+- Cursor: solid block; the glyph under it is drawn in the background color.
 
 ## 9. Keyboard / input
 
@@ -234,15 +282,17 @@ konsoll/
 ├── Main.qml                  # window + TerminalView
 ├── src/
 │   ├── TerminalBackend.h/.cpp   # QML bridge (QObject, signals, properties)
+│   ├── TerminalRenderer.h/.cpp  # scene-graph renderer (QQuickItem)
 │   ├── pty/
 │   │   └── PtyProcess.h/.cpp   # forkpty, read loop, resize, exit
 │   └── term/
 │       ├── Cell.h              # cell struct
+│       ├── CharWidth.h/.cpp    # wide-character table
 │       ├── Terminal.h/.cpp     # ANSI parser + screen model
 │       └── Screen.h/.cpp      # grid, scrollback, cursor
 ├── qml/
 │   └── components/
-│       └── TerminalView.qml    # Canvas2D + FocusItem
+│       └── TerminalView.qml    # TerminalRenderer + input
 └── tests/
     ├── tst_terminal.cpp        # unit: ANSI parser (Qt Test)
     └── tst_pty.cpp             # smoke: forkpty → echo → read
@@ -256,7 +306,7 @@ konsoll/
 | 1 | Shell detection | `getpwuid_r()` detection with executable fallback | Implemented |
 | 2 | PTY | `forkpty`, nonblocking `QSocketNotifier` reads, writes, resize and exit handling | Implemented |
 | 3 | ANSI parser | `Terminal` + `Screen`, including SGR, cursor, erase, scroll regions, alternate screen, OSC title, DA/DSR and color queries | Implemented; see §7 scope and limitations |
-| 4 | QML rendering | `TerminalView` with Canvas2D, snapshots and 16 ms frame coalescing | Implemented |
+| 4 | Rendering | `TerminalRenderer` scene-graph item (per-row text nodes, font-measured cells) with 16 ms frame coalescing; replaced the original Canvas2D view | Implemented |
 | 5 | Keyboard | Special/control key mappings, composed text and IME/dead-key input | Implemented |
 | 6 | Resize + scroll | `TIOCSWINSZ`, screen reflow, unlimited scrollback, wheel and scrollbar navigation | Implemented |
 | 7 | Final acceptance | §2 manual scenarios and polish | Not recorded as verified; run the checklist on macOS |
@@ -288,9 +338,9 @@ acceptance pass. Phases 3 and 4 were independently implementable.
 | Risk | Mitigation |
 |---|---|
 | `forkpty` is a BSD extension (not POSIX) | Fine for macOS; isolate in `PtyProcess` so the implementation can be swapped if needed |
-| Emoji width (`wcwidth` counts 1) | Known MVP limitation; document it and handle in the backlog |
+| Character width vs. the application's layout | Zero-width and wide characters follow wcwidth (§7); grapheme clusters (ZWJ, skin tones) are still split |
 | pt-BR IME/dead keys corrupting bytes | Test explicitly in phase 5 (acceptance criterion) |
-| `Canvas2D` is new in Qt 6.12 (stability) | Fallback to CPU `Canvas` already planned (§8) |
+| Repainting mid-update shows torn frames | Repaint only on `frameReady` (coalesced, DEC 2026-aware), §8 |
 | Backpressure on massive output | Nonblocking PTY writes drop the remainder when the master buffer is full; sustained output behavior should be measured |
 | Bad alternate-screen implementation corrupting scroll | Cover with a dedicated unit test |
 
@@ -416,7 +466,9 @@ restore stale `COLUMNS`/`LINES` values.
 
 - Bracketed paste (`?2004h` mode is accepted but paste is not wrapped)
 - Color profiles/themes + configurable font
-- Ligatures + proper `grapheme` clustering (emoji, ZWJ)
+- Grapheme clustering (ZWJ sequences, skin-tone modifiers) — cells hold one
+  code point today
+- Optional ligatures and a configurable line height
 - Figma design-system integration (tokens + components)
 - QML tests (`qmltestrunner`) for `TerminalView`
 

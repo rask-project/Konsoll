@@ -4,8 +4,8 @@ A native terminal for macOS, built in QML (Qt Quick) on top of Qt 6.12.
 
 Konsoll is a clean, native macOS terminal window with a real pseudo-terminal
 (PTY) running your default shell — no KDE/Plasma dependencies. It renders the
-screen with GPU-accelerated `Canvas2D` and offers an iTerm2-style see-through
-window.
+screen with a native Qt Quick scene-graph renderer and offers an iTerm2-style
+see-through window.
 
 ## Requirements
 
@@ -81,7 +81,10 @@ and destination and opens in Downloads by default.
 - Default shell detection via `getpwuid_r` (fallback `/bin/zsh` → `/bin/sh`)
 - In-house ANSI parser (no `libvterm`): SGR colors, cursor, erase,
   alternate screen, scroll regions, `OSC 0/2` window title
-- `Canvas2D` (GPU) rendering with ~60 fps coalescing
+- Native scene-graph rendering (`TerminalRenderer`, C++) with ~60 fps
+  coalescing; cell size measured from the font
+- Unicode width handling: wide characters (CJK, emoji) take two cells,
+  zero-width marks take none
 - Keyboard input with IME / dead keys (pt-BR accents)
 - Window resize reflected into the PTY (`TIOCSWINSZ`)
 - Unlimited scrollback with reflow on resize
@@ -141,7 +144,7 @@ konsoll/
 ├── Main.qml                  # window, menu bar, shortcuts, translucency
 ├── TerminalWorkspace.qml     # per-tab workspace (split tree) + tab strip
 ├── TerminalPaneLayout.qml    # binary split layout for a workspace
-├── TerminalView.qml          # Canvas2D renderer + keyboard capture
+├── TerminalView.qml          # hosts TerminalRenderer + keyboard capture
 ├── controls/                 # tab strip, menu, search bar, tool buttons
 ├── shell-integration/        # OSC 133 snippets (zsh/bash/fish)
 ├── resources/icons/          # SVG icon theme (add, arrows, close)
@@ -152,10 +155,12 @@ konsoll/
 └── src/
     ├── TerminalBackend.h/.cpp   # QML<->C++ bridge per session
     ├── TerminalManager.h/.cpp   # owns one backend per tab/session
+    ├── TerminalRenderer.h/.cpp  # scene-graph renderer for the cell grid
     ├── pty/
     │   └── PtyProcess.h/.cpp    # forkpty, read loop, resize, exit
     ├── term/
     │   ├── Cell.h               # cell struct
+    │   ├── CharWidth.h/.cpp     # wide-character table
     │   ├── Terminal.h/.cpp      # ANSI parser + screen model
     │   └── Screen.h/.cpp        # grid, scrollback, cursor
     ├── MacOSTranslucency.h/.mm  # native NSWindow see-through (Obj-C++)

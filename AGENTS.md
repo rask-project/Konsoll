@@ -19,7 +19,10 @@ Guidance for AI agents working in this repository.
   `std::shared_ptr`).
 - **Raw pointers are forbidden** — no `new`/`delete`, no owning raw
   pointers. Sole exception: non-owning pointers/references required by
-  C/POSIX/Qt APIs (e.g. `getpwuid_r`, `ioctl`, `forkpty`).
+  C/POSIX/Qt APIs (e.g. `getpwuid_r`, `ioctl`, `forkpty`). Qt Quick
+  scene-graph nodes (`updatePaintNode`) are the one ownership hand-off: create
+  them with `std::make_unique` and pass `release()` to the parent node, which
+  owns them (see `src/TerminalRenderer.cpp`).
 - **Exceptions are forbidden** — no `throw`, `try`, or `catch` anywhere in
   the codebase.
 - **Error handling:** fallible operations return `std::expected<T, E>`
