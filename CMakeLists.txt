@@ -87,6 +87,8 @@ qt_add_qml_module(konsoll
         src/TerminalBackend.h
         src/TerminalManager.cpp
         src/TerminalManager.h
+        src/TerminalRenderer.cpp
+        src/TerminalRenderer.h
         src/pty/PtyProcess.cpp
         src/pty/PtyProcess.h
         src/pty/PtyWorker.cpp
@@ -94,6 +96,8 @@ qt_add_qml_module(konsoll
         src/selftest.cpp
         src/selftest.h
         src/term/Cell.h
+        src/term/CharWidth.cpp
+        src/term/CharWidth.h
         src/term/Screen.cpp
         src/term/Screen.h
         src/term/Terminal.cpp

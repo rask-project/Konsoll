@@ -13,6 +13,28 @@ Cell blankCell()
     return Cell{.fg = 0, .bg = 0, .ch = ' ', .flags = CellFlag::None};
 }
 
+bool hasFlag(const Cell &cell, unsigned int flag)
+{
+    return (cell.flags & flag) != 0u;
+}
+
+unsigned char withFlag(unsigned char flags, unsigned int flag)
+{
+    return static_cast<unsigned char>(flags | flag);
+}
+
+unsigned char withoutFlag(unsigned char flags, unsigned int flag)
+{
+    return static_cast<unsigned char>(flags & ~flag);
+}
+
+// Right-margin padding left when a wide character wrapped: a spacer cell with
+// no wide lead before it. Not content — dropped when lines are re-joined.
+bool isWrapPadding(const std::vector<Cell> &line, std::size_t index)
+{
+    return hasFlag(line[index], CellFlag::WideSpacer) && (index == 0 || !hasFlag(line[index - 1], CellFlag::Wide));
+}
+
 std::vector<Line> makeGrid(int rows, int cols)
 {
     return std::vector<Line>(rows, Line(cols, blankCell()));
@@ -148,6 +170,76 @@ const Cell &Screen::cellAt(int row, int col) const
     return grid()[row][col];
 }
 
+int Screen::previousCharCol() const
+{
+    int col = m_pendingWrap ? m_cursorCol : m_cursorCol - 1;
+    // Step from a wide character's spacer back to its lead.
+    if (col > 0 && hasFlag(grid()[m_cursorRow][col], CellFlag::WideSpacer) &&
+        hasFlag(grid()[m_cursorRow][col - 1], CellFlag::Wide)) {
+        --col;
+    }
+    return col;
+}
+
+std::optional<unsigned int> Screen::previousChar() const
+{
+    const int col = previousCharCol();
+    if (col < 0) {
+        return std::nullopt;
+    }
+    return grid()[m_cursorRow][col].ch;
+}
+
+void Screen::replacePreviousChar(unsigned int ch)
+{
+    const int col = previousCharCol();
+    if (col >= 0) {
+        grid()[m_cursorRow][col].ch = ch;
+    }
+}
+
+void Screen::widenPreviousChar()
+{
+    // A pending wrap means the previous character is in the last column: no
+    // room for its second cell.
+    const int col = m_cursorCol - 1;
+    if (m_pendingWrap || col < 0) {
+        return;
+    }
+    Line &line = grid()[m_cursorRow];
+    if (hasFlag(line[col], CellFlag::Wide) || hasFlag(line[col], CellFlag::WideSpacer)) {
+        return;
+    }
+    breakWideAt(m_cursorCol);
+    line[col].flags = withFlag(line[col].flags, CellFlag::Wide);
+    line[m_cursorCol] = line[col];
+    line[m_cursorCol].ch = ' ';
+    line[m_cursorCol].flags = withFlag(withoutFlag(line[col].flags, CellFlag::Wide), CellFlag::WideSpacer);
+    if (m_cursorCol + 1 >= m_cols) {
+        m_pendingWrap = true;
+    } else {
+        ++m_cursorCol;
+    }
+}
+
+void Screen::breakWideAt(int col)
+{
+    if (col < 0 || col >= m_cols) {
+        return;
+    }
+    Line &line = grid()[m_cursorRow];
+    if (hasFlag(line[col], CellFlag::WideSpacer) && col > 0 && hasFlag(line[col - 1], CellFlag::Wide)) {
+        line[col - 1].ch = ' ';
+        line[col - 1].flags = withoutFlag(line[col - 1].flags, CellFlag::Wide);
+        line[col].flags = withoutFlag(line[col].flags, CellFlag::WideSpacer);
+    }
+    if (hasFlag(line[col], CellFlag::Wide) && col + 1 < m_cols) {
+        line[col + 1].flags = withoutFlag(line[col + 1].flags, CellFlag::WideSpacer);
+        line[col].ch = ' ';
+        line[col].flags = withoutFlag(line[col].flags, CellFlag::Wide);
+    }
+}
+
 void Screen::putChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned char flags) // NOLINT: fg/bg are
                                                                                              // inherently swappable
 {
@@ -156,6 +248,7 @@ void Screen::putChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned
         lineFeedImpl(true); // right-margin wrap: the new row is a continuation.
         m_pendingWrap = false;
     }
+    breakWideAt(m_cursorCol);
     Cell &c = grid()[m_cursorRow][m_cursorCol];
     c.ch = ch;
     c.fg = fg;
@@ -165,6 +258,38 @@ void Screen::putChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned
         m_pendingWrap = true;
     } else {
         ++m_cursorCol;
+    }
+}
+
+void Screen::putWideChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned char flags) // NOLINT: fg/bg
+                                                                                                 // are swappable
+{
+    if (m_cols < 2) {
+        putChar(ch, fg, bg, flags);
+        return;
+    }
+    if (m_pendingWrap) {
+        m_cursorCol = 0;
+        lineFeedImpl(true);
+        m_pendingWrap = false;
+    }
+    if (m_cursorCol + 1 >= m_cols) {
+        // Only the last column is left: pad it and wrap, as xterm does.
+        breakWideAt(m_cursorCol);
+        grid()[m_cursorRow][m_cursorCol] = Cell{.fg = 0, .bg = bg, .ch = ' ', .flags = CellFlag::WideSpacer};
+        m_cursorCol = 0;
+        lineFeedImpl(true);
+    }
+    breakWideAt(m_cursorCol);
+    breakWideAt(m_cursorCol + 1);
+    Line &line = grid()[m_cursorRow];
+    line[m_cursorCol] = Cell{.fg = fg, .bg = bg, .ch = ch, .flags = withFlag(flags, CellFlag::Wide)};
+    line[m_cursorCol + 1] = Cell{.fg = fg, .bg = bg, .ch = ' ', .flags = withFlag(flags, CellFlag::WideSpacer)};
+    if (m_cursorCol + 2 >= m_cols) {
+        m_cursorCol = m_cols - 1;
+        m_pendingWrap = true;
+    } else {
+        m_cursorCol += 2;
     }
 }
 
@@ -248,6 +373,7 @@ void Screen::eraseInDisplay(int mode)
 
 void Screen::eraseInLine(int mode)
 {
+    breakWideAt(m_cursorCol);
     auto &g = grid();
     if (mode == 0) {
         for (int c = m_cursorCol; c < m_cols; ++c) {
@@ -358,6 +484,8 @@ void Screen::deleteColumns(int count)
     if (count <= 0) {
         return;
     }
+    breakWideAt(m_cursorCol);
+    breakWideAt(std::min(m_cursorCol + count, m_cols - 1));
     auto &g = grid();
     Line &row = g[m_cursorRow];
     if (count >= m_cols) {
@@ -376,6 +504,8 @@ void Screen::insertColumns(int count)
     if (count <= 0) {
         return;
     }
+    breakWideAt(m_cursorCol);
+    breakWideAt(std::max(m_cols - count - 1, 0));
     auto &g = grid();
     Line &row = g[m_cursorRow];
     if (count >= m_cols) {
@@ -632,7 +762,9 @@ Screen::buildLogicalLines(const std::vector<Line> &phys, const std::vector<bool>
                            size_t &cursorLogical, size_t &cursorLogicalCol) const
 {
     auto const trimEnd = [](std::vector<Cell> &line) {
-        while (!line.empty() && line.back().ch == ' ') {
+        // A wide character's spacer is part of it, not trailing padding.
+        while (!line.empty() && line.back().ch == ' ' &&
+               (!hasFlag(line.back(), CellFlag::WideSpacer) || isWrapPadding(line, line.size() - 1))) {
             line.pop_back();
         }
     };
@@ -644,6 +776,9 @@ Screen::buildLogicalLines(const std::vector<Line> &phys, const std::vector<bool>
             cur = phys[i];
             curValid = true;
         } else if (wrapped[i]) {
+            if (!cur.empty() && isWrapPadding(cur, cur.size() - 1)) {
+                cur.pop_back();
+            }
             cur.insert(cur.end(), phys[i].begin(), phys[i].end());
         } else {
             trimEnd(cur);
@@ -663,40 +798,56 @@ Screen::buildLogicalLines(const std::vector<Line> &phys, const std::vector<bool>
     return logical;
 }
 
-// 3. Re-wrap each logical line at the new width.
+// 3. Re-wrap each logical line at the new width. A wide character never
+//    straddles two rows: when its lead would land in the last column it moves
+//    to the next row and the gap becomes wrap padding.
 Screen::ReflowedScreen
 Screen::rewrapLogicalLines(const std::vector<std::vector<Cell>> &logical, size_t cursorLogical, size_t cursorLogicalCol,
                            size_t &cursorNewPhys, size_t &cursorNewCol) const
 {
     ReflowedScreen rewrapped;
+    const auto cols = static_cast<size_t>(m_cols);
+    std::vector<size_t> chunkStarts;
     for (size_t logicalIndex = 0; logicalIndex < logical.size(); ++logicalIndex) {
-        auto &log = logical[logicalIndex];
         const size_t logicalStart = rewrapped.lines.size();
-        if (log.empty()) {
-            rewrapped.lines.emplace_back(m_cols, blankCell());
-            rewrapped.wrapped.push_back(false);
-        } else {
-            bool first = true;
-            for (size_t i = 0; i < log.size(); i += static_cast<size_t>(m_cols)) {
-                Line line;
-                line.reserve(m_cols);
-                for (size_t j = i; j < i + static_cast<size_t>(m_cols) && j < log.size(); ++j) {
-                    line.push_back(log[j]);
-                }
-                while (line.size() < static_cast<size_t>(m_cols)) {
-                    line.push_back(blankCell());
-                }
-                rewrapped.lines.push_back(std::move(line));
-                rewrapped.wrapped.push_back(!first);
-                first = false;
-            }
-        }
+        chunkStarts.clear();
+        wrapLogicalLine(logical[logicalIndex], rewrapped, chunkStarts);
         if (logicalIndex == cursorLogical) {
-            cursorNewPhys = logicalStart + (cursorLogicalCol / static_cast<size_t>(m_cols));
-            cursorNewCol = cursorLogicalCol % static_cast<size_t>(m_cols);
+            // Last chunk starting at or before the cursor column; columns past
+            // it (cursor beyond the trimmed text) spill onto following rows.
+            const auto chunk = std::ranges::upper_bound(chunkStarts, cursorLogicalCol) - 1;
+            const size_t offset = cursorLogicalCol - *chunk;
+            cursorNewPhys = logicalStart + static_cast<size_t>(std::distance(chunkStarts.begin(), chunk)) + (offset / cols);
+            cursorNewCol = offset % cols;
         }
     }
     return rewrapped;
+}
+
+void Screen::wrapLogicalLine(const std::vector<Cell> &log, ReflowedScreen &out, std::vector<size_t> &chunkStarts) const
+{
+    const auto cols = static_cast<size_t>(m_cols);
+    size_t start = 0;
+    while (true) {
+        chunkStarts.push_back(start);
+        size_t take = std::min(cols, log.size() - start);
+        const bool more = start + take < log.size();
+        if (more && take > 1 && hasFlag(log[start + take - 1], CellFlag::Wide)) {
+            --take;
+        }
+        Line line(log.begin() + static_cast<std::ptrdiff_t>(start),
+                  log.begin() + static_cast<std::ptrdiff_t>(start + take));
+        if (more && line.size() < cols) {
+            line.push_back(Cell{.fg = 0, .bg = 0, .ch = ' ', .flags = CellFlag::WideSpacer});
+        }
+        line.resize(cols, blankCell());
+        out.lines.push_back(std::move(line));
+        out.wrapped.push_back(start != 0);
+        start += take;
+        if (!more) {
+            break;
+        }
+    }
 }
 
 // 4. Redistribute: last `rows` lines -> screen, the rest -> scrollback.

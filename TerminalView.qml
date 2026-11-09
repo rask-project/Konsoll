@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Basic as Basic
-import QtCanvas2D
 
 import "controls" as Controls
 
@@ -11,9 +10,9 @@ Item {
     required property font terminalFont
     required property TerminalManager sessionManager
 
-    readonly property real terminalFontSize: terminalFont.pixelSize > 0 ? terminalFont.pixelSize : terminalFont.pointSize * (4 / 3)
-    readonly property real cellWidth: terminalFontSize * 0.6
-    readonly property real cellHeight: terminalFontSize * 1.2
+    // Measured from the font by the native renderer.
+    readonly property real cellWidth: renderer.cellWidth
+    readonly property real cellHeight: renderer.cellHeight
     readonly property real canvasInset: 5
     readonly property string nerdFont: "'JetBrainsMono Nerd Font Mono'"
     readonly property string fontFamily: "'" + terminalFont.family.replace(/'/g, "\\'") + "', " + nerdFont
@@ -34,8 +33,7 @@ Item {
 
     onColsChanged: scheduleSessionResize()
     onRowsChanged: scheduleSessionResize()
-    onTerminalFontChanged: canvas.requestPaint()
-    onSessionChanged: {
+        onSessionChanged: {
         if (session) {
             syncSessionSize();
             applySystemColors();
@@ -236,159 +234,25 @@ Item {
         }
     }
 
-    // `cells` is the number of terminal cells in the run (not text.length,
-    // which counts UTF-16 units and over-counts supplementary-plane glyphs
-    // like Nerd Font icons that occupy one cell each).
-    function drawRun(ctx, text, startCol, y, fg, flags, cells) {
-        if (!text || (flags & 32) !== 0)
-            return;
-        ctx.fillStyle = Qt.rgba(((fg >> 16) & 255) / 255, ((fg >> 8) & 255) / 255, (fg & 255) / 255, 1);
-        const weight = (flags & 1) ? Math.max(700, view.terminalFont.weight) : view.terminalFont.weight;
-        ctx.font = (view.terminalFont.italic ? "italic " : "") + weight + " " + view.terminalFontSize + "px " + view.fontFamily;
-        ctx.fillText(text, startCol * view.cellWidth, y);
-        if (flags & 4)
-            ctx.fillRect(startCol * view.cellWidth, y + view.cellHeight - 1, cells * view.cellWidth, 1);
-        if (flags & 8)
-            ctx.fillRect(startCol * view.cellWidth, y + Math.floor(view.cellHeight / 2), cells * view.cellWidth, 1);
-    }
-
-    Canvas2D {
-        id: canvas
+    // Native scene-graph renderer (src/TerminalRenderer.h): pulls the
+    // session's grid in C++ on frameReady and redraws only the dirty rows.
+    TerminalRenderer {
+        id: renderer
 
         anchors.fill: parent
         anchors.margins: view.canvasInset
-        fillColor: "transparent"
-        alphaBlending: true
 
-        Component.onCompleted: requestPaint()
-
-        onWidthChanged: requestPaint()
-        onHeightChanged: requestPaint()
-
-        onPaint: {
-            const ctx = getContext("2d");
-            if (!view.session)
-                return;
-            const data = view.session.snapshot();
-            const cw = view.cellWidth;
-            const ch = view.cellHeight;
-            // |0 coerces to signed 32-bit so it matches the signed ints the
-            // snapshot sends (C++ static_cast<int> of 0xAARRGGBB).
-            const bg = view.session.backgroundColor | 0;
-            const cols = view.session.cols;
-            const rows = view.session.rows;
-            const selectedText = appPalette.highlightedText;
-            const selectedForeground = (Math.round(selectedText.r * 255) << 16) | (Math.round(selectedText.g * 255) << 8) | Math.round(selectedText.b * 255);
-            ctx.textAlign = "left";
-            ctx.textBaseline = "top";
-            ctx.font = view.terminalFontSize + "px " + view.fontFamily;
-
-            // The snapshot is a flat, row-major cell list:
-            // cell(r, c) === data[r * cols + c].
-            for (let r = 0; r < rows; ++r) {
-                const y = r * ch;
-                const rowBase = r * cols;
-                for (let c = 0; c < cols; ++c) {
-                    const cell = data[rowBase + c];
-                    if (cell["bg"] !== bg) {
-                        ctx.fillStyle = Qt.rgba(((cell["bg"] >> 16) & 255) / 255, ((cell["bg"] >> 8) & 255) / 255, (cell["bg"] & 255) / 255, 1);
-                        ctx.fillRect(c * cw, y, cw, ch);
-                    }
-                }
-                const matchLeft = view.session.searchRowLeft(r);
-                const matchRight = view.session.searchRowRight(r);
-                if (matchLeft >= 0 && matchRight >= matchLeft) {
-                    const highlight = appPalette.accent;
-                    ctx.fillStyle = Qt.rgba(highlight.r, highlight.g, highlight.b, 0.55);
-                    ctx.fillRect(matchLeft * cw, y, (matchRight - matchLeft + 1) * cw, ch);
-                }
-                // Selection highlight: drawn over cell backgrounds, under text.
-                // Per-row range (iTerm2-style): start line clipped at the press
-                // column, middle lines full, end line clipped at the release
-                // column. -1 means this row is not part of the selection.
-                if (view.session.selectionActive) {
-                    const l = view.session.selRowLeft(r);
-                    const rr = view.session.selRowRight(r);
-                    if (l >= 0 && rr >= l) {
-                        const accent = appPalette.accent;
-                        ctx.fillStyle = Qt.rgba(accent.r, accent.g, accent.b, 0.82);
-                        ctx.fillRect(l * cw, y, (rr - l + 1) * cw, ch);
-                    }
-                }
-                // Command highlight (iTerm2-style), drawn under text with a
-                // distinct amber color from the text selection.
-                if (view.session.highlightActive) {
-                    const first = view.session.highlightStartRow;
-                    const last = view.session.highlightEndRow;
-                    if (first >= 0 && r === first && last >= first) {
-                        const width = cols * cw;
-                        const height = (last - first + 1) * ch;
-                        ctx.save();
-                        ctx.beginPath();
-                        ctx.roundRect(0.5, y + 0.5, width - 1, height - 1, Math.min(6, height / 2));
-                        const accent = appPalette.accent;
-                        ctx.fillStyle = Qt.rgba(accent.r, accent.g, accent.b, 0.0175);
-                        ctx.fill();
-                        ctx.lineWidth = 1;
-                        ctx.strokeStyle = Qt.rgba(accent.r, accent.g, accent.b, 0.65);
-                        ctx.stroke();
-                        ctx.restore();
-                    }
-                }
-                let buf = "";
-                let bufCells = 0;
-                let start = 0;
-                let fg = data[rowBase]["fg"];
-                let flags = data[rowBase]["flags"];
-                let selected = false;
-                for (let c = 0; c < cols; ++c) {
-                    const cell = data[rowBase + c];
-                    const selLeft = view.session.selectionActive ? view.session.selRowLeft(r) : -1;
-                    const selRight = view.session.selectionActive ? view.session.selRowRight(r) : -1;
-                    const cellSelected = selLeft >= 0 && c >= selLeft && c <= selRight;
-                    if (cell["fg"] !== fg || cell["flags"] !== flags || cellSelected !== selected) {
-                        view.drawRun(ctx, buf, start, y, selected ? selectedForeground : fg, flags, bufCells);
-                        buf = "";
-                        bufCells = 0;
-                        start = c;
-                        fg = cell["fg"];
-                        flags = cell["flags"];
-                        selected = cellSelected;
-                    }
-                    buf += cell["ch"];
-                    ++bufCells;
-                }
-                view.drawRun(ctx, buf, start, y, selected ? selectedForeground : fg, flags, bufCells);
-                if (selectionArea._linkModifierDown && selectionArea._hoverRow === r && selectionArea._hoverLinkStart >= 0 && selectionArea._hoverLinkEnd > selectionArea._hoverLinkStart) {
-                    const accent = appPalette.accent;
-                    ctx.fillStyle = Qt.rgba(accent.r, accent.g, accent.b, 1);
-                    ctx.fillRect(selectionArea._hoverLinkStart * cw, y + ch - 2, (selectionArea._hoverLinkEnd - selectionArea._hoverLinkStart) * cw, 1);
-                }
-            }
-
-            // The cursor is at the live position (bottom of the main screen),
-            // which is out of view when scrolled up.
-            if (view.session.cursorVisible() && view.session.scrollOffset === 0) {
-                const curCol = view.session.cursorCol();
-                const curRow = view.session.cursorRow();
-                const cursor = view.session.foregroundColor | 0;
-                ctx.fillStyle = Qt.rgba(((cursor >> 16) & 255) / 255, ((cursor >> 8) & 255) / 255, (cursor & 255) / 255, 1);
-                ctx.fillRect(curCol * cw, curRow * ch, cw, ch);
-                // Invert the glyph under the block (standard block-cursor
-                // behavior) so it stays readable against the light block.
-                const curCell = data[curRow * cols + curCol];
-                if (curCell["ch"] && curCell["ch"] !== " " && (curCell["flags"] & 32) === 0) {
-                    const weight = (curCell["flags"] & 1) ? Math.max(700, view.terminalFont.weight) : view.terminalFont.weight;
-                    ctx.font = (view.terminalFont.italic ? "italic " : "") + weight + " " + view.terminalFontSize + "px " + view.fontFamily;
-                    ctx.fillStyle = Qt.rgba(((bg >> 16) & 255) / 255, ((bg >> 8) & 255) / 255, (bg & 255) / 255, 1);
-                    ctx.fillText(curCell["ch"], curCol * cw, curRow * ch);
-                }
-            }
-        }
+        session: view.session
+        font: view.terminalFont
+        accentColor: appPalette.accent
+        selectedTextColor: appPalette.highlightedText
+        hoverRow: selectionArea._linkModifierDown ? selectionArea._hoverRow : -1
+        hoverStart: selectionArea._hoverLinkStart
+        hoverEnd: selectionArea._hoverLinkEnd
     }
 
     Rectangle {
-        anchors.fill: canvas
+        anchors.fill: renderer
         color: appPalette.windowText
         opacity: view.active ? 0 : 0.025
         visible: !view.active
@@ -405,10 +269,10 @@ Item {
         hoverEnabled: true
         cursorShape: _linkModifierDown && _hoverRow >= 0 ? Qt.PointingHandCursor : Qt.IBeamCursor
 
-        anchors.top: canvas.top
-        anchors.left: canvas.left
-        anchors.right: canvas.right
-        anchors.bottom: canvas.bottom
+        anchors.top: renderer.top
+        anchors.left: renderer.left
+        anchors.right: renderer.right
+        anchors.bottom: renderer.bottom
 
         function cellAt(x, y) {
             const col = Math.max(0, Math.min(view.cols - 1, Math.floor(x / view.cellWidth)));
@@ -471,7 +335,6 @@ Item {
                 _hoverRow = row;
                 _hoverLinkStart = start;
                 _hoverLinkEnd = end;
-                canvas.requestPaint();
             }
         }
 
@@ -707,7 +570,6 @@ Item {
         anchors.margins: 12
         z: 10
         onCloseRequested: input.forceActiveFocus()
-        onRepaintRequested: canvas.requestPaint()
     }
 
     // Thin scrollbar on the right edge, matching the canvas vertically.
@@ -725,8 +587,8 @@ Item {
 
         anchors.right: parent.right
         anchors.rightMargin: 5
-        anchors.top: canvas.top
-        anchors.bottom: canvas.bottom
+        anchors.top: renderer.top
+        anchors.bottom: renderer.bottom
 
         orientation: Qt.Vertical
         onPositionChanged: {
@@ -763,18 +625,6 @@ Item {
 
     Connections {
         target: view.session
-
-        function onFrameReady() {
-            canvas.requestPaint();
-        }
-
-        function onSelectionChanged() {
-            canvas.requestPaint();
-        }
-
-        function onHighlightChanged() {
-            canvas.requestPaint();
-        }
 
         function onScrollOffsetChanged() {
             view.syncScrollBar();

@@ -100,6 +100,8 @@ private:
     void processCsiByte(unsigned char c);
     void processOscByte(unsigned char c);
     void putCodePoint(unsigned int codePoint);
+    void combineWithPrevious(unsigned int mark);
+    static bool isZeroWidth(unsigned int codePoint);
     void handleCsi(char final, bool privateMode);
     void handleDec(char final, const std::vector<int> &params);
     void handleSgr(const std::vector<int> &params);

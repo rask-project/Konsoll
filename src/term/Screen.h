@@ -3,6 +3,7 @@
 #include "Cell.h"
 
 #include <deque>
+#include <optional>
 #include <vector>
 
 namespace konsoll
@@ -37,6 +38,17 @@ public:
 
     // Write a code point at the cursor (deferred wrap, advances cursor).
     void putChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned char flags);
+    // Write a two-cell character (lead + spacer); wraps first when only the
+    // last column is left, as xterm does.
+    void putWideChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned char flags);
+    // The code point last written on the cursor row (the cell left of the
+    // cursor, or the cursor cell while a wrap is pending); nullopt at column 0.
+    // Lets the parser fold a zero-width mark into the character it follows.
+    std::optional<unsigned int> previousChar() const;
+    void replacePreviousChar(unsigned int ch);
+    // Turn the previously written narrow character into a wide one (emoji
+    // presentation selector U+FE0F) when there is room on the row.
+    void widenPreviousChar();
 
     // Line discipline.
     void lineFeed();
@@ -101,6 +113,10 @@ private:
     void scrollUpOne(int top, int bottom);
     void scrollDownOne(int top, int bottom);
     void blankLine(int row);
+    int previousCharCol() const;
+    // Blank both halves of the wide pair cell `col` of the cursor row belongs
+    // to, so a partial overwrite never leaves half a wide character behind.
+    void breakWideAt(int col);
     void pushScrollback(const Line &line, bool wrapped);
     void lineFeedImpl(bool soft);
     void reflow();
@@ -111,6 +127,7 @@ private:
     ReflowedScreen rewrapLogicalLines(
         const std::vector<std::vector<Cell>> &logical, size_t cursorLogical, size_t cursorLogicalCol,
         size_t &cursorNewPhys, size_t &cursorNewCol) const;
+    void wrapLogicalLine(const std::vector<Cell> &log, ReflowedScreen &out, std::vector<size_t> &chunkStarts) const;
     void redistribute(const ReflowedScreen &rewrapped, size_t cursorNewPhys, size_t cursorNewCol);
     std::vector<Line> &grid() { return m_inAlt ? m_alt : m_main; }
     const std::vector<Line> &grid() const { return m_inAlt ? m_alt : m_main; }

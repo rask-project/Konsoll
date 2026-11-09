@@ -1,8 +1,14 @@
 #include "Terminal.h"
 
+#include "CharWidth.h"
+
+#include <QChar>
+#include <QList>
 #include <QUrl>
 
 #include <algorithm>
+#include <array>
+#include <optional>
 
 namespace konsoll
 {
@@ -242,10 +248,58 @@ void Terminal::putCodePoint(unsigned int codePoint)
         codePoint = 0xfffd;
     }
 
+    // Zero-width code points (variation selectors, combining marks, ZWJ...)
+    // take no cell — applications lay lines out with wcwidth semantics, so a
+    // cell per mark pushes the rest of the row right (and the last column onto
+    // the next row). Fold the mark into the previous character when NFC has a
+    // precomposed form (e + U+0301 -> é, as in macOS NFD file names);
+    // otherwise drop it.
+    if (isZeroWidth(codePoint)) {
+        combineWithPrevious(codePoint);
+        return;
+    }
+
     // Supplementary-plane characters (e.g. Nerd Font icons, U+F0xxx) occupy
     // one cell holding the full code point; the renderer encodes them as a
-    // surrogate-pair string.
-    m_screen.putChar(codePoint, m_fg, m_bg, m_flags);
+    // surrogate-pair string. East Asian wide characters and emoji take two.
+    if (isWideChar(codePoint)) {
+        m_screen.putWideChar(codePoint, m_fg, m_bg, m_flags);
+    } else {
+        m_screen.putChar(codePoint, m_fg, m_bg, m_flags);
+    }
+}
+
+bool Terminal::isZeroWidth(unsigned int codePoint)
+{
+    // Markus Kuhn's wcwidth rules: nonspacing/enclosing marks and format
+    // characters (except SOFT HYPHEN), plus Hangul medial vowels/final
+    // consonants.
+    if (codePoint == 0x00adu) {
+        return false;
+    }
+    if (codePoint >= 0x1160u && codePoint <= 0x11ffu) {
+        return true;
+    }
+    const QChar::Category category = QChar::category(static_cast<char32_t>(codePoint));
+    return category == QChar::Mark_NonSpacing || category == QChar::Mark_Enclosing || category == QChar::Other_Format;
+}
+
+void Terminal::combineWithPrevious(unsigned int mark)
+{
+    // VS16 requests emoji presentation, which TUIs lay out two cells wide.
+    if (mark == 0xfe0fu) {
+        m_screen.widenPreviousChar();
+        return;
+    }
+    const std::optional<unsigned int> base = m_screen.previousChar();
+    if (!base) {
+        return;
+    }
+    const std::array<char32_t, 2> pair{static_cast<char32_t>(*base), static_cast<char32_t>(mark)};
+    const QList<uint> composed = QString::fromUcs4(pair.data(), pair.size()).normalized(QString::NormalizationForm_C).toUcs4();
+    if (composed.size() == 1) {
+        m_screen.replacePreviousChar(composed.front());
+    }
 }
 
 std::vector<int> Terminal::parseParams(const QByteArray &body)
@@ -301,6 +355,16 @@ void Terminal::handleCsi(char final, bool privateMode)
             m_kittyKeyboardEnabled = false;
             return;
         }
+    }
+
+    // Any other private-parameter prefix ('<', '=', '>') marks a different
+    // sequence that merely shares a final byte with a standard one —
+    // modifyOtherKeys (CSI > 4 ; 2 m), XTVERSION (CSI > q), secondary DA
+    // (CSI > c). parseParams drops the prefix, so dispatching them would turn
+    // CSI > 4 ; 2 m into SGR 4;2: underline + dim on all following text.
+    if (!privateMode && !m_csiBody.isEmpty() &&
+        (m_csiBody.front() == '<' || m_csiBody.front() == '=' || m_csiBody.front() == '>')) {
+        return;
     }
 
     if (privateMode) {

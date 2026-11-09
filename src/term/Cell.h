@@ -15,6 +15,11 @@ inline constexpr unsigned int Underline = 1u << 2;
 inline constexpr unsigned int Strike = 1u << 3;
 inline constexpr unsigned int Reverse = 1u << 4;
 inline constexpr unsigned int Invisible = 1u << 5;
+// A two-cell (wide) character: `Wide` marks the leading cell holding the code
+// point, `WideSpacer` the trailing cell (ch == ' '). A WideSpacer with no Wide
+// lead before it is right-margin padding left when a wide character wrapped.
+inline constexpr unsigned int Wide = 1u << 6;
+inline constexpr unsigned int WideSpacer = 1u << 7;
 }
 
 // Encoded color value stored per cell:
@@ -31,6 +36,8 @@ struct Cell {
     unsigned int bg = 0;
     unsigned int ch = 0x20;
     unsigned char flags = CellFlag::None;
+
+    friend bool operator==(const Cell &, const Cell &) = default;
 };
 
 } // namespace konsoll

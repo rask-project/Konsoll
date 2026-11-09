@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 class QImage;
 class QRegularExpressionMatch;
@@ -143,6 +144,12 @@ public:
 
     // One-frame snapshot of the visible grid for the QML renderer.
     Q_INVOKABLE QVariantList snapshot() const;
+    // Native renderer access (TerminalRenderer). `out` receives exactly
+    // gridCols() cells of visible row `row` with colors already resolved to
+    // final QRgb values (palette, reverse video and contrast applied).
+    void visibleRowCells(int row, std::vector<Cell> &out) const;
+    int gridRows() const { return m_terminal ? m_terminal->screen().rows() : 0; }
+    int gridCols() const { return m_terminal ? m_terminal->screen().cols() : 0; }
     Q_INVOKABLE int cursorRow() const;
     Q_INVOKABLE int cursorCol() const;
     Q_INVOKABLE bool cursorVisible() const;
@@ -209,6 +216,8 @@ private:
     // master descriptor from this thread).
     void writeToPty(const QByteArray &data);
     void resizePty(int columns, int rows);
+
+    Cell resolvedCell(const Cell &cell) const;
 
     static QString detectDefaultShell();
     static QRgb resolveColor(unsigned int encoded, unsigned int defaultColor);

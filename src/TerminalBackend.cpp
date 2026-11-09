@@ -92,6 +92,17 @@ double contrastRatio(QRgb foreground, QRgb background)
            (std::min(foregroundLuminance, backgroundLuminance) + 0.05);
 }
 
+// Append a cell's character to copied/saved text. The trailing half of a wide
+// character carries none.
+void appendCellText(QString &text, const Cell &cell)
+{
+    if ((cell.flags & CellFlag::WideSpacer) != 0u) {
+        return;
+    }
+    const char32_t cp = static_cast<char32_t>(cell.ch);
+    text.append(QString::fromUcs4(&cp, 1));
+}
+
 QRgb readableForeground(QRgb foreground, QRgb background)
 {
     const double backgroundLuminance = relativeLuminance(background);
@@ -207,6 +218,11 @@ TerminalBackend::TerminalBackend(QObject *parent) : QObject(parent)
     m_frameTimer.setInterval(16ms);
     m_frameTimer.setSingleShot(true);
     connect(&m_frameTimer, &QTimer::timeout, this, &TerminalBackend::onFrameTimer);
+    // Selection/highlight changes repaint through the same coalesced,
+    // DEC 2026-aware frame as PTY output; frameReady is the only repaint
+    // signal the renderer listens to.
+    connect(this, &TerminalBackend::selectionChanged, this, &TerminalBackend::scheduleFrame);
+    connect(this, &TerminalBackend::highlightChanged, this, &TerminalBackend::scheduleFrame);
     connect(&m_transferProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
         const TransferJob completed = std::exchange(m_activeTransfer, TransferJob{});
         if (completed.removeLocal()) {
@@ -1202,8 +1218,7 @@ void TerminalBackend::copySelection()
             --c1;
         }
         for (int c = c0; c < c1; ++c) {
-            const char32_t cp = static_cast<char32_t>(l[c].ch);
-            text.append(QString::fromUcs4(&cp, 1));
+            appendCellText(text, l[c]);
         }
         if (line < bot && !s.isWrappedContinuation(line + 1)) {
             text.append('\n');
@@ -1230,8 +1245,7 @@ QString TerminalBackend::selectionText() const
                                 ? -1
                                 : static_cast<int>(std::distance(cells.begin(), lastContent.base())) - 1;
             std::ranges::for_each(std::views::iota(0, end + 1), [&](int col) {
-                const char32_t cp = static_cast<char32_t>(cells[col].ch);
-                text.append(QString::fromUcs4(&cp, 1));
+                appendCellText(text, cells[col]);
             });
             if (line < m_highlightEnd) {
                 text.append('\n');
@@ -1270,8 +1284,7 @@ QString TerminalBackend::selectionText() const
         end = lastContent.empty() ? first
                                   : first + static_cast<int>(std::distance(selectedCells.begin(), lastContent.end()));
         std::ranges::for_each(std::views::iota(first, end), [&](int col) {
-            const char32_t cp = static_cast<char32_t>(cells[col].ch);
-            text.append(QString::fromUcs4(&cp, 1));
+            appendCellText(text, cells[col]);
         });
         if (line < bot && !screen.isWrappedContinuation(line + 1)) {
             text.append('\n');
@@ -1295,8 +1308,7 @@ QString TerminalBackend::bufferText() const
         const int end =
             lastContent == reversedCells.end() ? 0 : static_cast<int>(std::distance(cells.begin(), lastContent.base()));
         std::ranges::for_each(std::views::iota(0, end), [&](int col) {
-            const char32_t cp = static_cast<char32_t>(cells[col].ch);
-            text.append(QString::fromUcs4(&cp, 1));
+            appendCellText(text, cells[col]);
         });
         if (line + 1 < totalLines && !screen.isWrappedContinuation(line + 1)) {
             text.append('\n');
@@ -1568,42 +1580,54 @@ int TerminalBackend::selRowRight(int visibleRow) const
     return lineTextEnd(absLine);
 }
 
+Cell TerminalBackend::resolvedCell(const Cell &cell) const
+{
+    unsigned int fg = resolveColor(cell.fg, m_defaultFg);
+    unsigned int bg = resolveColor(cell.bg, m_defaultBg);
+    if ((cell.flags & CellFlag::Reverse) != 0) {
+        std::swap(fg, bg);
+    }
+    fg = readableForeground(static_cast<QRgb>(fg), static_cast<QRgb>(bg));
+    return Cell{.fg = fg, .bg = bg, .ch = cell.ch, .flags = cell.flags};
+}
+
+void TerminalBackend::visibleRowCells(int row, std::vector<Cell> &out) const
+{
+    out.clear();
+    if (!m_terminal || row < 0 || row >= gridRows()) {
+        return;
+    }
+    // The visible window is the last `rows` lines, shifted up by the scroll
+    // offset (0 = at the bottom). Short lines are padded with blank cells.
+    const Line &line = m_terminal->screen().lineAt(visibleStart() + row);
+    const auto cols = static_cast<std::size_t>(gridCols());
+    out.resize(cols);
+    std::ranges::copy(line | std::views::take(cols), out.begin());
+    std::ranges::transform(out, out.begin(), [this](const Cell &cell) { return resolvedCell(cell); });
+}
+
 QVariantList TerminalBackend::snapshot() const
 {
     QVariantList rowsOut;
     if (!m_terminal) {
         return rowsOut;
     }
-    const Screen &s = m_terminal->screen();
-    // The visible window is the last `rows` lines, shifted up by the scroll
-    // offset (0 = at the bottom).
-    const int total = s.totalLines();
-    const int start = total - s.rows() - s.scrollOffset();
-    static const Cell kBlank{};
-    rowsOut.reserve(static_cast<qsizetype>(s.rows()) * s.cols());
-    for (int r = 0; r < s.rows(); ++r) {
-        const Line &line = s.lineAt(start + r);
-        for (int c = 0; c < s.cols(); ++c) {
-            const Cell &cell = (c < static_cast<int>(line.size())) ? line[c] : kBlank;
-            unsigned int fg = resolveColor(cell.fg, m_defaultFg);
-            unsigned int bg = resolveColor(cell.bg, m_defaultBg);
-
-            if ((cell.flags & CellFlag::Reverse) != 0) {
-                std::swap(fg, bg);
-            }
-            fg = readableForeground(static_cast<QRgb>(fg), static_cast<QRgb>(bg));
-
+    rowsOut.reserve(static_cast<qsizetype>(gridRows()) * gridCols());
+    std::vector<Cell> cells;
+    std::ranges::for_each(std::views::iota(0, gridRows()), [&](int r) {
+        visibleRowCells(r, cells);
+        std::ranges::for_each(cells, [&rowsOut](const Cell &cell) {
             // Encode the code point as a QString (surrogate pair when
             // supplementary) so the QML renderer draws one glyph per cell.
             const char32_t cp = static_cast<char32_t>(cell.ch);
             QVariantMap m;
             m["ch"] = QString::fromUcs4(&cp, 1);
-            m["fg"] = static_cast<int>(fg);
-            m["bg"] = static_cast<int>(bg);
+            m["fg"] = static_cast<int>(cell.fg);
+            m["bg"] = static_cast<int>(cell.bg);
             m["flags"] = static_cast<int>(cell.flags);
             rowsOut.append(m);
-        }
-    }
+        });
+    });
     return rowsOut;
 }
 

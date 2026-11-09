@@ -1,6 +1,7 @@
 #include "selftest.h"
 
 #include "TerminalManager.h"
+#include "term/Terminal.h"
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -57,6 +58,9 @@ int pgrepCount(const char *pattern)
     return 1 + static_cast<int>(lines);
 }
 
+using konsoll::Cell;
+using konsoll::Screen;
+using konsoll::Terminal;
 using konsoll::TerminalBackend;
 using konsoll::TerminalManager;
 
@@ -78,6 +82,72 @@ int runSelfTest()
     TerminalManager manager(nullptr);
     manager.start();
     int failures = 0;
+
+    // 0. Parser: zero-width code points take no cell. OpenTUI apps (Qwen Code)
+    // suffix icons with VS15; a cell per selector pushed their last column
+    // onto the next row.
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write(QByteArray("\xe2\x97\x86\xef\xb8\x8e" "ab")); // U+25C6 U+FE0E a b
+        const Screen &screen = term.screen();
+        check(failures,
+              screen.cellAt(0, 0).ch == 0x25c6u && screen.cellAt(0, 1).ch == 'a' && screen.cellAt(0, 2).ch == 'b' &&
+                  screen.cursorCol() == 3,
+              "zero-width: variation selector takes no cell");
+        term.write(QByteArray("\r\nac\xcc\xa7" "a\xcc\x83" "o")); // NFD "ação"
+        check(failures,
+              screen.cellAt(1, 1).ch == 0xe7u && screen.cellAt(1, 2).ch == 0xe3u && screen.cellAt(1, 3).ch == 'o' &&
+                  screen.cursorCol() == 4,
+              "zero-width: combining marks compose (NFD -> NFC)");
+    }
+
+    // 0a. Prefixed CSI sequences are not SGR: Claude Code's modifyOtherKeys
+    // request (CSI > 4 ; 2 m) must not underline/dim the following text.
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write(QByteArray("\x1b[>4;2mabc\x1b[>4m\x1b[>0q"));
+        const unsigned char flags = term.screen().cellAt(0, 0).flags;
+        check(failures,
+              (flags & (konsoll::CellFlag::Underline | konsoll::CellFlag::Dim)) == 0u &&
+                  term.screen().cellAt(0, 2).ch == 'c' && term.screen().cursorCol() == 3,
+              "csi: CSI > 4;2 m (modifyOtherKeys) is not SGR");
+    }
+
+    // 0b. Wide characters take two cells (lead + spacer), as TUIs assume.
+    {
+        const auto isWide = [](const Cell &cell) { return (cell.flags & konsoll::CellFlag::Wide) != 0u; };
+        const auto isSpacer = [](const Cell &cell) { return (cell.flags & konsoll::CellFlag::WideSpacer) != 0u; };
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        const Screen &screen = term.screen();
+        term.write(QByteArray("a\xe2\x9c\x85" "b")); // a U+2705 b
+        check(failures,
+              isWide(screen.cellAt(0, 1)) && screen.cellAt(0, 1).ch == 0x2705u && isSpacer(screen.cellAt(0, 2)) &&
+                  screen.cellAt(0, 3).ch == 'b' && screen.cursorCol() == 4,
+              "wide: emoji occupies two cells");
+        term.write(QByteArray("\r\xe4\xb8\xad")); // overwrite a, then U+4E2D over the emoji's lead
+        term.write(QByteArray("\rz"));           // z over the CJK lead breaks the pair
+        check(failures, screen.cellAt(0, 0).ch == 'z' && !isSpacer(screen.cellAt(0, 1)) && screen.cellAt(0, 1).ch == ' ',
+              "wide: overwriting a lead clears its spacer");
+        term.write(QByteArray("\r\n\xe2\x9d\xa4\xef\xb8\x8f" "c")); // U+2764 U+FE0F c
+        check(failures, isWide(screen.cellAt(1, 0)) && isSpacer(screen.cellAt(1, 1)) && screen.cellAt(1, 2).ch == 'c',
+              "wide: VS16 widens the previous character");
+        term.write(QByteArray("\r\nxxxxxxxxx\xe4\xb8\xad")); // 9 cells + wide: wraps whole
+        check(failures,
+              isSpacer(screen.cellAt(2, 9)) && isWide(screen.cellAt(3, 0)) && screen.cellAt(3, 0).ch == 0x4e2du,
+              "wide: no room in the last column wraps the whole character");
+    }
+    {
+        const auto isWide = [](const Cell &cell) { return (cell.flags & konsoll::CellFlag::Wide) != 0u; };
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        const Screen &screen = term.screen();
+        term.write(QByteArray("abcdefgh\xe4\xb8\xad")); // fills exactly 10 cells
+        term.resize(4, 9);
+        check(failures, screen.cellAt(0, 7).ch == 'h' && isWide(screen.cellAt(1, 0)),
+              "wide: reflow never splits a wide pair");
+        term.resize(4, 10);
+        check(failures, isWide(screen.cellAt(0, 8)) && screen.cellAt(0, 8).ch == 0x4e2du,
+              "wide: reflow re-joins without the wrap padding");
+    }
 
     // 1. Concurrent output: three sessions produce output at the same time.
     auto *a = activeSession(manager);
