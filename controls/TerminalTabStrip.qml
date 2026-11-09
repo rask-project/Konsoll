@@ -44,7 +44,18 @@ Rectangle {
     onWindowTranslucencyChanged: updateWindowMovable()
     Component.onCompleted: updateWindowMovable()
 
-    color: Qt.rgba(systemPalette.window.r, systemPalette.window.g, systemPalette.window.b, 0.50)
+    // The strip's background is native Liquid Glass (drawn behind the Qt
+    // content); a tinted fill here would wash it out. Without glass, fall
+    // back to the flat translucent fill.
+    color: stripGlass.supported ? "transparent" : Qt.rgba(systemPalette.window.r, systemPalette.window.g, systemPalette.window.b, 0.50)
+
+    GlassEffect {
+        id: stripGlass
+
+        anchors.fill: parent
+        visible: supported
+        cornerRadius: 0
+    }
 
     SystemPalette {
         id: systemPalette

@@ -102,6 +102,8 @@ qt_add_qml_module(konsoll
         src/term/Screen.h
         src/term/Terminal.cpp
         src/term/Terminal.h
+        src/GlassEffect.cpp
+        src/GlassEffect.h
         src/MacOSTranslucency.mm
         src/MacOSTranslucency.h
         src/WindowTranslucency.cpp
@@ -152,6 +154,7 @@ target_compile_definitions(konsoll PRIVATE
 
 target_link_libraries(konsoll
     PRIVATE Qt6::Quick Qt6::CanvasPainter Qt6::QuickControls2 Qt6::QuickDialogs2 Qt6::Svg
+    "-framework QuartzCore"
 )
 
 install(TARGETS konsoll

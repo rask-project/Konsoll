@@ -54,7 +54,7 @@ Item {
 
                     border.width: 1
                     border.color: leafItem.active ? systemPalette.accent : Qt.rgba(systemPalette.windowText.r, systemPalette.windowText.g, systemPalette.windowText.b, 0.15)
-                    radius: 8
+                    radius: height / 2
 
                     TapHandler {
                         enabled: leafItem.session !== null

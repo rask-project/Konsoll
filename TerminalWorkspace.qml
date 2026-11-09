@@ -25,7 +25,7 @@ Item {
         id: tabStrip
 
         x: 0
-        y: 3
+        y: 0
 
         width: itemWorkspace.width
         height: itemWorkspace.titleBarHeight
