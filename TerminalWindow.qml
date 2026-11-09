@@ -30,9 +30,9 @@ Window {
     color: "transparent"
 
     function requestQuit() {
-        // Persist every open window before the AppKit terminate delegate
+        // Persist the last active window before the AppKit terminate delegate
         // aggregates sessions and owns the confirmation flow.
-        appWindow.windowManager.saveAllOpenWindows();
+        appWindow.windowManager.saveLastActiveWindow();
         NativeDialogs.terminateApplication();
     }
 
@@ -64,18 +64,44 @@ Window {
             appWindow.windowManager.noteActiveWindow(appWindow);
     }
 
-    // Save only the normal window geometry. Maximized and fullscreen sizes are
-    // monitor geometry and must not replace the user's restorable dimensions.
+    // Save only the normal window geometry. Maximized and fullscreen geometry
+    // is the monitor's and must not replace the user's restorable size and
+    // position.
     onWidthChanged: {
-        if (visibility === Window.Windowed)
+        if (visibility === Window.Windowed) {
             windowState.width = width;
+            geometrySaveTimer.restart();
+        }
     }
     onHeightChanged: {
-        if (visibility === Window.Windowed)
+        if (visibility === Window.Windowed) {
             windowState.height = height;
+            geometrySaveTimer.restart();
+        }
     }
-    onXChanged: windowState.x = x;
-    onYChanged: windowState.y = y;
+    onXChanged: {
+        if (visibility === Window.Windowed) {
+            windowState.x = x;
+            geometrySaveTimer.restart();
+        }
+    }
+    onYChanged: {
+        if (visibility === Window.Windowed) {
+            windowState.y = y;
+            geometrySaveTimer.restart();
+        }
+    }
+
+    // Debounced: a drag or resize emits a change per frame. Only the last
+    // active window's state is written (Main.qml keeps just that one).
+    Timer {
+        id: geometrySaveTimer
+        interval: 500
+        onTriggered: {
+            if (appWindow.windowManager.lastActiveWindowId === appWindow.windowId)
+                appWindow.windowManager.saveLastActiveWindow();
+        }
+    }
 
     Component.onCompleted: {
         // Restore only the window geometry (size + location). Sessions always

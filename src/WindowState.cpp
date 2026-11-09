@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QGuiApplication>
 #include <QJsonDocument>
+#include <QRect>
 #include <QScreen>
 #include <QStandardPaths>
 #include <QWindow>
@@ -192,12 +193,25 @@ void WindowState::save()
     QJsonObject state;
     state[QStringLiteral("version")] = 1;
 
+    QWindow *window = qobject_cast<QWindow *>(m_window);
+    // A windowed window's live geometry is authoritative: the tracked values
+    // miss the initial placement (assigned while the window is still hidden)
+    // when the window is never moved. Fullscreen/maximized geometry belongs to
+    // the monitor, so keep the last normal geometry tracked from QML then.
+    if (window != nullptr && window->visibility() == QWindow::Windowed) {
+        const QRect live = window->geometry();
+        m_x = live.x();
+        m_y = live.y();
+        m_width = live.width();
+        m_height = live.height();
+    }
+
     QJsonObject geometry;
     geometry[QStringLiteral("width")] = m_width;
     geometry[QStringLiteral("height")] = m_height;
     geometry[QStringLiteral("x")] = m_x;
     geometry[QStringLiteral("y")] = m_y;
-    if (QWindow *window = qobject_cast<QWindow *>(m_window)) {
+    if (window != nullptr) {
         if (QScreen *screen = window->screen()) {
             geometry[QStringLiteral("screen")] = screen->name();
         }

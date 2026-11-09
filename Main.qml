@@ -12,8 +12,10 @@ Item {
     property var windows: []
     property TerminalWindow createdWindow: null
 
-    // The ID of the most recently active window; its geometry is the only
-    // per-window state restored on the next launch.
+    // The ID of the most recently active window. Its geometry (size, position,
+    // screen) is the only window state kept on disk and is restored on the next
+    // launch; it is saved whenever it changes, so every way the app ends (last
+    // window closed, Quit menu, Dock quit, logout) leaves it up to date.
     property string lastActiveWindowId: ""
 
     Component {
@@ -41,7 +43,26 @@ Item {
     }
 
     function noteActiveWindow(w: TerminalWindow) {
-        manager.lastActiveWindowId = w.windowId;
+        if (manager.lastActiveWindowId !== w.windowId) {
+            // Only the last active window's state is kept on disk.
+            const previous = manager.lastActiveWindow();
+            if (previous)
+                previous.windowState.removeState();
+            manager.lastActiveWindowId = w.windowId;
+        }
+        manager.saveLastActiveWindow();
+    }
+
+    function lastActiveWindow(): TerminalWindow {
+        return manager.windows.find(w => w.windowId === manager.lastActiveWindowId) ?? null;
+    }
+
+    function saveLastActiveWindow() {
+        const w = manager.lastActiveWindow();
+        if (!w)
+            return;
+        w.windowState.save();
+        WindowStateStore.saveLastWindowId(w.windowId);
     }
 
     function closeWindow(w: TerminalWindow) {
@@ -53,25 +74,25 @@ Item {
         WindowStateStore.saveCollection(manager.windows.map(w => w.windowId));
     }
 
-    function saveAllOpenWindows() {
-        for (const w of manager.windows)
-            w.windowState.save();
-        if (manager.lastActiveWindowId)
-            WindowStateStore.saveLastWindowId(manager.lastActiveWindowId);
-        manager.persistCollection();
-    }
-
     function windowClosed(w: TerminalWindow) {
+        const wasLastActive = manager.lastActiveWindowId === w.windowId;
         manager.windows = manager.windows.filter(window => window !== w);
-        // If the closed window was the last active one, point the restoration
-        // target at a remaining window (or none) so we never persist a stale ID.
-        if (manager.lastActiveWindowId === w.windowId) {
-            manager.lastActiveWindowId = manager.windows.length > 0
-                    ? manager.windows[0].windowId
-                    : "";
-        }
+        // A confirmed quit already saved the last active window; the windows
+        // closing during termination must not overwrite that choice.
         if (!WindowStateStore.terminating()) {
-            w.windowState.removeState();
+            if (manager.windows.length === 0) {
+                // Closing the last window ends the app: it is the window to
+                // restore on the next launch, so save it instead of dropping it.
+                manager.lastActiveWindowId = w.windowId;
+                w.windowState.save();
+                WindowStateStore.saveLastWindowId(w.windowId);
+            } else {
+                w.windowState.removeState();
+                if (wasLastActive) {
+                    manager.lastActiveWindowId = manager.windows[0].windowId;
+                    manager.saveLastActiveWindow();
+                }
+            }
             manager.persistCollection();
         }
         Qt.callLater(() => w.destroy());

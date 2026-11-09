@@ -230,12 +230,19 @@ Done:
   `buildLayoutNode()` capture workspaces, custom titles, split trees
   (orientation + children), and each session's working directory;
   `restoreState()` recreates sessions via `session->start(dir)`.
-- **Save/restore wiring** — `Main.qml::requestQuit()` → `saveAllOpenWindows()`
-  (saves every open window + the collection + the last active window ID) →
-  `terminateApplication()`; `windowClosed(w)` removes the ID + file on a
-  mid-session close (only when not terminating) and re-points the last active
-  window at a remaining window (or none); `Component.onCompleted` reopens a single
-  window keyed on the last active window's ID (or a fresh ID when none).
+- **Save/restore wiring** — only the **last active window's** state is kept on
+  disk, and it is written whenever it changes so every way the app ends (last
+  window closed, Quit menu, Dock quit, logout) leaves it current:
+  `Main.qml::noteActiveWindow()` saves the newly active window (state file +
+  `last.txt`) and removes the previously active window's file; `TerminalWindow`
+  saves its geometry 500 ms after a move/resize while it is the last active
+  window and windowed (fullscreen/maximized geometry is ignored);
+  `windowClosed(w)` saves `w` when it is the last window (closing it ends the
+  app), otherwise removes its file and re-points the last active window at a
+  remaining one; during a confirmed quit (`terminating()`) it does nothing,
+  since `requestQuit()` → `saveLastActiveWindow()` already ran.
+  `Component.onCompleted` reopens a single window keyed on the last active
+  window's ID (or a fresh ID when none).
   `TerminalWindow` calls `windowState.load()` and restores only the geometry
   (width/height/x/y) in `Component.onCompleted` — it never calls
   `sessionManager.restoreState()`, so sessions always start fresh.
