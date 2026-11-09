@@ -113,6 +113,9 @@ public:
     Q_INVOKABLE void renameWorkspace(QObject *workspace, const QString &title);
     Q_INVOKABLE void closeWorkspace(QObject *workspace);
     Q_INVOKABLE bool workspaceHasRunningCommand(QObject *workspace) const;
+    // Same rule as closing a window: confirm when the workspace holds more
+    // than one session (split panes) or any of them is running a command.
+    Q_INVOKABLE bool workspaceNeedsCloseConfirmation(QObject *workspace) const;
     Q_INVOKABLE bool anySessionHasRunningCommand() const;
     Q_INVOKABLE bool anySessionHasActiveProcess() const;
     Q_INVOKABLE int sessionCount() const;

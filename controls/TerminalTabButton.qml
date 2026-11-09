@@ -44,7 +44,7 @@ TabButton {
         Controls.MenuItem {
             text: qsTr("Close workspace")
             onTriggered: {
-                if (sessionManager.workspaceHasRunningCommand(tab.workspace) && !NativeDialogs.confirmClose())
+                if (sessionManager.workspaceNeedsCloseConfirmation(tab.workspace) && !NativeDialogs.confirmClose())
                     return;
                 sessionManager.closeWorkspace(tab.workspace);
             }

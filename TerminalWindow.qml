@@ -343,7 +343,7 @@ Window {
                 enabled: sessionManager.activeWorkspaceIndex >= 0
                 onTriggered: {
                     const workspace = sessionManager.workspaces[sessionManager.activeWorkspaceIndex];
-                    if (sessionManager.workspaceHasRunningCommand(workspace) && !NativeDialogs.confirmClose()) {
+                    if (sessionManager.workspaceNeedsCloseConfirmation(workspace) && !NativeDialogs.confirmClose()) {
                         return;
                     }
                     sessionManager.closeWorkspace(workspace);

@@ -304,13 +304,6 @@ void TerminalManager::closeWorkspace(QObject *workspaceObject)
     if ((workspace == nullptr) || it == m_workspaces.end()) {
         return;
     }
-    if (m_workspaces.size() == 1 && m_sessions.size() > 1) {
-        auto *root = workspace->root().get();
-        auto *session = (findLeaf(root, m_activeSession) != nullptr) ? m_activeSession : firstSession(root);
-        closeSession(session);
-        return;
-    }
-
     std::vector<TerminalBackend *> removedSessions;
     std::ranges::for_each(m_sessions, [this, &removedSessions, workspace](const auto &candidate) {
         if (findLeaf(workspace->root().get(), candidate.get())) {
@@ -333,7 +326,10 @@ void TerminalManager::closeWorkspace(QObject *workspaceObject)
         eraseDeferred(m_sessions, this, [session](const auto &candidate) { return candidate.get() == session; });
     }
     eraseDeferred(m_workspaces, this, [workspace](const auto &candidate) { return candidate.get() == workspace; });
-    if (wasActive && !m_workspaces.empty()) {
+    if (wasActive && m_workspaces.empty()) {
+        // Closing the last workspace empties the window, which closes below.
+        setActiveSession(nullptr, false);
+    } else if (wasActive) {
         TerminalBackend *nextSession = mostRecentlyActiveSession();
         if (nextSession == nullptr) {
             const auto nextWorkspace = std::ranges::find_if(m_workspaces, [this](const auto &candidate) {
@@ -363,6 +359,18 @@ bool TerminalManager::workspaceHasRunningCommand(QObject *workspaceObject) const
     return std::ranges::any_of(m_sessions, [this, workspace](const auto &session) {
         return session->commandRunning() && findLeaf(workspace->root().get(), session.get()) != nullptr;
     });
+}
+
+bool TerminalManager::workspaceNeedsCloseConfirmation(QObject *workspaceObject) const
+{
+    auto *workspace = qobject_cast<TerminalWorkspaceModel *>(workspaceObject);
+    if (workspace == nullptr) {
+        return false;
+    }
+    const auto sessionsInWorkspace = std::ranges::count_if(m_sessions, [this, workspace](const auto &session) {
+        return findLeaf(workspace->root().get(), session.get()) != nullptr;
+    });
+    return sessionsInWorkspace > 1 || workspaceHasRunningCommand(workspace);
 }
 
 bool TerminalManager::anySessionHasRunningCommand() const

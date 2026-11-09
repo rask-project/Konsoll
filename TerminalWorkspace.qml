@@ -41,7 +41,7 @@ Item {
 
         onActivateRequested: index => itemWorkspace.sessionManager.setActiveWorkspace(index)
         onCloseRequested: workspace => {
-            if (itemWorkspace.sessionManager.workspaceHasRunningCommand(workspace) && !NativeDialogs.confirmClose()) {
+            if (itemWorkspace.sessionManager.workspaceNeedsCloseConfirmation(workspace) && !NativeDialogs.confirmClose()) {
                 return;
             }
             itemWorkspace.sessionManager.closeWorkspace(workspace);

@@ -513,8 +513,9 @@ and stacked splits; physical `Ctrl+D` is sent to the active shell as EOF.
   history across both panes and workspaces; releasing the modifier commits
   the selected session.
 - Closing a workspace closes all of its sessions and leaves other workspaces
-  running. When the only workspace contains multiple panes, its tab close
-  control closes the active pane and keeps the workspace open. Closing the
-  final remaining session quits the app.
+  running. It asks for confirmation when the workspace holds more than one
+  pane or any pane is running a command (the same rule as closing a window);
+  a lone idle pane closes without prompting. Closing the last workspace
+  closes its window without a second prompt.
 - Exiting one shell removes only its pane; exiting the final shell quits the
   app.

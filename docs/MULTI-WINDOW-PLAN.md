@@ -198,6 +198,12 @@ Confirmation rules (refined):
   one session/tab **or** its single session is blocked by a running command; a
   lone idle tab closes without prompting. Only that (active) window's own
   `sessionManager` is consulted, so the other windows are left untouched.
+- **Close a workspace** (tab ×, tab context menu, Shell ▸ Close Workspace) —
+  same rule scoped to the workspace: confirm when it holds more than one pane
+  or any pane is running a command
+  (`TerminalManager::workspaceNeedsCloseConfirmation`). Confirming closes every
+  pane of the workspace; if it was the window's last workspace, the window then
+  closes without asking again (it no longer holds any session).
 - **Quit** (⌘Q / menu) — **always** confirms, aggregating the total session count
   across **all** windows (`WindowRegistry::totalSessionCount()`), even when each
   window holds a single idle tab.
