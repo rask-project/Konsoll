@@ -300,8 +300,10 @@ Done:
 - Closing a window with more than one session/tab, or with a single session blocked
   by a running command, prompts for confirmation; a lone idle tab closes without
   prompting. Only the active window's sessions are considered.
-- App quit (⌘Q / menu) **always** confirms, aggregating the total session count
-  across **all** windows — even when each window holds a single idle tab.
+- App quit (⌘Q / menu) follows the same rule across **all** windows: it confirms
+  when more than one session would be terminated (total count across windows) or
+  any session is running a command; a single idle tab in a single window quits
+  without prompting.
 - Translucency tint follows each window's own active session background; alpha/blur
   settings are shared.
 - After quit + relaunch, a single fresh window opens with the last active window's
