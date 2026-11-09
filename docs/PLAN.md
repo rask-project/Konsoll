@@ -170,7 +170,7 @@ Rules:
 | Class | Sequences |
 |---|---|
 | Control | `BEL`, `BS`, `HT`, `LF`, `CR`, `SO`/`SI` (charset shift — ignore) |
-| CSI | `CUA` (A/B/C/D), `CPR` (H/f), `ED` (J), `EL` (K), `SGR` (m), `SU/SD` (r/M), `DCH/ICH` (@/P), `XT` (t — only `44;1`/ignore) |
+| CSI | `CUA` (A/B/C/D), `CPR` (H/f), `ED` (J), `EL` (K), `ECH` (X), `SGR` (m), `SU/SD` (r/M), `DCH/ICH` (@/P), `XT` (t — only `44;1`/ignore) |
 | SGR | reset, bold, dim, underline, strike, 16/256/truecolor (38/48/39/49) |
 | ESC | `]` OSC: `0;`/`2;` title, `8` hyperlink (ignore); `M` reverse index; `c` reset; `n` DA (reply `0`); `7`/`8` save/restore cursor |
 | DEC | `?25h/l` cursor visibility, `?1049h/l` alternate screen, `?2004h/l` (bracketed paste — accept but unused) |
@@ -183,6 +183,12 @@ Screen model:
   `WideSpacer` for two-cell characters.
 - Cursor with position + insert/overstrike modes.
 - Scroll regions (`DECSTBM`) honored.
+- **Background Color Erase (BCE):** erased cells (`ED`, `EL`, `ECH`), lines
+  scrolled in (`LF` at the bottom margin, `SU/SD`, `IL/DL`) and columns
+  inserted/deleted (`ICH/DCH`) take the current SGR background, as in
+  xterm/iTerm2 — Neovim paints its theme background this way. The `Terminal`
+  pushes its background to `Screen::setEraseBackground()` after every SGR and
+  on `RIS`; grid creation, resize and full reset use the default background.
 - **Character width** (wcwidth semantics, so rows match what TUIs such as
   OpenTUI/Ink/ncurses lay out):
   - Zero-width code points (`Mn`/`Me`/`Cf` except soft hyphen, Hangul medial
