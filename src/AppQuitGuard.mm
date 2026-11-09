@@ -21,15 +21,14 @@
         konsoll::WindowStateStore::setTerminating(true);
         return NSTerminateNow;
     }
+    // Quitting always confirms: it closes every window and terminates every
+    // session, so it asks even when each window holds a single idle tab.
     const auto &registry = konsoll::WindowRegistry::instance();
-    const bool activeProcess = registry.anySessionHasActiveProcess();
     const int sessions = registry.totalSessionCount();
-    if (activeProcess || sessions > 1) {
-        konsoll::NativeDialogs dialog;
-        const bool confirmed = dialog.confirmQuit();
-        if (!confirmed) {
-            return NSTerminateCancel;
-        }
+    konsoll::NativeDialogs dialog;
+    const bool confirmed = dialog.confirmQuit(sessions);
+    if (!confirmed) {
+        return NSTerminateCancel;
     }
     konsoll::WindowStateStore::setTerminating(true);
     return NSTerminateNow;

@@ -21,8 +21,9 @@ public:
     // anyway, false if they cancelled.
     Q_INVOKABLE bool confirmClose();
 
-    // Presents the native alert before quitting the application.
-    Q_INVOKABLE bool confirmQuit();
+    // Presents the native alert before quitting the application, reporting how
+    // many sessions across all windows will be terminated.
+    Q_INVOKABLE bool confirmQuit(int sessionCount);
     Q_INVOKABLE QVariantMap promptWorkspaceRename(const QString &currentTitle);
     Q_INVOKABLE void approveQuit();
     Q_INVOKABLE void terminateApplication();

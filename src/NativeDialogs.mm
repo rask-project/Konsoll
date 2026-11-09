@@ -50,12 +50,12 @@ bool NativeDialogs::confirmClose()
     return confirmed;
 }
 
-bool NativeDialogs::confirmQuit()
+bool NativeDialogs::confirmQuit(int sessionCount)
 {
     NSAlert *const alert = [[NSAlert alloc] init];
     [alert setAlertStyle:NSAlertStyleWarning];
     [alert setMessageText:@"Quit Konsoll?"];
-    [alert setInformativeText:@"One or more sessions have active processes that will be terminated if you quit."];
+    [alert setInformativeText:[NSString stringWithFormat:@"Quitting will close all windows and terminate %d session(s).", sessionCount]];
     [alert addButtonWithTitle:@"Quit Anyway"];
     [alert addButtonWithTitle:@"Cancel"];
     const bool confirmed = [alert runModal] == NSAlertFirstButtonReturn;

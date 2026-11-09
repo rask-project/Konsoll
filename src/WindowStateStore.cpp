@@ -19,6 +19,13 @@ QString collectionPath()
     QDir().mkpath(dir);
     return dir + QStringLiteral("/index.json");
 }
+
+QString lastWindowPath()
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/windows");
+    QDir().mkpath(dir);
+    return dir + QStringLiteral("/last.txt");
+}
 } // namespace
 
 bool WindowStateStore::s_terminating = false;
@@ -74,6 +81,34 @@ void WindowStateStore::saveCollection(const QVariant &ids) const
     }
 
     file.write(QJsonDocument(object).toJson());
+    file.close();
+}
+
+QString WindowStateStore::lastWindowId() const
+{
+    const QString path = lastWindowPath();
+    if (!QFile::exists(path)) {
+        return {};
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+
+    const QByteArray data = file.readAll().trimmed();
+    file.close();
+    return QString::fromUtf8(data);
+}
+
+void WindowStateStore::saveLastWindowId(const QString &id) const
+{
+    QFile file(lastWindowPath());
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return;
+    }
+
+    file.write(id.toUtf8());
     file.close();
 }
 

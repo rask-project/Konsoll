@@ -38,6 +38,17 @@ Window {
     }
 
     onClosing: close => {
+        // Ask before closing when the window holds more than one session/tab,
+        // or when its single session is blocked by a running command. A lone
+        // idle tab closes without prompting. Only this (active) window's
+        // manager is consulted, so the other windows are left untouched.
+        const needsConfirm = sessionManager.sessionCount() > 1
+                || sessionManager.anySessionHasRunningCommand();
+        if (!WindowStateStore.terminating() && needsConfirm
+                && !NativeDialogs.confirmClose()) {
+            close.accepted = false;
+            return;
+        }
         close.accepted = true;
         appWindow.windowManager.windowClosed(appWindow);
     }
@@ -47,6 +58,11 @@ Window {
         function onWindowShouldClose() {
             appWindow.windowManager.closeWindow(appWindow);
         }
+    }
+
+    onActiveChanged: {
+        if (active)
+            appWindow.windowManager.noteActiveWindow(appWindow);
     }
 
     // Save only the normal window geometry. Maximized and fullscreen sizes are
@@ -63,16 +79,15 @@ Window {
     onYChanged: windowState.y = y;
 
     Component.onCompleted: {
-        const restored = windowState.load();
-        if (restored) {
+        // Restore only the window geometry (size + location). Sessions always
+        // start fresh — the saved layout is never restored.
+        if (windowState.load()) {
             appWindow.width = windowState.width;
             appWindow.height = windowState.height;
             appWindow.x = windowState.x;
             appWindow.y = windowState.y;
         }
-        if (windowState.hasLayout) {
-            sessionManager.restoreState(windowState.layout);
-        } else if (sessionManager.workspaces.length === 0) {
+        if (sessionManager.workspaces.length === 0) {
             sessionManager.start();
         }
     }

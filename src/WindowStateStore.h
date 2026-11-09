@@ -30,6 +30,13 @@ public:
     // Persist the collection of open window IDs.
     Q_INVOKABLE void saveCollection(const QVariant &ids) const;
 
+    // The ID of the most recently active window, whose geometry is restored as
+    // the single window on the next launch.
+    Q_INVOKABLE QString lastWindowId() const;
+
+    // Persist the most recently active window's ID.
+    Q_INVOKABLE void saveLastWindowId(const QString &id) const;
+
     // True while the app is terminating (a confirmed quit), so close handlers can
     // skip dropping per-window state that the quit already saved.
     Q_INVOKABLE bool terminating() const;

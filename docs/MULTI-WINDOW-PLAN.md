@@ -1,7 +1,7 @@
 # Konsoll — Multi-Window Plan
 
-> Multi-window support and per-window restoration for Konsoll.
-> Last updated: 2026-11-06
+> Multi-window support and last-window geometry restoration for Konsoll.
+> Last updated: 2026-11-09
 > Status: Phases 1–4 implemented; manual acceptance (Phase 5) pending
 
 ## 1. Goal
@@ -9,12 +9,14 @@
 Let the user open, manage, and close **multiple independent windows**, each with
 its own set of workspaces/sessions, while the app behaves like a native macOS
 terminal (iTerm2-style): a shared app menu that acts on the focused window and
-per-window state restored on relaunch.
+the last active window's geometry restored on relaunch.
 
 Confirmed scope decisions:
 
-- **Window state:** each window persists its own geometry + session layout and is
-  restored on relaunch (iTerm2-style).
+- **Window state:** each window persists its own geometry + session layout, but on
+  relaunch only the **last active window's geometry** (size + location) is
+  restored, into a **single fresh window**. Sessions always start fresh — the saved
+  session layout is never restored.
 - **Last window:** closing the last window quits the app. Closing one window while
   others remain open leaves those windows and sessions untouched.
 
@@ -33,7 +35,9 @@ Confirmed scope decisions:
   (no longer in `AppSettings`, which now holds only font + translucency). Each
   `WindowState` persists to its own `windows/<id>.json`; the app-level
   `WindowStateStore` singleton owns the persisted collection of open window IDs
-  (`windows/index.json`).
+  (`windows/index.json`) and the ID of the last active window
+  (`windows/last.txt`). On relaunch only that last active window's geometry is
+  restored, into a single fresh window — sessions always start fresh.
 - `main.cpp` enables Qt quit on the last window. The AppKit delegate returns `NO`
   from `applicationShouldTerminateAfterLastWindowClosed:` so Qt is the sole
   owner of that shutdown transition.
@@ -186,6 +190,15 @@ When a manager loses its final session, it requests closure of its own window;
 that event closes that window only; the app exits naturally when it was the last
 window.
 
+Confirmation rules (refined):
+- **Close a window** (`onClosing`) — confirm only when the window holds more than
+  one session/tab **or** its single session is blocked by a running command; a
+  lone idle tab closes without prompting. Only that (active) window's own
+  `sessionManager` is consulted, so the other windows are left untouched.
+- **Quit** (⌘Q / menu) — **always** confirms, aggregating the total session count
+  across **all** windows (`WindowRegistry::totalSessionCount()`), even when each
+  window holds a single idle tab.
+
 ### Phase 4 — Per-window state restoration (iTerm2-style) — done
 
 Files: `src/WindowState.h/.cpp` (new), `src/WindowStateStore.h/.cpp` (new,
@@ -215,15 +228,17 @@ Done:
   (orientation + children), and each session's working directory;
   `restoreState()` recreates sessions via `session->start(dir)`.
 - **Save/restore wiring** — `Main.qml::requestQuit()` → `saveAllOpenWindows()`
-  (saves every open window + the collection) → `terminateApplication()`;
-  `windowClosed(w)` removes the ID + file on a mid-session close (only when not
-  terminating); `Component.onCompleted` reopens one window per persisted ID (or a
-  single fresh window when none). `TerminalWindow` calls `windowState.load()` then
-  `sessionManager.restoreState(windowState.layout)` on launch (fresh session when
-  no saved layout).
-- **Robustness** — missing/corrupt `windows/<id>.json` and missing/corrupt
-  `index.json` are handled gracefully (fresh window); restored sessions start in
-  their saved working directories.
+  (saves every open window + the collection + the last active window ID) →
+  `terminateApplication()`; `windowClosed(w)` removes the ID + file on a
+  mid-session close (only when not terminating) and re-points the last active
+  window at a remaining window (or none); `Component.onCompleted` reopens a single
+  window keyed on the last active window's ID (or a fresh ID when none).
+  `TerminalWindow` calls `windowState.load()` and restores only the geometry
+  (width/height/x/y) in `Component.onCompleted` — it never calls
+  `sessionManager.restoreState()`, so sessions always start fresh.
+- **Robustness** — a missing/corrupt `windows/<id>.json`, a missing/corrupt
+  `index.json`, and a missing/unknown `last.txt` are all handled gracefully (a
+  single fresh window opens).
 
 ### Phase 5 — Acceptance + polish — pending
 
@@ -247,10 +262,12 @@ Done:
   only, no exceptions, `std::` algorithms, members ordered heaviest-alignment first
   (Debug enables `-Wpadded`), and clang-tidy clean (cognitive complexity, no
   do-while, no `NOLINT`).
-- **Restoration size.** Per-window layout serialization (split tree + working
-  directories) is implemented in C++ (`serializeState`/`restoreState`); stable
-  per-window IDs, the persisted collection, and the save/restore wiring into QML
-  are all done. Keep restoration a focused, testable unit.
+- **Restoration scope.** Per-window layout serialization (split tree + working
+  directories) is implemented in C++ (`serializeState`/`restoreState`) but is no
+  longer used on relaunch: only the last active window's geometry is restored,
+  into a single fresh window. Keep that geometry-only restore a focused, testable
+  unit; the layout serialization remains available should a full restore be wanted
+  again.
 
 ## 8. Acceptance criteria
 
@@ -264,10 +281,14 @@ Done:
   remaining windows and sessions intact.
 - Closing the last workspace/session in one window closes only that window; other
   windows remain intact. Closing the final window exits the app cleanly.
-- App quit (⌘Q / menu) still honors the running-command confirm dialog, aggregating
-  across **all** windows.
+- Closing a window with more than one session/tab, or with a single session blocked
+  by a running command, prompts for confirmation; a lone idle tab closes without
+  prompting. Only the active window's sessions are considered.
+- App quit (⌘Q / menu) **always** confirms, aggregating the total session count
+  across **all** windows — even when each window holds a single idle tab.
 - Translucency tint follows each window's own active session background; alpha/blur
   settings are shared.
-- After quit + relaunch, every previously open window is restored with its geometry
-  and its sessions restarted in the same working directories.
+- After quit + relaunch, a single fresh window opens with the last active window's
+  geometry (size + location); sessions always start fresh (the saved layout is not
+  restored).
 - Shutdown terminates/reaps every shell in every window (no orphaned processes).

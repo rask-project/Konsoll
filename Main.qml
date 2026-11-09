@@ -15,6 +15,10 @@ Item {
     property var windows: []
     property TerminalWindow createdWindow: null
 
+    // The ID of the most recently active window; its geometry is the only
+    // per-window state restored on the next launch.
+    property string lastActiveWindowId: ""
+
     Component {
         id: windowTemplate
 
@@ -34,9 +38,14 @@ Item {
         });
         const w = manager.createdWindow;
         manager.windows = manager.windows.concat([w]);
+        manager.lastActiveWindowId = w.windowId;
         manager.persistCollection();
         w.show();
         return w;
+    }
+
+    function noteActiveWindow(w: TerminalWindow) {
+        manager.lastActiveWindowId = w.windowId;
     }
 
     function closeWindow(w: TerminalWindow) {
@@ -51,11 +60,20 @@ Item {
     function saveAllOpenWindows() {
         for (const w of manager.windows)
             w.windowState.save();
+        if (manager.lastActiveWindowId)
+            WindowStateStore.saveLastWindowId(manager.lastActiveWindowId);
         manager.persistCollection();
     }
 
     function windowClosed(w: TerminalWindow) {
         manager.windows = manager.windows.filter(window => window !== w);
+        // If the closed window was the last active one, point the restoration
+        // target at a remaining window (or none) so we never persist a stale ID.
+        if (manager.lastActiveWindowId === w.windowId) {
+            manager.lastActiveWindowId = manager.windows.length > 0
+                    ? manager.windows[0].windowId
+                    : "";
+        }
         if (!WindowStateStore.terminating()) {
             w.windowState.removeState();
             manager.persistCollection();
@@ -64,10 +82,11 @@ Item {
     }
 
     Component.onCompleted: {
-        const ids = WindowStateStore.listWindowIds();
-        if (ids.length > 0) {
-            for (const id of ids)
-                manager.openWindow(id);
+        // Reopen a single window. Only the last active window's geometry is
+        // restored (via its saved state); sessions always start fresh.
+        const lastId = WindowStateStore.lastWindowId();
+        if (lastId) {
+            manager.openWindow(lastId);
         } else {
             manager.openWindow();
         }
