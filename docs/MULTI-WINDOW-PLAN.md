@@ -82,7 +82,7 @@ Mapping to Konsoll:
   - creates the first window on completion and tracks the live window list;
   - exposes `openWindow()` / `closeWindow()`;
   - holds the shared `Settings` (font, translucency alpha/blur) and the app-global
-    dialogs (`AboutDialog`, `SettingsDialog`).
+    native `AboutDialog`.
 - **`TerminalWindow.qml`** (new) is the **window template** — a `Window` containing
   everything that is per-window today: its own `TerminalManager` (the
   `SessionManager` for that window), `TerminalWorkspace`, `WindowTranslucency`,
@@ -118,9 +118,11 @@ the key window."
    competing termination path.
 5. **Settings split.** Font + translucency alpha/blur are app-global (shared).
    Window geometry + session layout are per-window (restored, Phase 4).
-6. **Dialogs split.** `AboutDialog`/`SettingsDialog` are app-global (owned by the
-   manager, open over the active window). `SaveTextDialog` is per-window (it acts on
-   that window's session).
+6. **Dialogs split.** `AboutDialog` (native AppKit panel) is app-global, owned by
+   the manager. `SettingsDialog` is a Qt Quick `Popup`, which only opens inside a
+   window, so each window owns one bound to the shared `Settings` (a single
+   instance in the windowless manager `Item` silently never opened).
+   `SaveTextDialog` is per-window (it acts on that window's session).
 
 ## 6. Implementation phases
 
@@ -158,7 +160,8 @@ Files: `Main.qml`, new `TerminalWindow.qml`, `TerminalWorkspace.qml`,
   window-scoped shortcuts.
 - `Main.qml` becomes an invisible `Item` manager: a `Component` for the window
   template, first-window creation on completion, the live window list,
-  `openWindow()`/`closeWindow()`, and the shared `Settings` + app-global dialogs.
+  `openWindow()`/`closeWindow()`, the shared `Settings` and the app-global
+  `AboutDialog`.
 - Thread the per-window `sessionManager` through
   `TerminalWorkspace` → `TerminalPaneLayout` → `TerminalView` →
   `TerminalTabButton`, replacing the global `SessionManager` references with the
@@ -255,9 +258,10 @@ Done:
   there is no windowless state that needs an in-process reopen action.
 - **`Settings` (QSettings) location.** It lives in `Main.qml`'s manager root and is
   shared by all windows; keep the `category`/keys unchanged.
-- **Dialog parenting — manual verification pending.** `SettingsDialog`/`AboutDialog`
-  are app-global and should open over the active window; `SaveTextDialog` is
-  per-window and should restore focus to that window's terminal.
+- **Dialog parenting.** `SettingsDialog` is per-window (verified: Cmd+, and
+  Settings… open it over that window); `AboutDialog` is the native app-global
+  panel; `SaveTextDialog` is per-window and should restore focus to that
+  window's terminal.
 - **C++ rules.** Keep `WindowRegistry` conformant: smart pointers
   only, no exceptions, `std::` algorithms, members ordered heaviest-alignment first
   (Debug enables `-Wpadded`), and clang-tidy clean (cognitive complexity, no

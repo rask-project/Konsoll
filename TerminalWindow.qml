@@ -9,7 +9,6 @@ Window {
     required property Main windowManager
     required property AppSettings settings
     required property AboutDialog aboutDialog
-    required property SettingsDialog settingsDialog
     property string windowId: ""
     readonly property WindowState windowState: windowStateObject
 
@@ -102,10 +101,7 @@ Window {
     Shortcut {
         sequence: "Meta+,"
         context: Qt.WindowShortcut
-        onActivated: {
-            appWindow.settingsDialog.translucency = translucency;
-            appWindow.settingsDialog.open();
-        }
+        onActivated: settingsDialog.open()
     }
 
     Shortcut {
@@ -279,10 +275,7 @@ Window {
 
             MenuItem {
                 text: qsTr("Settings…")
-                onTriggered: {
-                    appWindow.settingsDialog.translucency = translucency;
-                    appWindow.settingsDialog.open();
-                }
+                onTriggered: settingsDialog.open()
             }
 
             MenuSeparator {}
@@ -369,6 +362,14 @@ Window {
 
     SaveTextDialog {
         id: saveTextDialog
+    }
+
+    // A Popup opens only inside a window, so each window owns its dialog; the
+    // preferences object itself is shared app-wide (Main.qml).
+    SettingsDialog {
+        id: settingsDialog
+        preferences: appWindow.settings
+        translucency: translucency
     }
 
     WindowTranslucency {

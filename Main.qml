@@ -7,9 +7,6 @@ Item {
     id: manager
 
     readonly property AboutDialog aboutDialog: AboutDialog {}
-    readonly property SettingsDialog settingsDialog: SettingsDialog {
-        preferences: manager.settings
-    }
     property AppSettings settings: AppSettings {}
 
     property var windows: []
@@ -26,7 +23,6 @@ Item {
             windowManager: manager
             settings: manager.settings
             aboutDialog: manager.aboutDialog
-            settingsDialog: manager.settingsDialog
         }
     }
 
