@@ -449,9 +449,12 @@ void TerminalBackend::onFrameTimer()
 
 void TerminalBackend::scheduleFrame()
 {
-    if (!m_frameTimer.isActive()) {
-        m_frameTimer.start();
-    }
+    // Trailing-edge coalescing: restarting the timer on every chunk makes the
+    // repaint land ~16ms after the LAST chunk of a multi-chunk PTY update, not
+    // the first. A leading-edge start (only when inactive) fires mid-update and
+    // paints a torn frame — cleared-but-not-yet-rewritten cells show the desktop
+    // through the translucency ("white blocks") and half-shifted rows look skewed.
+    m_frameTimer.start();
 }
 
 void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
