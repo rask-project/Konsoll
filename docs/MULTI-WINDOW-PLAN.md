@@ -2,7 +2,7 @@
 
 > Multi-window support and last-window geometry restoration for Konsoll.
 > Last updated: 2026-11-09
-> Status: Phases 1–4 implemented; manual acceptance (Phase 5) pending
+> Status: complete — all phases implemented; Phase 5 manually accepted 2026-11-09
 
 ## 1. Goal
 
@@ -170,7 +170,7 @@ Files: `Main.qml`, new `TerminalWindow.qml`, `TerminalWorkspace.qml`,
   "New Window"/"Close Window" menu items.
 - `CMakeLists.txt`: add `TerminalWindow.qml` to `QML_FILES`.
 
-### Phase 3 — App-level window management + lifecycle — implemented; needs manual acceptance pass
+### Phase 3 — App-level window management + lifecycle — implemented
 
 Files: `src/AppQuitGuard.mm`, `main.cpp`.
 
@@ -261,12 +261,11 @@ Done:
   `index.json`, and a missing/unknown `last.txt` are all handled gracefully (a
   single fresh window opens).
 
-### Phase 5 — Acceptance + polish — pending
+### Phase 5 — Acceptance + polish — done (accepted 2026-11-09)
 
-- [ ] Manual pass over §8; fix focus, translucency, and menu-dispatch regressions.
-- [ ] Verify last-window close exits without the delayed crash report mentioned
-  during implementation; this has not yet been reproduced after the shutdown fix.
-- [ ] Verify shutdown terminates and reaps every shell across all windows.
+- [x] Manual pass over §8; no focus, translucency, or menu-dispatch regressions.
+- [x] Last-window close exits cleanly; the delayed crash report was not reproduced.
+- [x] Shutdown terminates and reaps every shell across all windows.
 
 ## 7. Risks and open details
 
