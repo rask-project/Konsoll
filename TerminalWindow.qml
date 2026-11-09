@@ -41,10 +41,8 @@ Window {
         // or when its single session is blocked by a running command. A lone
         // idle tab closes without prompting. Only this (active) window's
         // manager is consulted, so the other windows are left untouched.
-        const needsConfirm = sessionManager.sessionCount() > 1
-                || sessionManager.anySessionHasRunningCommand();
-        if (!WindowStateStore.terminating() && needsConfirm
-                && !NativeDialogs.confirmClose()) {
+        const needsConfirm = sessionManager.sessionCount() > 1 || sessionManager.anySessionHasRunningCommand();
+        if (!WindowStateStore.terminating() && needsConfirm && !NativeDialogs.confirmClose()) {
             close.accepted = false;
             return;
         }
@@ -81,13 +79,12 @@ Window {
         interval: 500
         onTriggered: {
             if (appWindow.visibility === Window.Windowed) {
-                windowState.x = appWindow.x;
-                windowState.y = appWindow.y;
-                windowState.width = appWindow.width;
-                windowState.height = appWindow.height;
+                appWindow.windowState.x = appWindow.x;
+                appWindow.windowState.y = appWindow.y;
+                appWindow.windowState.width = appWindow.width;
+                appWindow.windowState.height = appWindow.height;
             }
-            if (appWindow.visibility !== Window.Hidden
-                    && appWindow.windowManager.lastActiveWindowId === appWindow.windowId)
+            if (appWindow.visibility !== Window.Hidden && appWindow.windowManager.lastActiveWindowId === appWindow.windowId)
                 appWindow.windowManager.saveLastActiveWindow();
         }
     }
@@ -115,13 +112,6 @@ Window {
         if (sessionManager.workspaces.length === 0) {
             sessionManager.start();
         }
-    }
-
-    Shortcut {
-        sequence: "Ctrl+T"
-        context: Qt.WindowShortcut
-        autoRepeat: false
-        onActivated: sessionManager.addWorkspace()
     }
 
     Shortcut {
@@ -164,6 +154,28 @@ Window {
         context: Qt.WindowShortcut
         autoRepeat: false
         onActivated: sessionManager.navigateActivationHistory(-1)
+    }
+
+    // Prompts for a name first; cancelling creates nothing, an empty name
+    // falls back to the unnamed behavior of Ctrl+T.
+    Action {
+        id: newNamedWorkspaceAction
+
+        text: qsTr("New Named Workspace…")
+        shortcut: "Ctrl+Shift+T"
+        onTriggered: {
+            const result = NativeDialogs.promptWorkspaceName();
+            if (result.accepted)
+                sessionManager.addNamedWorkspace(result.title);
+        }
+    }
+
+    Action {
+        id: newWorkspaceAction
+
+        text: qsTr("New Workspace…")
+        shortcut: "Ctrl+T"
+        onTriggered: sessionManager.addWorkspace()
     }
 
     Action {
@@ -313,6 +325,16 @@ Window {
 
         Menu {
             title: qsTr("Shell")
+
+            MenuItem {
+                action: newNamedWorkspaceAction
+            }
+
+            MenuItem {
+                action: newWorkspaceAction
+            }
+
+            MenuSeparator {}
 
             MenuItem {
                 action: splitHorizontallyAction

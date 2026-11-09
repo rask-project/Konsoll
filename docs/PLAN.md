@@ -495,8 +495,11 @@ The active session is tracked independently from the active workspace. The
 activation history stores session identities, so `Ctrl+Tab`/`Meta+Tab` and
 their Shift variants navigate across panes and workspaces without depending
 on mutable list indices. Selecting a history entry activates its workspace
-and focuses its terminal. `Ctrl+T` creates a workspace; `Ctrl+W` closes the
-current workspace. On macOS, `Cmd+D` and `Cmd+Shift+D` create side-by-side
+and focuses its terminal. `Ctrl+T` creates a workspace; `Ctrl+Shift+T`
+(also in the Shell menu as "New Named Workspace…") prompts for a name and
+creates a named one (cancelling creates nothing, an empty name falls back
+to the unnamed behavior); `Ctrl+W` closes the current
+workspace. On macOS, `Cmd+D` and `Cmd+Shift+D` create side-by-side
 and stacked splits; physical `Ctrl+D` is sent to the active shell as EOF.
 
 ### 17.1 Acceptance criteria

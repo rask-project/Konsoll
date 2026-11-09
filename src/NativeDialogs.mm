@@ -35,6 +35,32 @@ QString toQString(NSString *value)
 {
     return QString::fromUtf8([value UTF8String]);
 }
+
+// Shared "workspace name" prompt: an informational alert with a single text
+// field. Returns {accepted, title}; title is empty when the user cancels.
+QVariantMap workspaceNamePrompt(
+    const char *message, const char *informative, const char *confirmTitle, const QString &initialTitle)
+{
+    NSAlert *const alert = [[NSAlert alloc] init];
+    [alert setAlertStyle:NSAlertStyleInformational];
+    [alert setMessageText:[NSString stringWithUTF8String:message]];
+    [alert setInformativeText:[NSString stringWithUTF8String:informative]];
+    [alert addButtonWithTitle:[NSString stringWithUTF8String:confirmTitle]];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    NSTextField *const nameField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
+    [nameField setStringValue:toNSString(initialTitle)];
+    [nameField setPlaceholderString:@"Workspace name"];
+    [nameField setAutoresizingMask:NSViewWidthSizable];
+    [alert setAccessoryView:nameField];
+    [[alert window] setInitialFirstResponder:nameField];
+
+    const bool accepted = [alert runModal] == NSAlertFirstButtonReturn;
+    const QString title = accepted ? toQString([nameField stringValue]) : QString{};
+    [nameField release];
+    [alert release];
+    return {{QStringLiteral("accepted"), accepted}, {QStringLiteral("title"), title}};
+}
 } // namespace
 
 bool NativeDialogs::confirmClose()
@@ -65,25 +91,12 @@ bool NativeDialogs::confirmQuit(int sessionCount)
 
 QVariantMap NativeDialogs::promptWorkspaceRename(const QString &currentTitle)
 {
-    NSAlert *const alert = [[NSAlert alloc] init];
-    [alert setAlertStyle:NSAlertStyleInformational];
-    [alert setMessageText:@"Rename Workspace"];
-    [alert setInformativeText:@"Enter a name for this workspace."];
-    [alert addButtonWithTitle:@"Rename"];
-    [alert addButtonWithTitle:@"Cancel"];
+    return workspaceNamePrompt("Rename Workspace", "Enter a name for this workspace.", "Rename", currentTitle);
+}
 
-    NSTextField *const nameField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
-    [nameField setStringValue:toNSString(currentTitle)];
-    [nameField setPlaceholderString:@"Workspace name"];
-    [nameField setAutoresizingMask:NSViewWidthSizable];
-    [alert setAccessoryView:nameField];
-    [[alert window] setInitialFirstResponder:nameField];
-
-    const bool accepted = [alert runModal] == NSAlertFirstButtonReturn;
-    const QString title = accepted ? toQString([nameField stringValue]) : QString{};
-    [nameField release];
-    [alert release];
-    return {{QStringLiteral("accepted"), accepted}, {QStringLiteral("title"), title}};
+QVariantMap NativeDialogs::promptWorkspaceName()
+{
+    return workspaceNamePrompt("New Workspace", "Enter a name for the new workspace.", "Create", QString{});
 }
 
 void NativeDialogs::approveQuit()

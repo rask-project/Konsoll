@@ -25,6 +25,7 @@ public:
     // many sessions across all windows will be terminated.
     Q_INVOKABLE bool confirmQuit(int sessionCount);
     Q_INVOKABLE QVariantMap promptWorkspaceRename(const QString &currentTitle);
+    Q_INVOKABLE QVariantMap promptWorkspaceName();
     Q_INVOKABLE void approveQuit();
     Q_INVOKABLE void terminateApplication();
     static bool consumeQuitApproval();

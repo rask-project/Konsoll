@@ -110,6 +110,7 @@ public:
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void addWorkspace();
+    Q_INVOKABLE void addNamedWorkspace(const QString &title);
     Q_INVOKABLE void renameWorkspace(QObject *workspace, const QString &title);
     Q_INVOKABLE void closeWorkspace(QObject *workspace);
     Q_INVOKABLE bool workspaceHasRunningCommand(QObject *workspace) const;
@@ -139,6 +140,7 @@ signals:
 
 private:
     TerminalBackend *createSession();
+    void createWorkspace(const QString &customTitle);
     TerminalLayoutNode *findLeaf(TerminalLayoutNode *node, TerminalBackend *session) const;
     TerminalBackend *firstSession(TerminalLayoutNode *node) const;
     TerminalBackend *mostRecentlyActiveSession() const;

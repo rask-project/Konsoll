@@ -186,12 +186,23 @@ void TerminalManager::start()
 
 void TerminalManager::addWorkspace()
 {
+    createWorkspace(QString{});
+}
+
+void TerminalManager::addNamedWorkspace(const QString &title)
+{
+    createWorkspace(title);
+}
+
+void TerminalManager::createWorkspace(const QString &customTitle)
+{
     const QString workingDirectory = (m_activeSession != nullptr) ? m_activeSession->currentDirectory() : QString{};
     TerminalBackend *session = createSession();
     auto workspace = std::make_unique<TerminalWorkspaceModel>(
         QStringLiteral("Workspace %1").arg(m_nextWorkspaceNumber++),
         std::make_unique<TerminalLayoutNode>(session)
     );
+    workspace->setCustomTitle(customTitle);
     m_workspaces.push_back(std::move(workspace));
     emit workspacesChanged();
     emit activeWorkspaceChanged();

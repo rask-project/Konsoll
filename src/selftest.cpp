@@ -174,6 +174,21 @@ int runSelfTest()
     auto *c = activeSession(manager);
     check(failures, manager.sessionCount() == 3, "three sessions created");
 
+    // Named workspace (Ctrl+Shift+T / Cmd+Shift+T): the custom title wins
+    // over the directory, and an empty title stays unnamed.
+    manager.addNamedWorkspace(QStringLiteral("Named WS"));
+    {
+        auto *named = static_cast<TerminalWorkspaceModel *>(manager.workspaces().last().value<QObject *>());
+        check(failures, named != nullptr && named->title() == QStringLiteral("Named WS"),
+              "named workspace: custom title shown");
+    }
+    manager.addNamedWorkspace(QString{});
+    {
+        auto *unnamed = static_cast<TerminalWorkspaceModel *>(manager.workspaces().last().value<QObject *>());
+        check(failures, unnamed != nullptr && unnamed->customTitle().isEmpty(),
+              "named workspace: empty title stays unnamed");
+    }
+
     a->writeText("seq 1 5000\n");
     b->writeText("seq 1 5000\n");
     c->writeText("seq 1 5000\n");
