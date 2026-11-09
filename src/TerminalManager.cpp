@@ -16,6 +16,27 @@
 namespace konsoll
 {
 
+namespace
+{
+// Removes the matching objects from `objects` (keeping the order of the rest)
+// and destroys them on the next event-loop turn instead of right away. QML may
+// still hold them on the current JS stack -- e.g. the tab's close handler that
+// started this -- and if the GC runs before that handler returns (the model
+// change below recreates delegates and allocates), it would mark freed
+// memory. Ownership passes to Qt's deferred deletion.
+template <typename T, typename Pred>
+void eraseDeferred(std::vector<std::unique_ptr<T>> &objects, const QObject *receiver, Pred pred)
+{
+    auto const removed =
+        std::ranges::stable_partition(objects, [&pred](const std::unique_ptr<T> &object) { return !pred(object); });
+    std::ranges::for_each(removed, [receiver](std::unique_ptr<T> &object) {
+        QObject::disconnect(object.get(), nullptr, receiver, nullptr);
+        object.release()->deleteLater();
+    });
+    objects.erase(removed.begin(), removed.end());
+}
+} // namespace
+
 TerminalLayoutNode::TerminalLayoutNode(TerminalBackend *session) : m_session(session) {}
 
 TerminalLayoutNode::TerminalLayoutNode(
@@ -309,9 +330,9 @@ void TerminalManager::closeWorkspace(QObject *workspaceObject)
     for (TerminalBackend *session : removedSessions) {
         pruneSession(session);
         removeSessionFromLayouts(session);
-        std::erase_if(m_sessions, [session](const auto &candidate) { return candidate.get() == session; });
+        eraseDeferred(m_sessions, this, [session](const auto &candidate) { return candidate.get() == session; });
     }
-    m_workspaces.erase(it);
+    eraseDeferred(m_workspaces, this, [workspace](const auto &candidate) { return candidate.get() == workspace; });
     if (wasActive && !m_workspaces.empty()) {
         TerminalBackend *nextSession = mostRecentlyActiveSession();
         if (nextSession == nullptr) {
@@ -396,8 +417,8 @@ void TerminalManager::closeSession(QObject *sessionObject)
         }
     });
 
-    std::erase_if(m_sessions, [session](const auto &candidate) { return candidate.get() == session; });
-    std::erase_if(m_workspaces, [](const auto &workspace) { return workspace->root() == nullptr; });
+    eraseDeferred(m_sessions, this, [session](const auto &candidate) { return candidate.get() == session; });
+    eraseDeferred(m_workspaces, this, [](const auto &workspace) { return workspace->root() == nullptr; });
 
     if (wasActive) {
         setActiveSession(nextActiveSession(nextInClosingWorkspace), false);
