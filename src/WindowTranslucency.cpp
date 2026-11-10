@@ -44,20 +44,20 @@ void WindowTranslucency::setAlpha(qreal alpha)
 
 void WindowTranslucency::setBlurEnabled(bool enabled)
 {
-    if (m_blurEnabled == enabled) {
+    if (blurEnabled() == enabled) {
         return;
     }
-    m_blurEnabled = enabled;
+    setFlag(BlurEnabled, enabled);
     emit blurEnabledChanged();
     apply();
 }
 
 void WindowTranslucency::setFullScreen(bool fullScreen)
 {
-    if (m_fullScreen == fullScreen) {
+    if (this->fullScreen() == fullScreen) {
         return;
     }
-    m_fullScreen = fullScreen;
+    setFlag(FullScreen, fullScreen);
     emit fullScreenChanged();
     apply();
 }
@@ -79,8 +79,8 @@ void WindowTranslucency::apply() const
     }
 
     makeWindowTranslucent(w->winId(), QColor::fromRgba(m_color), m_alpha);
-    setWindowBlurEnabled(w->winId(), m_blurEnabled, m_alpha);
-    installEmptyWindowToolbar(w->winId(), !m_fullScreen);
+    setWindowBlurEnabled(w->winId(), blurEnabled(), m_alpha);
+    installEmptyWindowToolbar(w->winId(), !fullScreen());
 }
 
 } // namespace konsoll

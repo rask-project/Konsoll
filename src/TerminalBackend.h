@@ -322,6 +322,7 @@ private:
     bool m_hasForeground{false};
     bool m_focused{true};
     SessionState m_state{SessionState::Created};
+    unsigned char m_reportedKeyboardFlags{0}; // keyboardFlags last signalled to QML
 };
 
 } // namespace konsoll

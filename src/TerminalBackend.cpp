@@ -289,7 +289,6 @@ bool TerminalBackend::close()
 void TerminalBackend::onData(const QByteArray &data)
 {
     const bool wasMouseTracking = mouseTracking();
-    const int keyboardFlagsBefore = keyboardFlags();
     const bool wasMouseMotionTracking = mouseMotionTracking();
     const bool wasCommandRunning = commandRunning();
     m_terminal->write(data);
@@ -307,7 +306,8 @@ void TerminalBackend::onData(const QByteArray &data)
     if (wasCommandRunning != commandRunning()) {
         emit commandRunningChanged();
     }
-    if (keyboardFlagsBefore != keyboardFlags()) {
+    if (m_reportedKeyboardFlags != keyboardFlags()) {
+        m_reportedKeyboardFlags = static_cast<unsigned char>(keyboardFlags());
         emit keyboardFlagsChanged();
     }
     // Query replies go out in the order the queries arrived: Neovim pairs

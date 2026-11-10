@@ -65,7 +65,7 @@ public:
     QString title() const;
     QString customTitle() const { return m_customTitle; }
     void setCustomTitle(QString title);
-    bool alerting() const { return m_alerting; }
+    bool alerting() const { return m_alerting != 0; }
     void setAlerting(bool value);
     QObject *rootNode() const { return m_root.get(); }
     std::unique_ptr<TerminalLayoutNode> &root() { return m_root; }
@@ -83,7 +83,8 @@ private:
     TerminalBackend *m_lastActiveSession{};
     QString m_title;
     QString m_customTitle;
-    bool m_alerting{};
+    // 0 / 1; pointer-sized like the members above, so the class has no padding.
+    std::size_t m_alerting{};
 };
 
 class TerminalManager : public QObject

@@ -26,10 +26,10 @@ public:
     qreal alpha() const { return m_alpha; }
     void setAlpha(qreal alpha);
 
-    bool blurEnabled() const { return m_blurEnabled; }
+    bool blurEnabled() const { return (m_flags & BlurEnabled) != 0; }
     void setBlurEnabled(bool enabled);
 
-    bool fullScreen() const { return m_fullScreen; }
+    bool fullScreen() const { return (m_flags & FullScreen) != 0; }
     void setFullScreen(bool fullScreen);
 
     Q_INVOKABLE void setWindowMovable(bool movable);
@@ -42,13 +42,16 @@ signals:
     void fullScreenChanged();
 
 private:
+    static constexpr unsigned int BlurEnabled = 1u << 0;
+    static constexpr unsigned int FullScreen = 1u << 1;
+
     void apply() const;
+    void setFlag(unsigned int flag, bool on) { m_flags = on ? (m_flags | flag) : (m_flags & ~flag); }
 
     QObject *m_window = nullptr;
     qreal m_alpha = 0.85;
     uint m_color = 0xff141414;
-    bool m_blurEnabled = true;
-    bool m_fullScreen = false;
+    unsigned int m_flags = BlurEnabled; // BlurEnabled | FullScreen
 };
 
 } // namespace konsoll

@@ -95,10 +95,10 @@ void TerminalWorkspaceModel::setCustomTitle(QString title)
 
 void TerminalWorkspaceModel::setAlerting(bool value)
 {
-    if (m_alerting == value) {
+    if (alerting() == value) {
         return;
     }
-    m_alerting = value;
+    m_alerting = value ? 1 : 0;
     emit alertingChanged();
 }
 
@@ -687,10 +687,10 @@ void TerminalManager::removeSessionFromLayouts(TerminalBackend *session)
 {
     struct Frame {
         std::unique_ptr<TerminalLayoutNode> *slot;
-        bool entered;
+        std::size_t entered; // 0 / 1, pointer-sized: no padding
     };
     const auto enter = [session](Frame &frame, std::vector<Frame> &stack) {
-        frame.entered = true;
+        frame.entered = 1;
         auto *node = (*frame.slot).get();
         if (node == nullptr) {
             return;
@@ -704,11 +704,11 @@ void TerminalManager::removeSessionFromLayouts(TerminalBackend *session)
         }
 
         if (node->m_second) {
-            stack.push_back({.slot = &node->m_second, .entered = false});
+            stack.push_back({.slot = &node->m_second, .entered = 0});
         }
 
         if (node->m_first) {
-            stack.push_back({.slot = &node->m_first, .entered = false});
+            stack.push_back({.slot = &node->m_first, .entered = 0});
         }
     };
 
@@ -727,11 +727,11 @@ void TerminalManager::removeSessionFromLayouts(TerminalBackend *session)
 
     for (const auto &workspace : m_workspaces) {
         std::vector<Frame> stack;
-        stack.push_back({.slot = &workspace->root(), .entered = false});
+        stack.push_back({.slot = &workspace->root(), .entered = 0});
 
         while (!stack.empty()) {
             auto &frame = stack.back();
-            if (frame.entered) {
+            if (frame.entered != 0) {
                 exit(frame);
                 stack.pop_back();
                 continue;
@@ -782,7 +782,7 @@ QJsonObject TerminalManager::serializeLayout(TerminalLayoutNode *root) const
     std::vector<Link> links;
     struct Work {
         TerminalLayoutNode *node;
-        int index;
+        std::ptrdiff_t index; // pointer-sized: no padding
     };
     std::vector<Work> pending;
 
@@ -792,7 +792,7 @@ QJsonObject TerminalManager::serializeLayout(TerminalLayoutNode *root) const
     while (!pending.empty()) {
         const Work work = pending.back();
         pending.pop_back();
-        const int index = work.index;
+        const auto index = static_cast<int>(work.index);
         if (work.node->m_session != nullptr) {
             QJsonObject leaf;
             leaf[QStringLiteral("d")] = work.node->m_session->currentDirectory();
@@ -861,25 +861,25 @@ std::unique_ptr<TerminalLayoutNode> TerminalManager::buildLayoutNode(const QJson
     struct Frame {
         QJsonObject json;
         std::unique_ptr<TerminalLayoutNode> *slot;
-        bool entered;
+        std::size_t entered; // 0 / 1, pointer-sized: no padding
         std::unique_ptr<TerminalLayoutNode> first;
         std::unique_ptr<TerminalLayoutNode> second;
     };
 
     std::unique_ptr<TerminalLayoutNode> result;
     std::deque<Frame> stack;
-    stack.push_back({rootJson, &result, false, {}, {}});
+    stack.push_back({rootJson, &result, 0, {}, {}});
 
     while (!stack.empty()) {
         Frame &frame = stack.back();
-        if (!frame.entered) {
-            frame.entered = true;
+        if (frame.entered == 0) {
+            frame.entered = 1;
             const QJsonObject &json = frame.json;
             if (isSplitNode(json)) {
                 const QJsonObject firstJson = json[QStringLiteral("a")].toObject();
                 const QJsonObject secondJson = json[QStringLiteral("b")].toObject();
-                stack.push_back({secondJson, &frame.second, false, {}, {}});
-                stack.push_back({firstJson, &frame.first, false, {}, {}});
+                stack.push_back({secondJson, &frame.second, 0, {}, {}});
+                stack.push_back({firstJson, &frame.first, 0, {}, {}});
             } else {
                 TerminalBackend *session = createSession();
                 session->start(json[QStringLiteral("d")].toString());
