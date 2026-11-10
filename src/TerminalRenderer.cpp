@@ -4,7 +4,9 @@
 #include <QQuickWindow>
 #include <QSGGeometry>
 #include <QSGGeometryNode>
+#include <QSGClipNode>
 #include <QSGImageNode>
+#include <QSGTransformNode>
 #include <QSGTextNode>
 #include <QSGVertexColorMaterial>
 #include <QTextLayout>
@@ -291,8 +293,7 @@ void TerminalRenderer::refresh()
     std::ranges::for_each(std::views::iota(0, s.gridRows()), [&](int row) { pullRow(row, scratch); });
     m_images = s.visibleImages();
 
-    m_blinkRows = static_cast<int>(
-        std::ranges::count_if(m_rows, [](const Row &r) { return std::ranges::any_of(r.cells, isBlinking); }));
+    m_blinkRows = static_cast<int>(std::ranges::count_if(m_rows, [](const Row &r) { return r.blinking != 0; }));
     updateBlinkTimer();
     update();
 }
@@ -323,7 +324,7 @@ void TerminalRenderer::toggleBlink()
     // Only rows holding blinking cells need their text rebuilt; the cursor
     // row is re-pulled so its glyph color follows the cursor block.
     std::ranges::for_each(std::views::iota(std::size_t{0}, m_rows.size()), [this](std::size_t row) {
-        if (std::ranges::any_of(m_rows[row].cells, isBlinking)) {
+        if (m_rows[row].blinking != 0) {
             m_dirty[row] = 1;
         }
     });
@@ -358,15 +359,21 @@ void TerminalRenderer::pullRow(int row, std::vector<Cell> &scratch)
         scratch[static_cast<std::size_t>(m_cursorCol)].fg = m_defaultBg;
     }
 
-    if (scratch != target.cells) {
+    const int lineSize = s.visibleRowSize(row);
+    if (scratch != target.cells || lineSize != target.lineSize) {
         target.cells.swap(scratch);
+        target.lineSize = lineSize;
+        target.blinking = std::ranges::any_of(target.cells, isBlinking) ? 1 : 0;
         m_dirty[static_cast<std::size_t>(row)] = 1;
     }
 }
 
 QRectF TerminalRenderer::cellSpan(int row, int col, int count) const
 {
-    return {col * m_cellWidth, row * m_cellHeight, count * m_cellWidth, m_cellHeight};
+    // Cells on a double-width / double-height line are twice as wide.
+    const bool doubled = row >= 0 && row < static_cast<int>(m_rows.size()) && m_rows[static_cast<std::size_t>(row)].lineSize != 0;
+    const qreal width = doubled ? 2.0 * m_cellWidth : m_cellWidth;
+    return {col * width, row * m_cellHeight, count * width, m_cellHeight};
 }
 
 QSGNode *TerminalRenderer::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData * /*data*/)
@@ -654,9 +661,15 @@ void TerminalRenderer::syncTextRows(QSGNode &container)
         const std::unique_ptr<QSGNode> discard(last);
     }
     while (container.childCount() < wanted) {
-        std::unique_ptr<QSGTextNode> node(window()->createTextNode());
-        node->setRenderType(QSGTextNode::NativeRendering);
-        container.appendChildNode(node.release());
+        // Per row: clip (to the row) > transform (double-size lines) > text.
+        auto clip = std::make_unique<QSGClipNode>();
+        clip->setIsRectangular(true);
+        auto transform = std::make_unique<QSGTransformNode>();
+        std::unique_ptr<QSGTextNode> text(window()->createTextNode());
+        text->setRenderType(QSGTextNode::NativeRendering);
+        transform->appendChildNode(text.release());
+        clip->appendChildNode(transform.release());
+        container.appendChildNode(clip.release());
         m_dirty[static_cast<std::size_t>(container.childCount() - 1)] = 1;
     }
 
@@ -665,7 +678,7 @@ void TerminalRenderer::syncTextRows(QSGNode &container)
     std::size_t row = 0;
     for (QSGNode *child = container.firstChild(); child != nullptr; child = child->nextSibling()) {
         if (m_dirty[row] != 0) {
-            buildRowText(static_cast<QSGTextNode &>(*child), static_cast<int>(row));
+            buildRowText(*child, static_cast<int>(row));
             m_dirty[row] = 0;
         }
         ++row;
@@ -695,10 +708,29 @@ bool TerminalRenderer::primaryFontCovers(const Cell &cell)
     return entry->second;
 }
 
-void TerminalRenderer::buildRowText(QSGTextNode &node, int row)
+void TerminalRenderer::buildRowText(QSGNode &rowNode, int row)
 {
+    auto &clip = static_cast<QSGClipNode &>(rowNode);
+    auto &transform = static_cast<QSGTransformNode &>(*clip.firstChild());
+    auto &node = static_cast<QSGTextNode &>(*transform.firstChild());
     node.clear();
-    const qreal top = (row * m_cellHeight) + m_textOffsetY;
+    const qreal rowTop = row * m_cellHeight;
+    const qreal top = rowTop + m_textOffsetY;
+
+    // Double-width lines stretch the text 2x horizontally; double-height
+    // halves show the top or bottom of 2x text, clipped to the row.
+    const int lineSize = m_rows[static_cast<std::size_t>(row)].lineSize;
+    QMatrix4x4 matrix;
+    if (lineSize == 1) {
+        matrix.scale(2.0F, 1.0F);
+    } else if (lineSize >= 2) {
+        const auto anchor = static_cast<float>(lineSize == 2 ? rowTop : rowTop + m_cellHeight);
+        matrix.translate(0.0F, anchor);
+        matrix.scale(2.0F, 2.0F);
+        matrix.translate(0.0F, -anchor);
+    }
+    transform.setMatrix(matrix);
+    clip.setClipRect(QRectF(0.0, rowTop, width() + (2.0 * m_cellWidth), m_cellHeight));
 
     // A glyph missing from the primary font is drawn by a fallback font with
     // a different advance, which would push the rest of a shared layout off

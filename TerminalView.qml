@@ -296,8 +296,10 @@ Item {
         anchors.bottom: renderer.bottom
 
         function cellAt(x, y) {
-            const col = Math.max(0, Math.min(view.cols - 1, Math.floor(x / view.cellWidth)));
             const row = Math.max(0, Math.min(view.rows - 1, Math.floor(y / view.cellHeight)));
+            // Cells on double-width / double-height lines are twice as wide.
+            const width = view.session && view.session.visibleRowSize(row) !== 0 ? view.cellWidth * 2 : view.cellWidth;
+            const col = Math.max(0, Math.min(view.cols - 1, Math.floor(x / width)));
             return [col, row];
         }
 

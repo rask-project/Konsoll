@@ -182,6 +182,16 @@ public:
     void leaveAltScreen(bool restoreCursor);
     bool inAltScreen() const { return m_inAlt; }
 
+    // DEC line size of a screen row: 0 single, 1 double width (DECDWL),
+    // 2 / 3 top / bottom half of double height (DECDHL). lineSize() takes a
+    // lineAt() index; history lines are single.
+    static constexpr int SingleLine = 0;
+    static constexpr int DoubleWidthLine = 1;
+    static constexpr int DoubleHeightTop = 2;
+    static constexpr int DoubleHeightBottom = 3;
+    int lineSize(int index) const;
+    void setLineSize(int size); // the cursor row
+
     // Full reset (ESC c): leaves the alternate screen and resets every mode.
     void fullReset();
     // Soft reset (DECSTR): modes, margins and the saved cursor; keeps content.
@@ -212,6 +222,10 @@ private:
     void scrollDownOne(int top, int bottom);
     void blankLine(int row);
     int wrapColumn() const;
+    // Columns usable on the cursor row: half of them on a double-size line.
+    int rowColumns(int row) const;
+    void rotateLineSizes(int top, int bottom, int count);
+    void resetLineSizes();
     void wrapToNextLine();
     bool insideMargins() const { return m_cursorCol >= leftMargin() && m_cursorCol <= rightMargin(); }
     bool hasSideMargins() const { return leftMargin() > 0 || rightMargin() < m_cols - 1; }
@@ -259,6 +273,10 @@ private:
     std::deque<bool> m_scrollbackWrapped;
     std::vector<bool> m_mainSavedWrapped;
     std::vector<bool> m_tabStops; // per column: a tab stop is set
+    // Line sizes of the current grid's rows, and the main grid's while the
+    // alternate screen is shown.
+    std::vector<unsigned char> m_lineSizes;
+    std::vector<unsigned char> m_mainSavedLineSizes;
     long long m_droppedLines = 0; // history lines removed from the top so far
     long long m_altScrolled = 0;  // alternate-screen scroll-ups so far
     int m_rows;

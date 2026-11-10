@@ -179,6 +179,8 @@ public:
         std::int64_t z{0}; // kitty z-index: below the text when negative
     };
     std::vector<VisibleImage> visibleImages() const;
+    // DEC line size of a visible row (Screen::SingleLine ... DoubleHeightBottom).
+    Q_INVOKABLE int visibleRowSize(int row) const;
 
     // Keyboard focus of this session's view (window active + view focused):
     // drives the hollow unfocused cursor and ?1004 focus reports.

@@ -908,8 +908,24 @@ void Terminal::changeRectangleAttributes(const std::vector<int> &params, bool re
 void Terminal::handleEscIntermediate(const QByteArray &intermediates, char final)
 {
     if (intermediates == "#") {
-        if (final == '8') {
-            m_screen.alignmentTest(); // DECALN
+        switch (final) {
+        case '3': // DECDHL top half
+            m_screen.setLineSize(Screen::DoubleHeightTop);
+            break;
+        case '4': // DECDHL bottom half
+            m_screen.setLineSize(Screen::DoubleHeightBottom);
+            break;
+        case '5': // DECSWL
+            m_screen.setLineSize(Screen::SingleLine);
+            break;
+        case '6': // DECDWL
+            m_screen.setLineSize(Screen::DoubleWidthLine);
+            break;
+        case '8': // DECALN
+            m_screen.alignmentTest();
+            break;
+        default:
+            break;
         }
         return;
     }

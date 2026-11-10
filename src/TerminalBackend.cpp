@@ -1709,6 +1709,11 @@ std::vector<TerminalBackend::VisibleImage> TerminalBackend::visibleImages() cons
     return out;
 }
 
+int TerminalBackend::visibleRowSize(int row) const
+{
+    return m_terminal ? m_terminal->screen().lineSize(visibleStart() + row) : 0;
+}
+
 int TerminalBackend::keyboardFlags() const
 {
     return m_terminal ? static_cast<int>(m_terminal->kittyKeyboardFlags()) : 0;

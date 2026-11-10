@@ -616,6 +616,34 @@ void marginsAndRectangles(int &failures)
     selfTestCheck(failures, replies("AB\x1b[5;1;1;1;1;2*y") == "\x1bP5!~FF7D\x1b\\", "rect: DECRQCRA checksum");
 }
 
+// DEC double-width / double-height lines.
+void lineSizes(int &failures)
+{
+    {
+        const Terminal term = feed("\x1b#6abcdefgh");
+        selfTestCheck(failures, term.screen().lineSize(0) == Screen::DoubleWidthLine && rowText(term, 0) == QStringLiteral("abcde") &&
+                                    rowText(term, 1) == QStringLiteral("fgh"),
+                      "lines: DECDWL halves the columns (wraps at 5 of 10)");
+    }
+    selfTestCheck(failures, cursorAt(feed("\x1b#6\x1b[1;9H"), 0, 4) && cursorAt(feed("abcdefgh\x1b#6"), 0, 4),
+                  "lines: the cursor stays in the visible half");
+    selfTestCheck(failures, feed("\x1b#3\r\n\x1b#4").screen().lineSize(0) == Screen::DoubleHeightTop &&
+                                feed("\x1b#3\r\n\x1b#4").screen().lineSize(1) == Screen::DoubleHeightBottom &&
+                                feed("\x1b#6\x1b#5").screen().lineSize(0) == Screen::SingleLine,
+                  "lines: DECDHL top / bottom and DECSWL");
+    {
+        const Terminal term = feed("\x1b[4;1H\x1b#6\n\n", 4, 10);
+        const int history = term.screen().scrollbackSize(); // lineSize() takes lineAt() indexes
+        selfTestCheck(failures, term.screen().lineSize(history + 1) == Screen::DoubleWidthLine &&
+                                    term.screen().lineSize(history + 3) == Screen::SingleLine,
+                      "lines: sizes scroll with their rows");
+    }
+    selfTestCheck(failures, feed("\x1b#6\x1b[2J").screen().lineSize(0) == Screen::SingleLine &&
+                                feed("\x1b#6\x1b#8").screen().lineSize(0) == Screen::SingleLine &&
+                                feed("\x1b#6\x1b[?1049h\x1b[?1049l").screen().lineSize(0) == Screen::DoubleWidthLine,
+                  "lines: ED 2 and DECALN reset sizes, the alternate screen keeps the main ones");
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
@@ -633,6 +661,7 @@ void runParserSelfTest(int &failures)
     graphicsProtocols(failures);
     sessionRequests(failures);
     marginsAndRectangles(failures);
+    lineSizes(failures);
 }
 
 } // namespace konsoll

@@ -78,7 +78,54 @@ Screen::Screen(int rows, int cols) : m_rows(rows), m_cols(cols), m_scrollBottom(
 {
     m_main = makeGrid(rows, cols);
     m_mainWrapped.assign(rows, false);
+    m_lineSizes.assign(static_cast<std::size_t>(rows), SingleLine);
     resetTabStops(0);
+}
+
+int Screen::lineSize(int index) const
+{
+    const int row = index - (m_inAlt ? 0 : static_cast<int>(m_scrollback.size()));
+    return row >= 0 && row < static_cast<int>(m_lineSizes.size()) ? m_lineSizes[static_cast<std::size_t>(row)] : SingleLine;
+}
+
+void Screen::setLineSize(int size)
+{
+    m_lineSizes[static_cast<std::size_t>(m_cursorRow)] = static_cast<unsigned char>(std::clamp(size, 0, 3));
+    // The right half of a double-size line is not shown; keep the cursor in
+    // the visible half.
+    m_cursorCol = std::min(m_cursorCol, rowColumns(m_cursorRow) - 1);
+    m_pendingWrap = false;
+}
+
+int Screen::rowColumns(int row) const
+{
+    const bool doubled = row >= 0 && row < static_cast<int>(m_lineSizes.size()) &&
+                         m_lineSizes[static_cast<std::size_t>(row)] != SingleLine;
+    return doubled ? std::max(m_cols / 2, 1) : m_cols;
+}
+
+// Keep line sizes with their rows when [top, bottom] scrolls up (count > 0)
+// or down; rows shifted in are single.
+void Screen::rotateLineSizes(int top, int bottom, int count)
+{
+    const int n = std::min(std::abs(count), bottom - top + 1);
+    if (n <= 0) {
+        return;
+    }
+    const auto first = m_lineSizes.begin() + top;
+    const auto last = m_lineSizes.begin() + bottom + 1;
+    if (count > 0) {
+        std::move(first + n, last, first);
+        std::fill(last - n, last, SingleLine);
+    } else {
+        std::move_backward(first, last - n, last);
+        std::fill(first, first + n, SingleLine);
+    }
+}
+
+void Screen::resetLineSizes()
+{
+    m_lineSizes.assign(static_cast<std::size_t>(m_rows), SingleLine);
 }
 
 // Default tab stops every 8 columns from `fromCol` on; earlier columns keep
@@ -139,12 +186,14 @@ void Screen::resize(int rows, int cols)
     m_marginRight = cols - 1;
     m_pendingWrap = false;
     resetTabStops(oldCols);
+    resetLineSizes();
+    m_mainSavedLineSizes.assign(static_cast<std::size_t>(rows), SingleLine);
 }
 
 void Screen::moveCursor(int row, int col)
 {
     m_cursorRow = std::clamp(row, 0, m_rows - 1);
-    m_cursorCol = std::clamp(col, 0, m_cols - 1);
+    m_cursorCol = std::clamp(col, 0, rowColumns(m_cursorRow) - 1);
     m_pendingWrap = false;
     // Explicit positioning starts a new logical line (hard break).
     if (!m_inAlt) {
@@ -305,7 +354,8 @@ void Screen::breakWideAt(int col)
 // cursor is inside the left/right margins, else the last column.
 int Screen::wrapColumn() const
 {
-    return m_cursorCol <= rightMargin() ? rightMargin() : m_cols - 1;
+    const int last = m_cursorCol <= rightMargin() ? rightMargin() : m_cols - 1;
+    return std::min(last, rowColumns(m_cursorRow) - 1);
 }
 
 void Screen::wrapToNextLine()
@@ -495,18 +545,25 @@ void Screen::eraseInDisplay(int mode, unsigned int protectedMask)
         std::ranges::for_each(std::views::iota(from, to),
                               [this, &protectedMask](int r) { eraseCells(r, 0, m_cols - 1, protectedMask); });
     };
+    // Lines erased completely become single width (DEC).
+    const auto singleRows = [this](int from, int to) {
+        std::fill(m_lineSizes.begin() + from, m_lineSizes.begin() + to, SingleLine);
+    };
     if (mode == 0) {
         // Cursor to end of screen.
         breakWideAt(m_cursorCol);
         eraseCells(m_cursorRow, m_cursorCol, m_cols - 1, protectedMask);
         eraseRows(m_cursorRow + 1, m_rows);
+        singleRows(m_cursorRow + (m_cursorCol == 0 ? 0 : 1), m_rows);
     } else if (mode == 1) {
         // Start of screen to cursor.
         breakWideAt(m_cursorCol);
         eraseRows(0, m_cursorRow);
         eraseCells(m_cursorRow, 0, m_cursorCol, protectedMask);
+        singleRows(0, m_cursorRow);
     } else if (mode == 2) {
         eraseRows(0, m_rows);
+        singleRows(0, m_rows);
     }
 }
 
@@ -577,6 +634,7 @@ void Screen::insertLines(int count)
     const auto last = g.begin() + m_scrollBottom + 1;
     std::move_backward(first, middle, last);
     std::fill(g.begin() + m_cursorRow, g.begin() + m_cursorRow + lineCount, Line(m_cols, eraseCell()));
+    rotateLineSizes(m_cursorRow, m_scrollBottom, -lineCount);
 
     if (!m_inAlt) {
         const auto wrappedFirst = m_mainWrapped.begin() + m_cursorRow;
@@ -609,6 +667,7 @@ void Screen::deleteLines(int count)
     auto &g = grid();
     std::move(g.begin() + m_cursorRow + lineCount, g.begin() + m_scrollBottom + 1, g.begin() + m_cursorRow);
     std::fill(g.begin() + m_scrollBottom - lineCount + 1, g.begin() + m_scrollBottom + 1, Line(m_cols, eraseCell()));
+    rotateLineSizes(m_cursorRow, m_scrollBottom, lineCount);
 
     if (!m_inAlt) {
         std::move(
@@ -703,6 +762,8 @@ void Screen::enterAltScreen()
     }
     m_mainSaved = m_main;
     m_mainSavedWrapped = m_mainWrapped;
+    m_mainSavedLineSizes = m_lineSizes;
+    resetLineSizes();
     m_alt = makeGrid(m_rows, m_cols);
     m_inAlt = true;
     // The alternate screen has no scrollback: show its bottom. The main
@@ -718,6 +779,8 @@ void Screen::leaveAltScreen(bool restoreCursor)
     }
     m_main = m_mainSaved;
     m_mainWrapped = m_mainSavedWrapped;
+    m_lineSizes = m_mainSavedLineSizes;
+    m_lineSizes.resize(static_cast<std::size_t>(m_rows), SingleLine);
     m_inAlt = false;
     if (restoreCursor) {
         applySavedCursor(m_savedCursors[0]);
@@ -733,6 +796,7 @@ void Screen::fullReset()
     leaveAltScreen(false);
     m_main.assign(m_rows, Line(m_cols, blankCell()));
     m_mainWrapped.assign(m_rows, false);
+    resetLineSizes();
     m_eraseBg = 0;
     m_modes = AutoWrapMode;
     m_cursorVisible = true;
@@ -763,6 +827,7 @@ void Screen::alignmentTest()
     Cell filled = blankCell();
     filled.ch = 'E';
     grid().assign(m_rows, Line(m_cols, filled));
+    resetLineSizes();
     if (!m_inAlt) {
         m_mainWrapped.assign(m_rows, false);
     }
@@ -786,6 +851,7 @@ void Screen::scrollUpOne(int top, int bottom) // NOLINT: top/bottom are inherent
         g[r] = g[r + 1];
     }
     blankLine(bottom);
+    rotateLineSizes(top, bottom, 1);
     if (!m_inAlt) {
         for (int r = top; r < bottom; ++r) {
             m_mainWrapped[r] = m_mainWrapped[r + 1];
@@ -805,6 +871,7 @@ void Screen::scrollDownOne(int top, int bottom) // NOLINT: top/bottom are inhere
         g[r] = g[r - 1];
     }
     blankLine(top);
+    rotateLineSizes(top, bottom, -1);
     if (!m_inAlt) {
         for (int r = bottom; r > top; --r) {
             m_mainWrapped[r] = m_mainWrapped[r - 1];
@@ -940,6 +1007,8 @@ void Screen::reflow()
     const ReflowedScreen rewrapped =
         rewrapLogicalLines(logical, cursorLogical, cursorLogicalCol, cursorNewPhys, cursorNewCol);
     redistribute(rewrapped, cursorNewPhys, cursorNewCol);
+    // Line sizes stay: a width change (the only re-wrap that moves rows)
+    // already reset them in resize().
 }
 
 // 1. Collect physical lines: scrollback (oldest -> newest), then screen

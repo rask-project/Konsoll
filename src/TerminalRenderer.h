@@ -99,6 +99,8 @@ private:
         int selRight{-1};
         int searchLeft{-1};
         int searchRight{-1};
+        int lineSize{0}; // Screen::SingleLine ... DoubleHeightBottom
+        int blinking{0}; // 1 when the row holds blinking cells
     };
 
     // Axis-aligned colored rectangle in item coordinates (non-premultiplied).
@@ -121,7 +123,7 @@ private:
     void appendHighlightFrame(std::vector<ColorRect> &rects) const;
     void appendOverlayRects(std::vector<ColorRect> &rects) const;
     void syncTextRows(QSGNode &container);
-    void buildRowText(QSGTextNode &node, int row);
+    void buildRowText(QSGNode &rowNode, int row);
     void addTextRun(QSGTextNode &node, std::span<const Cell> run, qreal x, qreal top) const;
     bool primaryFontCovers(const Cell &cell);
     const QFont &fontFor(const Cell &cell) const;
