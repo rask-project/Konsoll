@@ -35,15 +35,35 @@ struct GraphicsPlacement {
     int rows{1};
     int z{0};
     short alternate{0};
-    short scaled{0}; // 1 when c= / r= set the size: the image stretches to it
+    // kPlacementNatural: pixel size; kPlacementScaled: c= / r= stretch it;
+    // kPlacementVirtual: U=1, drawn only where Unicode placeholders are.
+    short scaled{0};
     short offsetX{0}; // pixels inside the first cell
     short offsetY{0};
 };
 
+inline constexpr short kPlacementNatural = 0;
+inline constexpr short kPlacementScaled = 1;
+inline constexpr short kPlacementVirtual = 2;
+
+// One animation frame (kitty a=f): its pixels and how long it shows (ms).
+struct GraphicsFrame {
+    std::shared_ptr<const QImage> pixels;
+    std::uint64_t serial{0};
+    std::int64_t gap{40};
+};
+
+// `pixels` / `serial` are the frame on screen; `frames` holds every frame
+// (the transmitted image is frame 1).
 struct GraphicsImage {
     std::shared_ptr<const QImage> pixels;
-    std::uint64_t serial{0}; // unique per decoded image, for texture caches
+    std::uint64_t serial{0}; // unique per decoded frame, for texture caches
     std::uint64_t number{0}; // kitty image number (I=)
+    std::vector<GraphicsFrame> frames;
+    std::int64_t current{0};  // index of the frame shown
+    std::int64_t elapsed{0};  // ms the current frame has shown
+    std::int64_t running{0};  // 1 while the animation plays (a=a,s=3 / s=2)
+    std::int64_t loops{0};    // loops left; 0 = forever
 };
 
 // The result of a kitty graphics command: the reply for the PTY and how far
@@ -89,6 +109,13 @@ public:
     void clear();
 
     const std::vector<GraphicsPlacement> &placements() const { return m_placements; }
+    // The virtual (U=1) placement Unicode placeholders of image `imageId`
+    // (and `placementId`, 0 = any) refer to.
+    const GraphicsPlacement *virtualPlacement(std::uint32_t imageId, std::uint32_t placementId) const;
+    // Animations: whether any plays, and advancing them by `ms`. Returns
+    // whether a frame changed.
+    bool animating() const;
+    bool advanceAnimations(int ms);
     const GraphicsImage *image(std::uint32_t id) const;
     // Increments on every change, so renderers know to rebuild.
     std::uint64_t generation() const { return m_generation; }
@@ -103,6 +130,10 @@ private:
     KittyResult transmit(const QByteArray &control, const QByteArray &payload, const GraphicsContext &context,
                          bool display);
     KittyResult place(const QByteArray &control, std::uint32_t imageId, const GraphicsContext &context);
+    KittyResult addFrame(const QByteArray &control, const QByteArray &payload);
+    void controlAnimation(const QByteArray &control);
+    void composeFrames(const QByteArray &control);
+    void showFrame(GraphicsImage &image, std::int64_t index);
     void remove(const QByteArray &control, const GraphicsContext &context);
     std::uint32_t storeImage(std::uint32_t id, std::uint64_t number, QImage image);
     std::uint32_t idForNumber(std::uint64_t number) const;

@@ -99,6 +99,9 @@ TerminalBackend::TerminalBackend(QObject *parent) : QObject(parent)
     m_frameTimer.setInterval(16ms);
     m_frameTimer.setSingleShot(true);
     connect(&m_frameTimer, &QTimer::timeout, this, &TerminalBackend::onFrameTimer);
+    m_animationTimer.setTimerType(Qt::PreciseTimer);
+    m_animationTimer.setInterval(16ms);
+    connect(&m_animationTimer, &QTimer::timeout, this, &TerminalBackend::onAnimationTimer);
     // Selection/highlight changes repaint through the same coalesced,
     // DEC 2026-aware frame as PTY output; frameReady is the only repaint
     // signal the renderer listens to.
@@ -321,6 +324,7 @@ void TerminalBackend::onData(const QByteArray &data)
     // OSC 11 with CSI 5n and expects the OSC color reply first.
     flushResponses();
     handleRequests();
+    updateAnimationTimer();
     if (m_terminal->colorsDirty()) {
         // OSC 4/10/11/12 changed the palette or default colors.
         m_terminal->clearColorsDirty();
@@ -420,6 +424,24 @@ void TerminalBackend::onFrameTimer()
         return;
     }
     emit frameReady();
+}
+
+void TerminalBackend::updateAnimationTimer()
+{
+    const bool animating = m_terminal && m_terminal->animating();
+    if (animating && !m_animationTimer.isActive()) {
+        m_animationTimer.start();
+    } else if (!animating && m_animationTimer.isActive()) {
+        m_animationTimer.stop();
+    }
+}
+
+void TerminalBackend::onAnimationTimer()
+{
+    if (m_terminal && m_terminal->advanceAnimations(m_animationTimer.interval())) {
+        scheduleFrame();
+    }
+    updateAnimationTimer();
 }
 
 void TerminalBackend::scheduleFrame()
@@ -1703,12 +1725,13 @@ std::vector<TerminalBackend::VisibleImage> TerminalBackend::visibleImages() cons
     std::ranges::for_each(graphics.placements(), [&](const GraphicsPlacement &placement) {
         const long long row = placement.anchor - top;
         const GraphicsImage *const image = graphics.image(placement.imageId);
-        if (placement.alternate != alternate || image == nullptr || row + placement.rows <= 0 || row >= m_rows) {
+        if (placement.alternate != alternate || image == nullptr || row + placement.rows <= 0 || row >= m_rows ||
+            placement.scaled == kPlacementVirtual) {
             return;
         }
         // c= / r= stretch the image over that many cells; otherwise it keeps
         // its pixel size.
-        const bool scaled = placement.scaled != 0;
+        const bool scaled = placement.scaled == kPlacementScaled;
         const QRectF target(placement.column + (placement.offsetX / cellWidth),
                             static_cast<double>(row) + (placement.offsetY / cellHeight),
                             scaled ? placement.columns : placement.source.width() / cellWidth,
@@ -1716,13 +1739,134 @@ std::vector<TerminalBackend::VisibleImage> TerminalBackend::visibleImages() cons
         out.push_back(VisibleImage{
             .image = image->pixels,
             .target = target,
-            .source = placement.source,
+            .source = QRectF(placement.source),
             .serial = image->serial,
             .z = placement.z,
         });
     });
+    appendPlaceholderImages(out);
     std::ranges::stable_sort(out, {}, &VisibleImage::z);
     return out;
+}
+
+namespace
+{
+// A cell color as a kitty placeholder id: 256-color index or 24-bit RGB.
+std::uint32_t placeholderColorId(unsigned int encoded)
+{
+    if (encoded >= 1 && encoded <= 256) {
+        return encoded - 1;
+    }
+    return (encoded & 0x80000000u) != 0 ? (encoded & 0xffffffu) : 0u;
+}
+
+// One kitty placeholder cell: image / placement id and the image cell it
+// shows (row, column; -1 when the diacritic is absent).
+struct PlaceholderCell {
+    std::uint32_t image{0};
+    std::uint32_t placement{0};
+    int row{-1};
+    int column{-1};
+};
+
+PlaceholderCell decodePlaceholder(const Cell &cell)
+{
+    const std::u32string codePoints = cellCodePoints(cell.ch);
+    PlaceholderCell out;
+    if (codePoints.empty() || codePoints.front() != kImagePlaceholder) {
+        return out;
+    }
+    out.image = placeholderColorId(cell.fg);
+    out.placement = placeholderColorId(cell.ul);
+    const auto diacritic = [&codePoints](std::size_t i) {
+        return i < codePoints.size() ? placeholderIndex(codePoints[i]) : -1;
+    };
+    out.row = diacritic(1);
+    out.column = diacritic(2);
+    if (const int high = diacritic(3); high >= 0) {
+        out.image |= static_cast<std::uint32_t>(high) << 24u; // most significant byte
+    }
+    return out;
+}
+} // namespace
+
+namespace
+{
+// Extends `last` with `next` when it continues it on the same row.
+bool mergeSlice(TerminalBackend::VisibleImage &last, const TerminalBackend::VisibleImage &next)
+{
+    if (last.serial != next.serial || !qFuzzyCompare(last.target.right(), next.target.left()) ||
+        !qFuzzyCompare(last.target.top(), next.target.top()) || !qFuzzyCompare(last.source.right(), next.source.left())) {
+        return false;
+    }
+    last.target.setRight(next.target.right());
+    last.source.setRight(next.source.right());
+    return true;
+}
+} // namespace
+
+// The part of a virtual placement one placeholder cell shows: the image
+// fitted into the placement's c x r cells (aspect kept, centered).
+std::optional<TerminalBackend::VisibleImage> TerminalBackend::placeholderSlice(std::uint32_t imageId,
+                                                                               std::uint32_t placementId, int imageRow,
+                                                                               int imageColumn, int row, int col) const
+{
+    const GraphicsStore &graphics = m_terminal->graphics();
+    const GraphicsPlacement *const placement = graphics.virtualPlacement(imageId, placementId);
+    const GraphicsImage *const image = placement != nullptr ? graphics.image(imageId) : nullptr;
+    if (image == nullptr) {
+        return std::nullopt;
+    }
+    const double cellWidth = std::max(m_cellPixelWidth, 1);
+    const double cellHeight = std::max(m_cellPixelHeight, 1);
+    const QRectF source(placement->source);
+    const double boxWidth = std::max(placement->columns, 1) * cellWidth;
+    const double boxHeight = std::max(placement->rows, 1) * cellHeight;
+    const double scale = std::min(boxWidth / source.width(), boxHeight / source.height());
+    const QRectF drawn((boxWidth - (source.width() * scale)) / 2.0, (boxHeight - (source.height() * scale)) / 2.0,
+                       source.width() * scale, source.height() * scale);
+    const QRectF cell(imageColumn * cellWidth, imageRow * cellHeight, cellWidth, cellHeight);
+    const QRectF piece = cell.intersected(drawn);
+    if (piece.isEmpty()) {
+        return std::nullopt;
+    }
+    return VisibleImage{
+        .image = image->pixels,
+        .target = QRectF(col + ((piece.x() - cell.x()) / cellWidth), row + ((piece.y() - cell.y()) / cellHeight),
+                         piece.width() / cellWidth, piece.height() / cellHeight),
+        .source = QRectF(source.x() + ((piece.x() - drawn.x()) / scale), source.y() + ((piece.y() - drawn.y()) / scale),
+                         piece.width() / scale, piece.height() / scale),
+        .serial = image->serial,
+        .z = placement->z,
+    };
+}
+
+// Kitty Unicode placeholders (U+10EEEE): each cell shows one cell of a
+// virtual placement's grid. Missing diacritics continue the previous cell;
+// consecutive cells of one image row become one rectangle.
+void TerminalBackend::appendPlaceholderImages(std::vector<VisibleImage> &out) const
+{
+    std::ranges::for_each(std::views::iota(0, m_rows), [&](int row) {
+        const Line &line = m_terminal->screen().lineAt(visibleStart() + row);
+        PlaceholderCell previous;
+        int previousCol = -2;
+        std::ranges::for_each(std::views::iota(0, static_cast<int>(line.size())), [&](int col) {
+            PlaceholderCell cell = decodePlaceholder(line[static_cast<std::size_t>(col)]);
+            if (cell.image == 0) {
+                previousCol = -2;
+                return;
+            }
+            const bool continues = previousCol == col - 1 && previous.image == cell.image;
+            cell.row = cell.row >= 0 ? cell.row : (continues ? previous.row : 0);
+            cell.column = cell.column >= 0 ? cell.column : (continues ? previous.column + 1 : 0);
+            previous = cell;
+            previousCol = col;
+            const std::optional<VisibleImage> slice = placeholderSlice(cell.image, cell.placement, cell.row, cell.column, row, col);
+            if (slice && (out.empty() || !mergeSlice(out.back(), *slice))) {
+                out.push_back(*slice);
+            }
+        });
+    });
 }
 
 // Settings > Keyboard "Use Option as Meta", or ?1036 / ?1039 from the app.

@@ -88,7 +88,9 @@ bool isWidePart(const Cell &cell)
 
 bool isBlank(const Cell &cell)
 {
-    return cell.ch == 0x20u || cell.ch == 0u;
+    // Kitty image placeholders draw an image slice, never a glyph.
+    return cell.ch == 0x20u || cell.ch == 0u || cell.ch == kImagePlaceholder ||
+           (cell.ch >= kClusterBase && cellCodePoints(cell.ch).front() == kImagePlaceholder);
 }
 
 std::unique_ptr<QSGGeometryNode> makeColorNode()

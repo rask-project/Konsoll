@@ -51,6 +51,9 @@ public:
     const Screen &screen() const { return m_screen; }
     // Images (kitty graphics protocol, sixel) and where they are placed.
     const GraphicsStore &graphics() const { return m_graphics; }
+    // Kitty image animations: whether one plays, and advancing them.
+    bool animating() const { return m_graphics.animating(); }
+    bool advanceAnimations(int ms) { return m_graphics.advanceAnimations(ms); }
 
     // OSC window title.
     QString title() const { return m_title; }
@@ -267,6 +270,7 @@ private:
     void fullReset();
     void printCodePoint(unsigned int codePoint);
     bool extendPreviousCluster(unsigned int codePoint);
+    bool followsImagePlaceholder() const;
     unsigned int mapCharset(unsigned char c);
     void repeatLastCharacter(int count);
     void handleAnsiMode(bool set, const std::vector<int> &params);

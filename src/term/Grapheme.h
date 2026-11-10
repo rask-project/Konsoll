@@ -11,6 +11,10 @@ namespace konsoll
 // the id of a cluster of several code points (an emoji ZWJ sequence, a flag,
 // a letter with combining marks) interned in a process-wide table.
 inline constexpr unsigned int kClusterBase = 0x110000u;
+// Kitty graphics Unicode placeholder: the cell shows part of an image.
+inline constexpr char32_t kImagePlaceholder = 0x10EEEE;
+// The row / column a placeholder diacritic encodes (kitty's table), or -1.
+int placeholderIndex(char32_t diacritic);
 
 // Interns `cluster` and returns its cell value; `width` is 1 or 2 cells.
 unsigned int internCluster(const std::u32string &cluster, int width);

@@ -451,7 +451,8 @@ void Terminal::putCodePoint(unsigned int codePoint)
     }
 
     // Mode 2027: the code point may continue the previous cell's cluster.
-    if (m_screen.graphemeClustering() && extendPreviousCluster(codePoint)) {
+    // Kitty image placeholders always keep their row / column diacritics.
+    if ((m_screen.graphemeClustering() || followsImagePlaceholder()) && extendPreviousCluster(codePoint)) {
         return;
     }
 
@@ -467,6 +468,12 @@ void Terminal::putCodePoint(unsigned int codePoint)
 // Font icons, U+F0xxx) occupy one cell holding the full code point; the
 // renderer encodes them as a surrogate-pair string. East Asian wide
 // characters and emoji take two.
+bool Terminal::followsImagePlaceholder() const
+{
+    const std::optional<unsigned int> previous = m_screen.previousChar();
+    return previous && cellCodePoints(*previous).front() == kImagePlaceholder;
+}
+
 // Appends `codePoint` to the cluster in the previous cell (mode 2027),
 // widening the cell when the cluster gains emoji presentation.
 bool Terminal::extendPreviousCluster(unsigned int codePoint)

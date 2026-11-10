@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 class QImage;
@@ -176,11 +177,15 @@ public:
     struct VisibleImage {
         std::shared_ptr<const QImage> image;
         QRectF target;
-        QRect source;
+        QRectF source;
         std::uint64_t serial{0};
         std::int64_t z{0}; // kitty z-index: below the text when negative
     };
     std::vector<VisibleImage> visibleImages() const;
+    // Images shown through kitty Unicode placeholders on the visible rows.
+    void appendPlaceholderImages(std::vector<VisibleImage> &out) const;
+    std::optional<VisibleImage> placeholderSlice(std::uint32_t imageId, std::uint32_t placementId, int imageRow,
+                                                 int imageColumn, int row, int col) const;
     // DEC line size of a visible row (Screen::SingleLine ... DoubleHeightBottom).
     Q_INVOKABLE int visibleRowSize(int row) const;
 
@@ -237,6 +242,8 @@ private:
     void onWorkerThreadStopped();
     void onForegroundChanged(bool hasForeground);
     void onFrameTimer();
+    void onAnimationTimer();
+    void updateAnimationTimer();
     void scheduleFrame();
     // Write the terminal's pending query replies and reports to the PTY.
     void flushResponses();
@@ -305,6 +312,7 @@ private:
     TransferJob m_activeTransfer;
 
     QTimer m_frameTimer;
+    QTimer m_animationTimer; // runs while a kitty image animation plays
     QString m_title{QStringLiteral("Konsoll")};
     QString m_currentDirectory;
     QString m_remoteHost;

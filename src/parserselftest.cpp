@@ -676,6 +676,39 @@ void modifyOtherKeys(int &failures)
                   "modifyOtherKeys 2: every Ctrl / Alt key, CSI u format");
 }
 
+// Kitty graphics: animation frames and Unicode placeholders.
+void kittyAnimationAndPlaceholders(int &failures)
+{
+    const QByteArray red("\xff\x00\x00\xff\xff\x00\x00\xff\xff\x00\x00\xff\xff\x00\x00\xff", 16);
+    const QByteArray blue("\x00\x00\xff\xff\x00\x00\xff\xff\x00\x00\xff\xff\x00\x00\xff\xff", 16);
+    const QByteArray apc = "\x1b_G";
+    const QByteArray st = "\x1b\\";
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write(apc + "a=T,f=32,s=2,v=2,i=3,q=2;" + red.toBase64() + st);
+        term.write(apc + "a=f,f=32,s=2,v=2,i=3,z=50;" + blue.toBase64() + st);
+        term.write(apc + "a=a,i=3,s=3,v=2" + st);
+        const bool playing = term.animating() && term.graphics().image(3)->frames.size() == 2;
+        const bool stillRed = !term.advanceAnimations(20) && term.graphics().image(3)->current == 0;
+        const bool nowBlue = term.advanceAnimations(30) && term.graphics().image(3)->pixels->pixelColor(0, 0) == QColor(Qt::blue);
+        term.advanceAnimations(50); // back to frame 1: the single extra loop (v=2) ends
+        term.advanceAnimations(40);
+        selfTestCheck(failures, playing && stillRed && nowBlue && !term.animating(),
+                      "kitty animation: frames, gaps, loop count");
+    }
+    {
+        Terminal term(4, 20, QStringLiteral("selftest"));
+        term.write(apc + "a=T,U=1,i=5,c=4,r=2,f=32,s=2,v=2,q=2;" + red.toBase64() + st);
+        const auto &placements = term.graphics().placements();
+        term.write("\x1b[38;5;5m\xf4\x8e\xbb\xae\xcc\x85\xcc\x85x");
+        const Cell &cell = term.screen().cellAt(0, 0);
+        selfTestCheck(failures, placements.size() == 1 && placements.front().scaled == kPlacementVirtual &&
+                                    cellCodePoints(cell.ch) == std::u32string(U"\U0010EEEE̅̅") &&
+                                    term.screen().cellAt(0, 1).ch == 'x' && placeholderIndex(0x030D) == 1,
+                      "kitty placeholders: U=1 virtual placement, cells keep their row / column diacritics");
+    }
+}
+
 // iTerm2 OSC 1337: inline images and other commands.
 void itermProtocol(int &failures)
 {
@@ -872,6 +905,7 @@ void runParserSelfTest(int &failures)
     reflowAnchors(failures);
     notifications(failures);
     itermProtocol(failures);
+    kittyAnimationAndPlaceholders(failures);
     fixtureRegressions(failures);
 }
 

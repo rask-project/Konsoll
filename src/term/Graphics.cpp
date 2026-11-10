@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QList>
+#include <QPainter>
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -174,6 +175,38 @@ bool intersects(const GraphicsPlacement &placement, long long line, int column)
 
 } // namespace
 
+namespace
+{
+// The pixels of a transmit / frame command: medium (direct, file,
+// temporary file, shared memory), zlib, then RGB / RGBA / PNG. Returns an
+// error reply text, or nullptr with `image` set.
+const char *decodeKittyData(const KittyControl &keys, const QByteArray &payload, QImage &image)
+{
+    QByteArray data = QByteArray::fromBase64(payload);
+    const char medium = keys.letter('t', 'd');
+    if (medium == 'f' || medium == 't') {
+        data = readFile(QString::fromUtf8(data), medium == 't', keys.number('S'), keys.number('O'));
+    } else if (medium == 's') {
+        data = readSharedMemory(data, keys.number('S'));
+    }
+    if (data.isEmpty()) {
+        return "ENODATA:no image data";
+    }
+    if (keys.letter('o', 0) == 'z') {
+        data = inflate(data);
+        if (data.isEmpty()) {
+            return "EINVAL:zlib decompression failed";
+        }
+    }
+    const int format = keys.number('f', 32);
+    image = format == 100 ? QImage::fromData(data, "PNG") : rawImage(data, keys.number('s'), keys.number('v'), format);
+    if (image.isNull() || static_cast<qint64>(image.width()) * image.height() > kMaxPixels) {
+        return "EBADPNG:could not decode the image";
+    }
+    return nullptr;
+}
+} // namespace
+
 const GraphicsImage *GraphicsStore::image(std::uint32_t id) const
 {
     const auto found = m_images.find(id);
@@ -201,10 +234,17 @@ std::uint32_t GraphicsStore::storeImage(std::uint32_t id, std::uint64_t number, 
     }
     // Re-transmitting an id replaces the image and its placements.
     std::erase_if(m_placements, [id](const GraphicsPlacement &placement) { return placement.imageId == id; });
+    auto pixels = std::make_shared<const QImage>(std::move(image));
+    const std::uint64_t serial = m_nextSerial++;
     m_images[id] = GraphicsImage{
-        .pixels = std::make_shared<const QImage>(std::move(image)),
-        .serial = m_nextSerial++,
+        .pixels = pixels,
+        .serial = serial,
         .number = number,
+        .frames = {GraphicsFrame{.pixels = pixels, .serial = serial, .gap = 40}},
+        .current = 0,
+        .elapsed = 0,
+        .running = 0,
+        .loops = 0,
     };
     evict();
     touch();
@@ -280,14 +320,16 @@ KittyResult GraphicsStore::runKitty(const QByteArray &control, const QByteArray 
     case 'd':
         remove(control, context);
         return {};
-    default: {
-        // Animation (f, a, c) is not supported.
-        KittyResult result;
-        if ((keys.id('i') != 0 || keys.id('I') != 0) && keys.number('q') < 2) {
-            result.reply = kittyReply(keys.id('i'), keys.id('I'), 0, "EINVAL:animation is not supported");
-        }
-        return result;
-    }
+    case 'f':
+        return addFrame(control, payload);
+    case 'a':
+        controlAnimation(control);
+        return {};
+    case 'c':
+        composeFrames(control);
+        return {};
+    default:
+        return {};
     }
 }
 
@@ -308,27 +350,9 @@ KittyResult GraphicsStore::transmit(const QByteArray &control, const QByteArray 
         return result;
     };
 
-    QByteArray data = QByteArray::fromBase64(payload);
-    const char medium = keys.letter('t', 'd');
-    if (medium == 'f' || medium == 't') {
-        data = readFile(QString::fromUtf8(data), medium == 't', keys.number('S'), keys.number('O'));
-    } else if (medium == 's') {
-        data = readSharedMemory(data, keys.number('S'));
-    }
-    if (data.isEmpty()) {
-        return fail("ENODATA:no image data");
-    }
-    if (keys.letter('o', 0) == 'z') {
-        data = inflate(data);
-        if (data.isEmpty()) {
-            return fail("EINVAL:zlib decompression failed");
-        }
-    }
-    const int format = keys.number('f', 32);
-    QImage image = format == 100 ? QImage::fromData(data, "PNG")
-                                 : rawImage(data, keys.number('s'), keys.number('v'), format);
-    if (image.isNull() || static_cast<qint64>(image.width()) * image.height() > kMaxPixels) {
-        return fail("EBADPNG:could not decode the image");
+    QImage image;
+    if (const char *const error = decodeKittyData(keys, payload, image); error != nullptr) {
+        return fail(error);
     }
     if (query) {
         return fail("OK"); // validated, not stored
@@ -370,7 +394,8 @@ KittyResult GraphicsStore::place(const QByteArray &control, std::uint32_t imageI
         .rows = keys.number('r'),
         .z = keys.number('z'),
         .alternate = static_cast<short>(context.alternate),
-        .scaled = static_cast<short>(keys.number('c') > 0 || keys.number('r') > 0 ? 1 : 0),
+        .scaled = keys.number('U') == 1 ? kPlacementVirtual
+                                         : (keys.number('c') > 0 || keys.number('r') > 0 ? kPlacementScaled : kPlacementNatural),
         .offsetX = static_cast<short>(std::clamp(keys.number('X'), 0, std::min(context.cellWidth - 1, 0x7fff))),
         .offsetY = static_cast<short>(std::clamp(keys.number('Y'), 0, std::min(context.cellHeight - 1, 0x7fff))),
     };
@@ -386,7 +411,8 @@ KittyResult GraphicsStore::place(const QByteArray &control, std::uint32_t imageI
     touch();
     result.cursorColumns = placement.columns;
     result.cursorRows = placement.rows;
-    result.moveCursor = keys.number('C') == 1 ? 0 : 1;
+    // Virtual placements (U=1) are drawn by placeholders: no cursor move.
+    result.moveCursor = keys.number('C') == 1 || keys.number('U') == 1 ? 0 : 1;
     result.placed = 1;
     if ((keys.id('i') != 0 || keys.id('I') != 0) && keys.number('q') == 0) {
         result.reply = kittyReply(imageId, keys.id('I'), placement.placementId, "OK");
@@ -550,6 +576,168 @@ ItermResult GraphicsStore::placeItermFile(const QByteArray &args, const QByteArr
     m_placements.push_back(placement);
     touch();
     return ItermResult{.columns = placement.columns, .rows = placement.rows};
+}
+
+const GraphicsPlacement *GraphicsStore::virtualPlacement(std::uint32_t imageId, std::uint32_t placementId) const
+{
+    const auto found = std::ranges::find_if(m_placements, [&](const GraphicsPlacement &p) {
+        return p.scaled == kPlacementVirtual && p.imageId == imageId && (placementId == 0 || p.placementId == placementId);
+    });
+    return found == m_placements.end() ? nullptr : &*found;
+}
+
+void GraphicsStore::showFrame(GraphicsImage &image, std::int64_t index)
+{
+    const auto count = static_cast<std::int64_t>(image.frames.size());
+    image.current = std::clamp<std::int64_t>(index, 0, count - 1);
+    const GraphicsFrame &frame = image.frames[static_cast<std::size_t>(image.current)];
+    image.pixels = frame.pixels;
+    image.serial = frame.serial;
+    image.elapsed = 0;
+    touch();
+}
+
+// a=f: a new frame (or r= an existing one) drawn from the transmitted data at
+// x, y over frame c= (or transparent), shown for z= ms.
+KittyResult GraphicsStore::addFrame(const QByteArray &control, const QByteArray &payload)
+{
+    const KittyControl keys(control);
+    const std::uint32_t id = keys.id('i') != 0 ? keys.id('i') : idForNumber(keys.id('I'));
+    const auto found = m_images.find(id);
+    QImage data;
+    if (found == m_images.end() || decodeKittyData(keys, payload, data) != nullptr) {
+        KittyResult result;
+        if (keys.number('q') < 2 && (keys.id('i') != 0 || keys.id('I') != 0)) {
+            result.reply = kittyReply(keys.id('i'), keys.id('I'), 0, "ENOENT:no such image or bad frame data");
+        }
+        return result;
+    }
+    GraphicsImage &image = found->second;
+    const QImage &root = *image.frames.front().pixels;
+    const int base = keys.number('c');
+    QImage canvas = base >= 1 && base <= static_cast<int>(image.frames.size())
+                        ? *image.frames[static_cast<std::size_t>(base - 1)].pixels
+                        : QImage(root.size(), QImage::Format_RGBA8888_Premultiplied);
+    if (base < 1) {
+        canvas.fill(Qt::transparent);
+    }
+    canvas = canvas.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
+    {
+        QPainter painter(&canvas);
+        painter.drawImage(QPoint(keys.number('x'), keys.number('y')), data);
+    }
+    const GraphicsFrame frame{.pixels = std::make_shared<const QImage>(std::move(canvas)),
+                              .serial = m_nextSerial++,
+                              .gap = std::max(keys.number('z', 40), 1)};
+    const int edit = keys.number('r');
+    if (edit >= 1 && edit <= static_cast<int>(image.frames.size())) {
+        image.frames[static_cast<std::size_t>(edit - 1)] = frame;
+    } else {
+        image.frames.push_back(frame);
+    }
+    if (image.current == edit - 1) {
+        showFrame(image, image.current);
+    }
+    touch();
+    return {};
+}
+
+// a=a: s= 1 stop / 2 run (waiting for frames) / 3 run, c= show frame,
+// r= + z= set a frame's gap, v= loops (1 = forever).
+void GraphicsStore::controlAnimation(const QByteArray &control)
+{
+    const KittyControl keys(control);
+    const std::uint32_t id = keys.id('i') != 0 ? keys.id('i') : idForNumber(keys.id('I'));
+    const auto found = m_images.find(id);
+    if (found == m_images.end()) {
+        return;
+    }
+    GraphicsImage &image = found->second;
+    const int frame = keys.number('r');
+    if (frame >= 1 && frame <= static_cast<int>(image.frames.size()) && keys.number('z') > 0) {
+        image.frames[static_cast<std::size_t>(frame - 1)].gap = keys.number('z');
+    }
+    const int state = keys.number('s');
+    if (state == 1) {
+        image.running = 0;
+    } else if (state == 2 || state == 3) {
+        image.running = 1;
+    }
+    const int loops = keys.number('v');
+    if (loops > 0) {
+        image.loops = loops == 1 ? 0 : loops - 1;
+    }
+    if (keys.number('c') >= 1) {
+        showFrame(image, keys.number('c') - 1);
+    }
+}
+
+// a=c: copy a w x h rectangle at x, y of frame r= onto frame c= at X, Y.
+void GraphicsStore::composeFrames(const QByteArray &control)
+{
+    const KittyControl keys(control);
+    const std::uint32_t id = keys.id('i') != 0 ? keys.id('i') : idForNumber(keys.id('I'));
+    const auto found = m_images.find(id);
+    if (found == m_images.end()) {
+        return;
+    }
+    GraphicsImage &image = found->second;
+    const auto count = static_cast<int>(image.frames.size());
+    const int source = keys.number('r');
+    const int target = keys.number('c');
+    if (source < 1 || source > count || target < 1 || target > count) {
+        return;
+    }
+    const QImage &from = *image.frames[static_cast<std::size_t>(source - 1)].pixels;
+    QImage to = *image.frames[static_cast<std::size_t>(target - 1)].pixels;
+    const QRect rect(keys.number('x'), keys.number('y'), keys.number('w', from.width()), keys.number('h', from.height()));
+    {
+        QPainter painter(&to);
+        painter.setCompositionMode(keys.number('C') == 1 ? QPainter::CompositionMode_Source : QPainter::CompositionMode_SourceOver);
+        painter.drawImage(QPoint(keys.number('X'), keys.number('Y')), from, rect);
+    }
+    GraphicsFrame &frame = image.frames[static_cast<std::size_t>(target - 1)];
+    frame.pixels = std::make_shared<const QImage>(std::move(to));
+    frame.serial = m_nextSerial++;
+    if (image.current == target - 1) {
+        showFrame(image, image.current);
+    }
+}
+
+bool GraphicsStore::animating() const
+{
+    return std::ranges::any_of(m_images, [](const auto &entry) {
+        return entry.second.running != 0 && entry.second.frames.size() > 1;
+    });
+}
+
+bool GraphicsStore::advanceAnimations(int ms)
+{
+    bool changed = false;
+    std::ranges::for_each(m_images, [&](auto &entry) {
+        GraphicsImage &image = entry.second;
+        if (image.running == 0 || image.frames.size() < 2) {
+            return;
+        }
+        image.elapsed += ms;
+        const std::int64_t gap = image.frames[static_cast<std::size_t>(image.current)].gap;
+        if (image.elapsed < gap) {
+            return;
+        }
+        std::int64_t next = image.current + 1;
+        if (next >= static_cast<std::int64_t>(image.frames.size())) {
+            // End of a loop: v= counts them down; 0 loops forever.
+            if (image.loops == 1) {
+                image.running = 0;
+                return;
+            }
+            image.loops = image.loops > 1 ? image.loops - 1 : 0;
+            next = 0;
+        }
+        showFrame(image, next);
+        changed = true;
+    });
+    return changed;
 }
 
 void GraphicsStore::erasePlacements(int alternate, long long first, long long last)
