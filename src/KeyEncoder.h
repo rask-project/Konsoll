@@ -43,7 +43,9 @@ inline constexpr unsigned int OptionMeta = 1u << 8;        // Option is Meta: ES
 // codes 8, associated text 16). `key` is a Qt::Key, `text` the text the key
 // produced, `eventType` a KeyEventType. Returns an empty array for an event
 // with no terminal meaning (releases outside kitty flag 2, ...).
+// `baseKey` is the US-layout character at the key's physical position (0 =
+// unknown), reported as the kitty base layout key under flag 4.
 QByteArray encodeKey(int key, const QString &text, unsigned int mods, unsigned int modes, unsigned int kittyFlags,
-                     int eventType = KeyEventType::Press);
+                     int eventType = KeyEventType::Press, int baseKey = 0);
 
 } // namespace konsoll

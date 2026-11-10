@@ -7,6 +7,7 @@
 #include <string_view>
 
 #include "AppQuitGuard.h"
+#include "NativeKeyTracker.h"
 #include "renderdump.h"
 #include "screendump.h"
 #include "selftest.h"
@@ -52,6 +53,10 @@ int main(int argc, char *argv[])
 
     QIcon::setThemeSearchPaths({QStringLiteral(":/icons")});
     QIcon::setThemeName(QStringLiteral("konsoll"));
+
+    // Native key codes for the kitty protocol's base layout key.
+    konsoll::NativeKeyTracker keyTracker;
+    QGuiApplication::instance()->installEventFilter(&keyTracker);
 
     QQmlApplicationEngine engine;
 

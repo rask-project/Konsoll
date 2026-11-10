@@ -267,7 +267,7 @@ std::optional<KittyKey> kittyKeyFor(int key, unsigned int modes, bool &textKey)
 
 // CSI code[:shifted] ; mods[:event] ; text u  (or the CSI 1;mods X / CSI n;mods ~
 // forms of the functional keys).
-QByteArray kittySequence(const KittyKey &kitty, int shifted, unsigned int mods, int eventType, const QString &text)
+QByteArray kittySequence(const KittyKey &kitty, int shifted, int base, unsigned int mods, int eventType, const QString &text)
 {
     QByteArray modifiers;
     if (mods != 0 || eventType != KeyEventType::Press || !text.isEmpty()) {
@@ -282,8 +282,11 @@ QByteArray kittySequence(const KittyKey &kitty, int shifted, unsigned int mods, 
                                    : "\x1b[1;" + modifiers + static_cast<char>(kitty.final);
     }
     QByteArray out = "\x1b[" + QByteArray::number(kitty.code);
-    if (shifted != 0) {
-        out += ":" + QByteArray::number(shifted);
+    if (shifted != 0 || base != 0) {
+        out += ":" + (shifted != 0 ? QByteArray::number(shifted) : QByteArray{});
+    }
+    if (base != 0) {
+        out += ":" + QByteArray::number(base); // base layout key
     }
     if (!modifiers.isEmpty()) {
         out += ";" + modifiers;
@@ -302,7 +305,7 @@ QByteArray kittySequence(const KittyKey &kitty, int shifted, unsigned int mods, 
 // encoding applies (plain text, unmodified Enter/Tab/Backspace below flag 8)
 // or nothing is sent (releases below flag 2, modifier keys below flag 8).
 QByteArray encodeKitty(int key, const QString &text, unsigned int mods, unsigned int modes, unsigned int flags,
-                       int eventType)
+                       int eventType, int baseKey)
 {
     const bool allKeys = (flags & kKittyAllKeys) != 0;
     const bool events = (flags & kKittyEventTypes) != 0;
@@ -330,7 +333,9 @@ QByteArray encodeKitty(int key, const QString &text, unsigned int mods, unsigned
     const int upper = static_cast<int>(QChar::toUpper(static_cast<char32_t>(kitty->code)));
     const int shifted = alternates && upper != kitty->code ? upper : 0;
     const bool withText = (flags & kKittyText) != 0 && allKeys && textKey && eventType != KeyEventType::Release;
-    return kittySequence(*kitty, shifted, mods, eventType, withText ? text : QString{});
+    // Flag 4 also reports the US-layout key at this position when it differs.
+    const int base = (flags & kKittyAlternates) != 0 && textKey && baseKey != 0 && baseKey != kitty->code ? baseKey : 0;
+    return kittySequence(*kitty, shifted, base, mods, eventType, withText ? text : QString{});
 }
 
 // The modifyOtherKeys code of a key: Enter / Tab / Backspace / Escape, or a
@@ -450,13 +455,13 @@ QByteArray encodeTextKey(int key, const QString &text, unsigned int mods, unsign
 } // namespace
 
 QByteArray encodeKey(int key, const QString &text, unsigned int mods, unsigned int modes, unsigned int kittyFlags,
-                     int eventType)
+                     int eventType, int baseKey)
 {
     const bool control = (mods & KeyMod::Control) != 0;
     const bool alt = (mods & KeyMod::Alt) != 0;
 
     if ((kittyFlags & (kKittyDisambiguate | kKittyEventTypes | kKittyAllKeys)) != 0) {
-        const QByteArray kitty = encodeKitty(key, text, mods, modes, kittyFlags, eventType);
+        const QByteArray kitty = encodeKitty(key, text, mods, modes, kittyFlags, eventType, baseKey);
         if (!kitty.isEmpty()) {
             return kitty;
         }

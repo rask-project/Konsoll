@@ -84,6 +84,8 @@ qt_add_qml_module(konsoll
         src/KeyEncoder.cpp
         src/KeyEncoder.h
         src/NativeDialogs.h
+        src/NativeKeyTracker.cpp
+        src/NativeKeyTracker.h
         src/NativeDialogs.mm
         src/Notifications.h
         src/Notifications.mm

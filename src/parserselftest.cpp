@@ -1,6 +1,7 @@
 #include "selftest.h"
 
 #include "KeyEncoder.h"
+#include "NativeKeyTracker.h"
 #include "screendump.h"
 #include "term/Grapheme.h"
 #include "term/Terminal.h"
@@ -452,6 +453,13 @@ void kittyKeyboard(int &failures)
                   "kitty 2: Enter release needs flag 8; legacy mode has no releases");
     selfTestCheck(failures, key(Qt::Key_A, QStringLiteral("A"), KeyMod::Shift, 12) == "\x1b[97:65;2u",
                   "kitty 4: shifted alternate key");
+    // AZERTY: the key typing 'a' sits where US has 'q'.
+    selfTestCheck(failures, encodeKey(Qt::Key_A, a, KeyMod::Control, 0, 5, KeyEventType::Press, 'q') == "\x1b[97::113;5u" &&
+                                encodeKey(Qt::Key_A, QStringLiteral("A"), KeyMod::Shift, 0, 12, KeyEventType::Press, 'q') ==
+                                    "\x1b[97:65:113;2u" &&
+                                encodeKey(Qt::Key_A, a, KeyMod::Control, 0, 5, KeyEventType::Press, 'a') == "\x1b[97;5u" &&
+                                usLayoutKey(0x0C) == 'q' && usLayoutKey(0x32) == '`',
+                  "kitty 4: base layout key when it differs from the typed key");
     selfTestCheck(failures, key(Qt::Key_A, a, 0, 24) == "\x1b[97;1;97u", "kitty 16: associated text");
     selfTestCheck(failures, key(Qt::Key_5, QStringLiteral("5"), 0, 1, KeyEventType::Press, KeyMode::FromKeypad) == "\x1b[57404u" &&
                                 key(Qt::Key_F3, {}, 0, 1) == "\x1b[13~" && key(Qt::Key_F13, {}, 0, 1) == "\x1b[57376u",

@@ -2,6 +2,7 @@
 
 #include "KeyEncoder.h"
 #include "NativeDialogs.h"
+#include "NativeKeyTracker.h"
 #include "Notifications.h"
 #include "term/Grapheme.h"
 #include "term/Palette.h"
@@ -526,7 +527,8 @@ QByteArray TerminalBackend::keyOutputBytes(int key, const QString &text, unsigne
                                (m_terminal->modifyOtherKeys() == 2 ? KeyMode::OtherKeys2 : 0u) |
                                (m_terminal->otherKeysCsiU() ? KeyMode::OtherKeysCsiU : 0u) |
                                (optionAsMeta() ? KeyMode::OptionMeta : 0u);
-    return encodeKey(key, text, mods, modes, m_terminal->kittyKeyboardFlags(), eventType);
+    return encodeKey(key, text, mods, modes, m_terminal->kittyKeyboardFlags(), eventType,
+                     usLayoutKey(NativeKeyTracker::lastVirtualKey()));
 }
 
 void TerminalBackend::writeText(const QString &text)
