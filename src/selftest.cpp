@@ -82,7 +82,7 @@ void selfTestCheck(int &failures, bool condition, const char *what)
 int runSelfTest()
 {
     // Multi-session validation (docs/SESSION-THREADING-PLAN.md §8.8): the real
-    // manager/backend/worker stack, headless on the offscreen platform.
+    // manager/backend/worker stack.
     std::println(std::cout, "Konsoll selftest (session threading §8.8)");
     TerminalManager manager(nullptr);
     manager.start();
