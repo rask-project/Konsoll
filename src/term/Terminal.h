@@ -8,6 +8,7 @@
 #include <QString>
 
 #include <array>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -16,6 +17,21 @@ namespace konsoll
 
 // ANSI/VT100/xterm parser that drives a Screen. Consumes raw PTY bytes and
 // maintains the SGR style state, OSC title and DA-reply bookkeeping.
+// A request the terminal cannot answer itself: it needs the clipboard, the
+// window or the user's permission. The session (TerminalBackend) decides.
+struct TerminalRequest {
+    enum Kind : std::uint8_t {
+        ClipboardRead, // OSC 52 ; selection ; ?   (data = selection)
+        TitleReport,   // XTWINOPS 21 (a = 0) / 20 icon label (a = 1)
+        WindowOp       // XTWINOPS 1-10: a = operation, b / c = its parameters
+    };
+    QByteArray data;
+    int kind{ClipboardRead};
+    int a{0};
+    int b{0};
+    int c{0};
+};
+
 class Terminal
 {
 public:
@@ -53,6 +69,8 @@ public:
     // arrived, plus unsolicited reports (in-band resize, color scheme). The
     // backend writes them to the PTY.
     QByteArray takeResponses() { return std::exchange(m_responses, QByteArray{}); }
+    // Pending requests needing the session (see TerminalRequest).
+    std::vector<TerminalRequest> takeRequests() { return std::exchange(m_requests, {}); }
     // The colors the session renders by default (0xAARRGGBB), for OSC
     // 10/11/12 queries and the dark/light color-scheme report.
     void setDefaultColors(unsigned int foreground, unsigned int background);
@@ -278,6 +296,7 @@ private:
     QByteArray m_responses;
     // XTWINOPS 22/23 title stack.
     std::vector<QString> m_titleStack;
+    std::vector<TerminalRequest> m_requests;
     // OSC 8 targets; a cell's `link` is an index + 1. Keyed for reuse by
     // the OSC 8 id parameter and URI.
     std::vector<QString> m_links;

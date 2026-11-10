@@ -25,6 +25,10 @@ Window {
         {
             title: qsTr("Window"),
             iconName: "window"
+        },
+        {
+            title: qsTr("Security"),
+            iconName: "security"
         }
     ]
 
@@ -67,7 +71,7 @@ Window {
     WindowTranslucency {
         window: control
         color: control.dark ? 0xff1e1e1e : 0xffe8e8e8
-        alpha: 0.95
+        alpha: 0.9
         blurEnabled: true
     }
 
@@ -283,6 +287,62 @@ Window {
                         Layout.rightMargin: 10
 
                         text: qsTr("These settings apply to all windows and are saved automatically.")
+                        font.pointSize: 11
+                        color: control.secondaryTextColor
+                        wrapMode: Text.Wrap
+                    }
+
+                    Item {
+                        Layout.fillHeight: true
+                    }
+                }
+
+                // What programs running in the terminal may do.
+                ColumnLayout {
+                    spacing: 6
+
+                    FormGroup {
+                        FormRow {
+                            label: qsTr("Read the clipboard")
+                            detail: qsTr("OSC 52 paste requests")
+                            showSeparator: false
+
+                            ComboBox {
+                                Layout.preferredWidth: 120
+
+                                model: [qsTr("Never"), qsTr("Ask"), qsTr("Always")]
+                                currentIndex: control.preferences.clipboardRead
+                                onActivated: index => control.preferences.clipboardRead = index
+                            }
+                        }
+
+                        FormRow {
+                            label: qsTr("Read the window title")
+                            detail: qsTr("Title reports (CSI 20 t / 21 t)")
+
+                            Switch {
+                                checked: control.preferences.allowTitleReport
+                                onToggled: control.preferences.allowTitleReport = checked
+                            }
+                        }
+
+                        FormRow {
+                            label: qsTr("Move and resize the window")
+                            detail: qsTr("Window operations (CSI t)")
+
+                            Switch {
+                                checked: control.preferences.allowWindowOps
+                                onToggled: control.preferences.allowWindowOps = checked
+                            }
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 10
+                        Layout.rightMargin: 10
+
+                        text: qsTr("A program could misuse these to read what you copied or to inject text. Writing to the clipboard (copy from the terminal) is always allowed.")
                         font.pointSize: 11
                         color: control.secondaryTextColor
                         wrapMode: Text.Wrap

@@ -1,6 +1,7 @@
 #include "TerminalBackend.h"
 
 #include "KeyEncoder.h"
+#include "NativeDialogs.h"
 #include "term/Palette.h"
 
 #include <QClipboard>
@@ -13,6 +14,7 @@
 #include <QMetaObject>
 #include <QImage>
 #include <QProcess>
+#include <QSettings>
 #include <QUrl>
 #include <QUuid>
 #include <QtGui>
@@ -169,6 +171,47 @@ void TerminalBackend::setCellPixelSize(int width, int height)
     }
 }
 
+void TerminalBackend::handleRequests()
+{
+    if (!m_terminal) {
+        return;
+    }
+    const QSettings settings;
+    std::ranges::for_each(m_terminal->takeRequests(), [this, &settings](const TerminalRequest &request) {
+        switch (request.kind) {
+        case TerminalRequest::ClipboardRead:
+            answerClipboardRead(request.data);
+            break;
+        case TerminalRequest::TitleReport:
+            if (settings.value(QStringLiteral("General/allowTitleReport"), false).toBool() && m_worker) {
+                // Control characters would let a title inject input.
+                QString title = m_title;
+                title.removeIf([](QChar c) { return c.unicode() < 0x20 || c.unicode() == 0x7f; });
+                writeToPty((request.a == 1 ? QByteArray("\x1b]L") : QByteArray("\x1b]l")) + title.toUtf8() + "\x1b\\");
+            }
+            break;
+        case TerminalRequest::WindowOp:
+            if (settings.value(QStringLiteral("General/allowWindowOps"), false).toBool()) {
+                emit windowOperationRequested(request.a, request.b, request.c);
+            }
+            break;
+        default:
+            break;
+        }
+    });
+}
+
+// OSC 52 query: 0 never, 1 ask (default), 2 always.
+void TerminalBackend::answerClipboardRead(const QByteArray &selection)
+{
+    const int policy = QSettings().value(QStringLiteral("General/clipboardRead"), 1).toInt();
+    if (policy == 0 || !m_worker || (policy == 1 && !NativeDialogs::confirmClipboardRead(m_title))) {
+        return;
+    }
+    const QByteArray text = QGuiApplication::clipboard()->text().toUtf8();
+    writeToPty("\x1b]52;" + selection + ";" + text.toBase64() + "\x1b\\");
+}
+
 void TerminalBackend::flushResponses()
 {
     if (!m_terminal) {
@@ -270,6 +313,7 @@ void TerminalBackend::onData(const QByteArray &data)
     // Query replies go out in the order the queries arrived: Neovim pairs
     // OSC 11 with CSI 5n and expects the OSC color reply first.
     flushResponses();
+    handleRequests();
     if (m_terminal->colorsDirty()) {
         // OSC 4/10/11/12 changed the palette or default colors.
         m_terminal->clearColorsDirty();

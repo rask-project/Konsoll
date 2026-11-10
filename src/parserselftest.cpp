@@ -536,6 +536,21 @@ void graphicsProtocols(int &failures)
                   "reply: XTSMGRAPHICS color registers and sixel geometry");
 }
 
+// Requests the session answers by the user's Security settings.
+void sessionRequests(int &failures)
+{
+    Terminal term(4, 10, QStringLiteral("selftest"));
+    term.write("\x1b]52;c;?\x07\x1b]52;;?\x07\x1b[21t\x1b[20t\x1b[8;30;100t\x1b[2t\x1b]52;c;aGk=\x07");
+    const std::vector<TerminalRequest> requests = term.takeRequests();
+    const auto kindAt = [&requests](std::size_t i) { return i < requests.size() ? requests[i].kind : -1; };
+    selfTestCheck(failures, requests.size() == 6 && kindAt(0) == TerminalRequest::ClipboardRead && requests[0].data == "c" &&
+                                requests[1].data == "c" && kindAt(2) == TerminalRequest::TitleReport && requests[2].a == 0 &&
+                                requests[3].a == 1 && kindAt(4) == TerminalRequest::WindowOp && requests[4].a == 8 &&
+                                requests[4].b == 30 && requests[4].c == 100 && requests[5].a == 2 &&
+                                term.clipboardText() == QStringLiteral("hi") && term.takeResponses().isEmpty(),
+                  "requests: OSC 52 reads, title reports and window operations wait for the session");
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
@@ -551,6 +566,7 @@ void runParserSelfTest(int &failures)
     vttestFindings(failures);
     kittyKeyboard(failures);
     graphicsProtocols(failures);
+    sessionRequests(failures);
 }
 
 } // namespace konsoll

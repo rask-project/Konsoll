@@ -76,6 +76,20 @@ bool NativeDialogs::confirmClose()
     return confirmed;
 }
 
+bool NativeDialogs::confirmClipboardRead(const QString &title)
+{
+    NSAlert *const alert = [[NSAlert alloc] init];
+    [alert setAlertStyle:NSAlertStyleWarning];
+    [alert setMessageText:@"Allow access to the clipboard?"];
+    [alert setInformativeText:[NSString stringWithFormat:@"The program running in “%@” wants to read the clipboard. You can change this in Settings > Security.",
+                                                        title.toNSString()]];
+    [alert addButtonWithTitle:@"Allow"];
+    [alert addButtonWithTitle:@"Deny"];
+    const bool allowed = [alert runModal] == NSAlertFirstButtonReturn;
+    [alert release];
+    return allowed;
+}
+
 bool NativeDialogs::confirmQuit(int sessionCount)
 {
     NSAlert *const alert = [[NSAlert alloc] init];

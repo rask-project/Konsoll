@@ -58,6 +58,68 @@ Window {
         appWindow.windowManager.windowClosed(appWindow);
     }
 
+    // XTWINOPS requests from the active session, when Settings > Security
+    // allows them.
+    Connections {
+        target: sessionManager.activeSession
+        function onWindowOperationRequested(operation, first, second) {
+            appWindow.applyWindowOperation(operation, first, second);
+        }
+    }
+
+    FontMetrics {
+        id: terminalMetrics
+        font: appWindow.terminalFont
+    }
+
+    function applyWindowOperation(operation, first, second) {
+        const session = sessionManager.activeSession;
+        switch (operation) {
+        case 1:
+            appWindow.showNormal();
+            appWindow.raise();
+            break;
+        case 2:
+            appWindow.showMinimized();
+            break;
+        case 3:
+            appWindow.x = first;
+            appWindow.y = second;
+            break;
+        case 4:
+            if (second > 0)
+                appWindow.width = second;
+            if (first > 0)
+                appWindow.height = first;
+            break;
+        case 5:
+            appWindow.raise();
+            break;
+        case 6:
+            appWindow.lower();
+            break;
+        case 8:
+            // Resize by the cell delta, keeping the window chrome.
+            if (session && second > 0)
+                appWindow.width += (second - session.cols) * terminalMetrics.advanceWidth("M");
+            if (session && first > 0)
+                appWindow.height += (first - session.rows) * terminalMetrics.height;
+            break;
+        case 9:
+            if (first === 0)
+                appWindow.showNormal();
+            else
+                appWindow.showMaximized();
+            break;
+        case 10:
+            if (first === 0 || (first === 2 && appWindow.visibility === Window.FullScreen))
+                appWindow.showNormal();
+            else
+                appWindow.showFullScreen();
+            break;
+        }
+    }
+
     Connections {
         target: sessionManager
         function onWindowShouldClose() {

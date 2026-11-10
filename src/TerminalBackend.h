@@ -217,6 +217,9 @@ signals:
     void highlightChanged();
     void mouseTrackingChanged();
     void keyboardFlagsChanged();
+    // XTWINOPS window manipulation the application asked for and the user
+    // allows (Settings > Security): operation 1-10 with its parameters.
+    void windowOperationRequested(int operation, int first, int second);
     void commandRunningChanged();
     void quitRequested();
     void commandFinished();
@@ -233,6 +236,10 @@ private:
     void scheduleFrame();
     // Write the terminal's pending query replies and reports to the PTY.
     void flushResponses();
+    // Clipboard reads, title reports and window operations, by the user's
+    // Settings > Security choices.
+    void handleRequests();
+    void answerClipboardRead(const QByteArray &selection);
     void checkScrollOffsetChanged();
     int visibleStart() const;
     // Last non-space column of an absolute line (full width if the line is blank).

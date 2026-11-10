@@ -204,9 +204,27 @@ void Terminal::handleWindowOps(const std::vector<int> &params)
             setExtraFlag(TitleDirty, true);
         }
         break;
+    case 20: // report icon label
+    case 21: // report title
+        m_requests.push_back(TerminalRequest{.data = {}, .kind = TerminalRequest::TitleReport, .a = paramAt(params, 0, 0) == 20 ? 1 : 0, .b = 0, .c = 0});
+        break;
+    case 1:  // de-iconify
+    case 2:  // iconify
+    case 3:  // move to x ; y
+    case 4:  // resize to height ; width pixels
+    case 5:  // raise
+    case 6:  // lower
+    case 8:  // resize to rows ; columns
+    case 9:  // maximize (1) / restore (0)
+    case 10: // full screen: 0 leave, 1 enter, 2 toggle
+        // Window manipulation needs the window and the user's permission.
+        m_requests.push_back(TerminalRequest{.data = {},
+                                             .kind = TerminalRequest::WindowOp,
+                                             .a = paramAt(params, 0, 0),
+                                             .b = params.size() > 1 ? params[1] : 0,
+                                             .c = params.size() > 2 ? params[2] : 0});
+        break;
     default:
-        // Window manipulation (resize, move, raise) and title reports are
-        // not exposed to applications.
         break;
     }
 }

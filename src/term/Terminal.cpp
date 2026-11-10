@@ -1345,6 +1345,15 @@ void Terminal::handleOscClipboard(const QByteArray &body)
         return;
     }
     const QByteArray selection = body.mid(3, separator - 3);
+    if (body.mid(separator + 1) == "?") {
+        // Reading the clipboard is up to the user (see TerminalBackend).
+        m_requests.push_back(TerminalRequest{.data = selection.isEmpty() ? QByteArray("c") : selection,
+                                             .kind = TerminalRequest::ClipboardRead,
+                                             .a = 0,
+                                             .b = 0,
+                                             .c = 0});
+        return;
+    }
     if (selection.isEmpty() || selection.contains('c') || selection.contains('p')) {
         const QByteArray encoded = body.mid(separator + 1);
         const QByteArray decoded = QByteArray::fromBase64(encoded, QByteArray::AbortOnBase64DecodingErrors);

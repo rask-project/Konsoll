@@ -29,6 +29,9 @@ public:
     Q_INVOKABLE void approveQuit();
     Q_INVOKABLE void terminateApplication();
     static bool consumeQuitApproval();
+    // Asks whether the program in the terminal titled `title` may read the
+    // clipboard (OSC 52 query). True if the user allowed it.
+    static bool confirmClipboardRead(const QString &title);
 };
 
 } // namespace konsoll

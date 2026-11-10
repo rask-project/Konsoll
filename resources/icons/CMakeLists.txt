@@ -5,6 +5,7 @@ set(ICONS_SRC
     konsoll/svg/arrow-prev.svg
     konsoll/svg/arrow-next.svg
     konsoll/svg/close.svg
+    konsoll/svg/security.svg
     konsoll/svg/window.svg
 )
 
