@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <utility>
 
 namespace konsoll
 {
@@ -104,28 +105,67 @@ QByteArray Terminal::mouseReport(int button, int row, int col, int event, unsign
            QByteArray(1, static_cast<char>(x + 32)) + QByteArray(1, static_cast<char>(y + 32));
 }
 
+namespace
+{
+// Upper bound for an OSC/DCS string. OSC 52 clipboard payloads are the largest
+// legitimate strings (see handleOscClipboard); anything longer is dropped.
+constexpr qsizetype kMaxStringLength = 1'500'000;
+// CSI parameter and intermediate bytes kept per sequence; longer runs are
+// malformed and only need to be consumed.
+constexpr qsizetype kMaxCsiParams = 256;
+constexpr qsizetype kMaxCsiIntermediates = 2;
+
+constexpr unsigned char kEsc = 0x1b;
+constexpr unsigned char kCan = 0x18;
+constexpr unsigned char kSub = 0x1a;
+constexpr unsigned char kBel = 0x07;
+
+bool isFinalByte(unsigned char c)
+{
+    return c >= 0x40 && c <= 0x7e;
+}
+
+bool isIntermediateByte(unsigned char c)
+{
+    return c >= 0x20 && c <= 0x2f;
+}
+
+bool isParameterByte(unsigned char c)
+{
+    return c >= 0x30 && c <= 0x3f;
+}
+} // namespace
+
 void Terminal::processByte(unsigned char c)
 {
-    if (m_state == State::Ground) {
+    switch (m_state) {
+    case State::Ground:
         if (m_utf8Remaining != 0 && processUtf8Continuation(c)) {
             return;
         }
         processGroundByte(c);
         return;
-    }
-    if (m_state == State::Escape) {
+    case State::Escape:
         processEscapeByte(c);
         return;
-    }
-    if (m_state == State::EscapeIntermediate) {
+    case State::EscapeIntermediate:
         processEscapeIntermediateByte(c);
         return;
-    }
-    if (m_state == State::Csi) {
+    case State::Csi:
         processCsiByte(c);
         return;
+    case State::CsiIgnore:
+        processCsiIgnoreByte(c);
+        return;
+    case State::Osc:
+    case State::Dcs:
+    case State::IgnoreString:
+        processStringByte(c);
+        return;
+    case State::StringEscape:
+        processStringEscapeByte(c);
+        return;
     }
-    processOscByte(c);
 }
 
 bool Terminal::processUtf8Continuation(unsigned char c)
@@ -147,23 +187,8 @@ bool Terminal::processUtf8Continuation(unsigned char c)
 
 void Terminal::processGroundByte(unsigned char c)
 {
-    if (c == 0x1b) {
-        m_state = State::Escape;
-        m_csiBody.clear();
-        m_csiPrivate = false;
-    } else if (c == '\r') {
-        m_screen.carriageReturn();
-    } else if (c == '\n' || c == 0x0b || c == 0x0c) {
-        // VT and FF act as LF, as in xterm.
-        m_screen.lineFeed();
-    } else if (c == '\b') {
-        m_screen.backspace();
-    } else if (c == '\t') {
-        m_screen.tab();
-    } else if (c < 0x20 || c == 0x7f) {
-        // Every other C0 control (NUL, BEL, SO/SI, ...) and DEL has no glyph:
-        // drop it instead of storing it in a cell, where it renders as a
-        // missing-glyph box over the text.
+    if (c < 0x20 || c == 0x7f) {
+        executeControl(c);
     } else if (c < 0x80) {
         m_screen.putChar(c, m_fg, m_bg, m_flags);
     } else if (c >= 0xc2 && c <= 0xdf) {
@@ -183,65 +208,186 @@ void Terminal::processGroundByte(unsigned char c)
     }
 }
 
+// C0 controls run in every state except strings, so a CR or BS embedded in a
+// CSI sequence still takes effect (as on a real VT).
+void Terminal::executeControl(unsigned char c)
+{
+    switch (c) {
+    case kEsc:
+        enterEscape();
+        break;
+    case '\r':
+        m_screen.carriageReturn();
+        break;
+    case '\n':
+    case 0x0b:
+    case 0x0c:
+        // VT and FF act as LF, as in xterm.
+        m_screen.lineFeed();
+        break;
+    case '\b':
+        m_screen.backspace();
+        break;
+    case '\t':
+        m_screen.tab();
+        break;
+    case kCan:
+    case kSub:
+        // CAN/SUB abort any sequence in progress.
+        m_state = State::Ground;
+        break;
+    default:
+        // Every other C0 control (NUL, BEL, SO/SI, ...) and DEL has no glyph:
+        // drop it instead of storing it in a cell, where it renders as a
+        // missing-glyph box over the text.
+        break;
+    }
+}
+
+void Terminal::enterEscape()
+{
+    m_state = State::Escape;
+    m_escIntermediate = 0;
+}
+
+void Terminal::enterString(State state, StringKind kind)
+{
+    m_state = state;
+    m_stringKind = kind;
+    m_stringBody.clear();
+}
+
 void Terminal::processEscapeByte(unsigned char c)
 {
-    if (c == '[') {
+    if (c < 0x20) {
+        executeControl(c);
+        return;
+    }
+    switch (c) {
+    case '[':
         m_state = State::Csi;
-        m_csiBody.clear();
-        m_csiPrivate = false;
-    } else if (c == '?') {
-        m_state = State::Csi;
-        m_csiBody.clear();
-        m_csiPrivate = true;
-    } else if (c == ']') {
-        m_state = State::Osc;
-        m_oscBody.clear();
-    } else if (c >= 0x20 && c <= 0x2f) {
+        m_csiParams.clear();
+        m_csiIntermediates.clear();
+        m_csiPrefix = 0;
+        return;
+    case ']':
+        enterString(State::Osc, StringKind::Osc);
+        return;
+    case 'P':
+        enterString(State::Dcs, StringKind::Dcs);
+        return;
+    case 'X': // SOS
+    case '^': // PM
+    case '_': // APC
+        enterString(State::IgnoreString, StringKind::Ignore);
+        return;
+    default:
+        break;
+    }
+    if (isIntermediateByte(c)) {
         // ESC sequences with an intermediate byte (for example ESC ( B
         // to select the ASCII character set) end with a separate final
         // byte. Consume both; otherwise that final byte leaks as text.
+        m_escIntermediate = static_cast<char>(c);
         m_state = State::EscapeIntermediate;
-    } else {
+        return;
+    }
+    m_state = State::Ground;
+    if (c != 0x7f) {
         handleEsc(static_cast<char>(c));
-        m_state = State::Ground;
     }
 }
 
 void Terminal::processEscapeIntermediateByte(unsigned char c)
 {
-    if (c >= 0x30 && c <= 0x7e) {
+    if (c < 0x20) {
+        executeControl(c);
+    } else if (c >= 0x30 && c <= 0x7e) {
         m_state = State::Ground;
+        handleEscIntermediate(m_escIntermediate, static_cast<char>(c));
     }
+    // Further intermediates (and DEL) are consumed.
 }
 
 void Terminal::processCsiByte(unsigned char c)
 {
-    if (c >= 0x40 && c <= 0x7e) {
-        handleCsi(static_cast<char>(c), m_csiPrivate);
+    if (c < 0x20) {
+        executeControl(c);
+    } else if (isFinalByte(c)) {
         m_state = State::Ground;
-        m_csiBody.clear();
-        m_csiPrivate = false;
-    } else if (c == '?' && m_csiBody.isEmpty()) {
-        // DEC private modes follow '[' directly: CSI ? 1049 h.
-        m_csiPrivate = true;
-    } else {
-        m_csiBody.append(static_cast<char>(c));
+        handleCsi(static_cast<char>(c));
+    } else if (isIntermediateByte(c)) {
+        if (m_csiIntermediates.size() < kMaxCsiIntermediates) {
+            m_csiIntermediates.append(static_cast<char>(c));
+        } else {
+            m_state = State::CsiIgnore;
+        }
+    } else if (isParameterByte(c)) {
+        const bool prefixByte = c >= 0x3c; // '<' '=' '>' '?'
+        // Parameters after an intermediate byte are malformed.
+        const bool afterIntermediate = !m_csiIntermediates.isEmpty();
+        if (prefixByte && !afterIntermediate && m_csiParams.isEmpty() && m_csiPrefix == 0) {
+            // A private prefix only at the start: CSI ? 1049 h, CSI > c.
+            m_csiPrefix = static_cast<char>(c);
+        } else if (afterIntermediate || prefixByte || m_csiParams.size() >= kMaxCsiParams) {
+            m_state = State::CsiIgnore;
+        } else {
+            m_csiParams.append(static_cast<char>(c));
+        }
+    }
+    // DEL and 8-bit bytes inside a CSI are ignored.
+}
+
+void Terminal::processCsiIgnoreByte(unsigned char c)
+{
+    if (c < 0x20) {
+        executeControl(c);
+    } else if (isFinalByte(c)) {
+        m_state = State::Ground;
     }
 }
 
-void Terminal::processOscByte(unsigned char c)
+void Terminal::processStringByte(unsigned char c)
 {
-    if (c == 0x07 || c == 0x9c) {
-        handleOsc(m_oscBody);
+    if (c == kEsc) {
+        m_state = State::StringEscape;
+        return;
+    }
+    if (c == kCan || c == kSub) {
         m_state = State::Ground;
-        m_oscBody.clear();
-    } else if (c == 0x1b) {
-        // ST (ESC \) terminates the string.
-        handleOsc(m_oscBody);
-        m_state = State::Escape;
-        m_oscBody.clear();
-    } else {
-        m_oscBody.append(static_cast<char>(c));
+        m_stringBody.clear();
+        return;
+    }
+    if (c == kBel && m_stringKind == StringKind::Osc) {
+        finishString();
+        return;
+    }
+    // Other C0 controls are ignored inside strings. 8-bit bytes are UTF-8
+    // text (a title such as "œ" contains 0x9c), never an 8-bit ST.
+    if (c >= 0x20 && m_stringKind != StringKind::Ignore && m_stringBody.size() < kMaxStringLength) {
+        m_stringBody.append(static_cast<char>(c));
+    }
+}
+
+void Terminal::processStringEscapeByte(unsigned char c)
+{
+    // ESC \ is ST. Any other byte also ends the string (as in xterm) and
+    // starts a new escape sequence.
+    finishString();
+    if (c != '\\') {
+        enterEscape();
+        processEscapeByte(c);
+    }
+}
+
+void Terminal::finishString()
+{
+    m_state = State::Ground;
+    const QByteArray body = std::exchange(m_stringBody, QByteArray{});
+    if (m_stringKind == StringKind::Osc) {
+        handleOsc(body);
+    } else if (m_stringKind == StringKind::Dcs) {
+        handleDcs(body);
     }
 }
 
@@ -343,44 +489,25 @@ int Terminal::paramAt(const std::vector<int> &p, int i, int def) // NOLINT: i/de
     return p[i];
 }
 
-void Terminal::handleCsi(char final, bool privateMode)
+void Terminal::handleCsi(char final)
 {
-    if (privateMode && final == 'u') {
-        // Kitty keyboard protocol query: CSI ? u. Report support for
-        // disambiguated key presses, including Shift+Enter.
-        m_keyboardProtocolQueryPending = true;
+    // Dispatch on prefix + intermediates + final: CSI ? 1049 s (XTSAVE),
+    // CSI ? 2026 $ p (DECRQM) and CSI > 4 ; 2 m (modifyOtherKeys) only share
+    // their final byte with CSI s, CSI p and SGR.
+    if (!m_csiIntermediates.isEmpty()) {
+        handleCsiWithIntermediates(final);
+        return;
+    }
+    if (m_csiPrefix == '?') {
+        handlePrivateCsi(final);
+        return;
+    }
+    if (m_csiPrefix != 0) {
+        handlePrefixedCsi(final);
         return;
     }
 
-    // Kitty keyboard protocol push/pop requests: CSI > flags u / CSI < u.
-    if (!privateMode && final == 'u') {
-        if (m_csiBody.startsWith('>')) {
-            const std::vector<int> keyboardParams = parseParams(m_csiBody.mid(1));
-            m_kittyKeyboardEnabled = !keyboardParams.empty() && keyboardParams.front() != 0;
-            return;
-        }
-        if (m_csiBody.startsWith('<')) {
-            m_kittyKeyboardEnabled = false;
-            return;
-        }
-    }
-
-    // Any other private-parameter prefix ('<', '=', '>') marks a different
-    // sequence that merely shares a final byte with a standard one —
-    // modifyOtherKeys (CSI > 4 ; 2 m), XTVERSION (CSI > q), secondary DA
-    // (CSI > c). parseParams drops the prefix, so dispatching them would turn
-    // CSI > 4 ; 2 m into SGR 4;2: underline + dim on all following text.
-    if (!privateMode && !m_csiBody.isEmpty() &&
-        (m_csiBody.front() == '<' || m_csiBody.front() == '=' || m_csiBody.front() == '>')) {
-        return;
-    }
-
-    if (privateMode) {
-        handleDec(final, parseParams(m_csiBody));
-        return;
-    }
-
-    const std::vector<int> p = parseParams(m_csiBody);
+    const std::vector<int> p = parseParams(m_csiParams);
 
     switch (final) {
     case 'A':
@@ -452,17 +579,66 @@ void Terminal::handleCsi(char final, bool privateMode)
             m_dsrQuery = static_cast<unsigned char>(paramAt(p, 0, 0));
         }
         break; // Device status / cursor position report.
-    case 'h':  // NOLINT: similar no-op branches
-    case 'l':
-        break; // Non-private modes: not needed for the MVP.
-    default:   // NOLINT: similar no-op branches
+    default:
         break;
     }
 }
 
-void Terminal::handleDec(char final, const std::vector<int> &params)
+void Terminal::handlePrivateCsi(char final)
 {
-    const bool set = (final == 'h');
+    const std::vector<int> params = parseParams(m_csiParams);
+    switch (final) {
+    case 'h':
+    case 'l':
+        handleDec(final == 'h', params);
+        break;
+    case 'u':
+        // Kitty keyboard protocol query: CSI ? u. Report support for
+        // disambiguated key presses, including Shift+Enter.
+        m_keyboardProtocolQueryPending = true;
+        break;
+    case 'J':
+        // DECSED: no protected cells, so it is a plain erase.
+        m_screen.eraseInDisplay(paramAt(params, 0, 0));
+        break;
+    case 'K':
+        // DECSEL.
+        m_screen.eraseInLine(paramAt(params, 0, 0));
+        break;
+    default:
+        break;
+    }
+}
+
+void Terminal::handlePrefixedCsi(char final)
+{
+    if (final != 'u') {
+        return;
+    }
+    // Kitty keyboard protocol: CSI > flags u (push), CSI < u (pop),
+    // CSI = flags ; mode u (set).
+    if (m_csiPrefix == '<') {
+        setExtraFlag(KittyKeyboardEnabled, false);
+        return;
+    }
+    const std::vector<int> params = parseParams(m_csiParams);
+    setExtraFlag(KittyKeyboardEnabled, !params.empty() && params.front() != 0);
+}
+
+void Terminal::handleCsiWithIntermediates(char /*final*/)
+{
+}
+
+void Terminal::handleEscIntermediate(char /*intermediate*/, char /*final*/)
+{
+}
+
+void Terminal::handleDcs(const QByteArray & /*body*/)
+{
+}
+
+void Terminal::handleDec(bool set, const std::vector<int> &params)
+{
     for (const int mode : params) {
         switch (mode) {
         case 1:
@@ -495,12 +671,10 @@ void Terminal::handleDec(char final, const std::vector<int> &params)
             m_sgrMouse = set;
             break;
         case 2004:
-            m_extraFlags = set ? static_cast<unsigned char>(m_extraFlags | BracketedPasteEnabled)
-                               : static_cast<unsigned char>(m_extraFlags & ~BracketedPasteEnabled);
+            setExtraFlag(BracketedPasteEnabled, set);
             break;
         case 2026:
-            m_extraFlags = set ? static_cast<unsigned char>(m_extraFlags | SynchronizedUpdates)
-                               : static_cast<unsigned char>(m_extraFlags & ~SynchronizedUpdates);
+            setExtraFlag(SynchronizedUpdates, set);
             break;
         case 6: // Origin mode: ignored.
         default:
@@ -775,6 +949,11 @@ void Terminal::handleEsc(char c)
     default:
         break;
     }
+}
+
+void Terminal::setExtraFlag(unsigned char flag, bool on)
+{
+    m_extraFlags = on ? static_cast<unsigned char>(m_extraFlags | flag) : static_cast<unsigned char>(m_extraFlags & ~flag);
 }
 
 void Terminal::cursorMove(int dRow, int dCol) // NOLINT: dRow/dCol are inherently swappable

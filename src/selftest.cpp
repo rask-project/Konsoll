@@ -21,12 +21,7 @@ namespace
 
 void check(int &failures, bool condition, const char *what)
 {
-    if (condition) {
-        std::println(std::cout, "PASS  {}", what);
-    } else {
-        std::println(std::cout, "FAIL  {}", what);
-        ++failures;
-    }
+    konsoll::selfTestCheck(failures, condition, what);
 }
 
 // Spin-pump the event loop until `pred` holds or the timeout elapses.
@@ -73,6 +68,16 @@ TerminalBackend *activeSession(TerminalManager &manager)
 
 namespace konsoll
 {
+
+void selfTestCheck(int &failures, bool condition, const char *what)
+{
+    if (condition) {
+        std::println(std::cout, "PASS  {}", what);
+    } else {
+        std::println(std::cout, "FAIL  {}", what);
+        ++failures;
+    }
+}
 
 int runSelfTest()
 {
@@ -177,6 +182,8 @@ int runSelfTest()
         check(failures, isWide(screen.cellAt(0, 8)) && screen.cellAt(0, 8).ch == 0x4e2du,
               "wide: reflow re-joins without the wrap padding");
     }
+
+    runParserSelfTest(failures);
 
     // 1. Concurrent output: three sessions produce output at the same time.
     auto *a = activeSession(manager);

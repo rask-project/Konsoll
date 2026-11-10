@@ -93,6 +93,7 @@ qt_add_qml_module(konsoll
         src/pty/PtyProcess.h
         src/pty/PtyWorker.cpp
         src/pty/PtyWorker.h
+        src/parserselftest.cpp
         src/selftest.cpp
         src/selftest.h
         src/term/Cell.h
