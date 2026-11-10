@@ -84,6 +84,9 @@ QByteArray modifierParam(unsigned int mods)
 QByteArray encodeSpecial(const SpecialKey &special, unsigned int mods, unsigned int modes)
 {
     const char final = static_cast<char>(special.final);
+    if ((modes & KeyMode::Vt52) != 0 && special.kind != kTildeKey) {
+        return QByteArray("\x1b") + final; // VT52: ESC A ... ESC D, ESC P ... ESC S
+    }
     if (special.kind == kTildeKey) {
         QByteArray out = "\x1b[" + QByteArray::number(special.number);
         if (mods != 0) {
@@ -188,7 +191,7 @@ QByteArray encodeKitty(int key, const QString &text, unsigned int mods)
     return {};
 }
 
-QByteArray encodeEditingKey(int key, unsigned int mods)
+QByteArray encodeEditingKey(int key, unsigned int mods, unsigned int modes)
 {
     const bool shift = (mods & KeyMod::Shift) != 0;
     const bool alt = (mods & KeyMod::Alt) != 0;
@@ -198,6 +201,9 @@ QByteArray encodeEditingKey(int key, unsigned int mods)
         // Codex and other TUIs bind LF (Ctrl+J) to insert a newline.
         if (shift && (mods & KeyMod::Control) == 0) {
             return "\n";
+        }
+        if ((modes & KeyMode::NewlineMode) != 0) {
+            return alt ? "\x1b\r\n" : "\r\n";
         }
         return alt ? "\x1b\r" : "\r";
     case Qt::Key_Tab:
@@ -232,7 +238,8 @@ QByteArray encodeKey(int key, const QString &text, unsigned int mods, unsigned i
     if ((modes & KeyMode::FromKeypad) != 0 && (modes & KeyMode::ApplicationKeypad) != 0 && mods == 0) {
         const auto *const keypad = std::ranges::find(kKeypadKeys, key, &KeypadKey::key);
         if (keypad != kKeypadKeys.end()) {
-            return QByteArray("\x1bO") + static_cast<char>(keypad->final);
+            const char *const prefix = (modes & KeyMode::Vt52) != 0 ? "\x1b?" : "\x1bO";
+            return QByteArray(prefix) + static_cast<char>(keypad->final);
         }
     }
     if (alt && !control && (mods & KeyMod::Shift) == 0) {
@@ -241,7 +248,7 @@ QByteArray encodeKey(int key, const QString &text, unsigned int mods, unsigned i
             return word;
         }
     }
-    const QByteArray editing = encodeEditingKey(key, mods);
+    const QByteArray editing = encodeEditingKey(key, mods, modes);
     if (!editing.isEmpty()) {
         return editing;
     }

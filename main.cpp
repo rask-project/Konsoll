@@ -3,9 +3,11 @@
 #include <QQmlApplicationEngine>
 #include <QTimer>
 
+#include <span>
 #include <string_view>
 
 #include "AppQuitGuard.h"
+#include "screendump.h"
 #include "selftest.h"
 
 int main(int argc, char *argv[])
@@ -17,6 +19,11 @@ int main(int argc, char *argv[])
         QStringLiteral(KONSOLL_VERSION) + QStringLiteral(" (") + QStringLiteral(KONSOLL_GIT_COMMIT)
         + QStringLiteral(")")
     );
+
+    // Headless parser harness (tools/vtdrive.py): no Qt application needed.
+    if (argc > 1 && std::string_view(argv[1]) == "--screen-dump") {
+        return konsoll::runScreenDump(std::span(argv, static_cast<std::size_t>(argc)));
+    }
 
     // Headless multi-session validation (docs/SESSION-THREADING-PLAN.md §8.8):
     // select the offscreen platform before QGuiApplication picks one.

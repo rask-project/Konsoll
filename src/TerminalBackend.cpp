@@ -415,7 +415,9 @@ QByteArray TerminalBackend::keyOutputBytes(int key, const QString &text, unsigne
     }
     const unsigned int modes = (m_terminal->applicationCursorKeys() ? KeyMode::ApplicationCursor : 0u) |
                                (m_terminal->applicationKeypad() ? KeyMode::ApplicationKeypad : 0u) |
-                               (keypad ? KeyMode::FromKeypad : 0u);
+                               (keypad ? KeyMode::FromKeypad : 0u) |
+                               (m_terminal->newlineMode() ? KeyMode::NewlineMode : 0u) |
+                               (m_terminal->vt52Mode() ? KeyMode::Vt52 : 0u);
     return encodeKey(key, text, mods, modes, m_terminal->kittyKeyboardFlags());
 }
 

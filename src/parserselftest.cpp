@@ -332,6 +332,8 @@ void keyEncoding(int &failures)
                                 key(Qt::Key_X, QStringLiteral("x"), KeyMod::Alt, 0, 1) == "\x1b[120;3u" &&
                                 key(Qt::Key_2, QStringLiteral(u"\u2122"), KeyMod::Alt, 0, 1) == "\xe2\x84\xa2",
                   "keys: kitty disambiguate (flag 1)");
+    selfTestCheck(failures, key(Qt::Key_Return, {}, 0, KeyMode::NewlineMode) == "\r\n",
+                  "keys: Return sends CR LF in LNM");
     selfTestCheck(failures, key(Qt::Key_Return, {}, KeyMod::Shift) == "\n" && key(Qt::Key_Backspace) == "\x7f",
                   "keys: legacy Shift+Enter newline and Backspace");
 }
@@ -382,6 +384,43 @@ void linksAndColors(int &failures)
                   "mode 1007: alternate scroll is on by default");
 }
 
+// Fixes found running vttest through tools/vtdrive.py.
+void vttestFindings(int &failures)
+{
+    {
+        const Terminal term = feed("junk\x1b[5;5r\x1b[3;3H\x1b[?3l");
+        selfTestCheck(failures, rowText(term, 0).isEmpty() && cursorAt(term, 0, 0) && term.screen().scrollTop() == 0,
+                      "vttest: DECCOLM clears, homes and resets the margins");
+    }
+    selfTestCheck(failures, rowText(feed("keep\x1b[?95h\x1b[?3h"), 0) == QStringLiteral("keep"),
+                  "vttest: DECNCSM (?95) keeps the screen on DECCOLM");
+    selfTestCheck(failures, rowText(feed("\x1b-A\x0e!#\x0f"), 0) == QStringLiteral(u"¡£") &&
+                                rowText(feed("\x1b(K{|}~"), 0) == QStringLiteral("{|}~") &&
+                                rowText(feed("\x1b[?42h\x1b(K{|}~"), 0) == QStringLiteral(u"äöüß") &&
+                                rowText(feed("\x1b[?42h\x1b(%6[\\]"), 0) == QStringLiteral(u"ÃÇÕ"),
+                  "charset: 96-character Latin-1 in G1, NRC sets only in DECNRCM");
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b[?2l\x1bY\"%x\x1bZ\x1b<\x1b[c");
+        selfTestCheck(failures, term.screen().cellAt(2, 5).ch == 'x' && !term.vt52Mode() &&
+                                    term.takeResponses() == "\x1b/Z\x1b[?62;22c",
+                      "vt52: ESC Y addressing, identify, ESC < back to ANSI");
+    }
+    selfTestCheck(failures, replies("\x1b[0x\x1b[1x") == "\x1b[2;1;1;128;128;1;0x\x1b[3;1;1;128;128;1;0x", "reply: DECREQTPARM");
+    selfTestCheck(failures, rowText(feed("+\x1b[1b\x1b[10b\r\n \x1b[2b+"), 0) == QStringLiteral("++") &&
+                                rowText(feed("+\x1b[1b\x1b[10b\r\n \x1b[2b+"), 1) == QStringLiteral("+") &&
+                                rowText(feed("x\x1b[H\x1b[3b"), 0) == QStringLiteral("x"),
+                  "csi: REP needs a graphic character right before it, and repeats once");
+    selfTestCheck(failures, rowText(feed("abcdef\x1b[2 @"), 0) == QStringLiteral("cdef") &&
+                                rowText(feed("abcdef\x1b[2 A"), 0) == QStringLiteral("abcdef") &&
+                                feed("abcdef\x1b[2 A").screen().cellAt(0, 2).ch == 'a',
+                  "csi: SL / SR scroll the region sideways");
+    selfTestCheck(failures, rowText(feed("\x1b[1\"qab\x1b[0\"qcd\x1b[1;1H\x1b[?2K"), 0) == QStringLiteral("ab") &&
+                                rowText(feed("\x1bVab\x1bWcd\x1b[1;1H\x1b[2K"), 0) == QStringLiteral("ab") &&
+                                rowText(feed("\x1bVab\x1bWcd\x1b[6h\x1b[1;1H\x1b[2K"), 0).isEmpty(),
+                  "protect: DECSCA vs DECSEL, SPA vs EL, ERM erases protected cells");
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
@@ -394,6 +433,7 @@ void runParserSelfTest(int &failures)
     cursorStyle(failures);
     keyEncoding(failures);
     linksAndColors(failures);
+    vttestFindings(failures);
 }
 
 } // namespace konsoll

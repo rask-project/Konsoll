@@ -1,6 +1,7 @@
 #include "Terminal.h"
 
 #include "CharWidth.h"
+#include "Charsets.h"
 
 #include <QChar>
 #include <QList>
@@ -103,6 +104,10 @@ void Terminal::processByte(unsigned char c)
     case State::StringEscape:
         processStringEscapeByte(c);
         return;
+    case State::Vt52Row:
+    case State::Vt52Column:
+        processVt52AddressByte(c);
+        return;
     }
 }
 
@@ -150,6 +155,11 @@ void Terminal::processGroundByte(unsigned char c)
 // CSI sequence still takes effect (as on a real VT).
 void Terminal::executeControl(unsigned char c)
 {
+    // REP repeats a graphic character only when it directly precedes it (an
+    // ESC starts a sequence, which handleCsi judges).
+    if (c != kEsc) {
+        m_lastGraphic = 0;
+    }
     switch (c) {
     case kEsc:
         enterEscape();
@@ -194,7 +204,7 @@ void Terminal::executeControl(unsigned char c)
 void Terminal::enterEscape()
 {
     m_state = State::Escape;
-    m_escIntermediate = 0;
+    m_csiIntermediates.clear(); // ESC intermediates share the CSI buffer
 }
 
 void Terminal::enterString(State state, StringKind kind)
@@ -208,6 +218,10 @@ void Terminal::processEscapeByte(unsigned char c)
 {
     if (c < 0x20) {
         executeControl(c);
+        return;
+    }
+    if ((m_extraFlags & Vt52Mode) != 0) {
+        handleVt52Escape(c);
         return;
     }
     switch (c) {
@@ -235,7 +249,7 @@ void Terminal::processEscapeByte(unsigned char c)
         // ESC sequences with an intermediate byte (for example ESC ( B
         // to select the ASCII character set) end with a separate final
         // byte. Consume both; otherwise that final byte leaks as text.
-        m_escIntermediate = static_cast<char>(c);
+        m_csiIntermediates.append(static_cast<char>(c));
         m_state = State::EscapeIntermediate;
         return;
     }
@@ -245,13 +259,91 @@ void Terminal::processEscapeByte(unsigned char c)
     }
 }
 
+// VT52 mode (DECANM reset): the VT52's own escape sequences; ESC < returns
+// to ANSI mode.
+void Terminal::handleVt52Escape(unsigned char c)
+{
+    m_state = State::Ground;
+    switch (c) {
+    case 'A':
+        m_screen.cursorUp(1);
+        break;
+    case 'B':
+        m_screen.cursorDown(1);
+        break;
+    case 'C':
+        cursorMove(0, 1);
+        break;
+    case 'D':
+        cursorMove(0, -1);
+        break;
+    case 'F': // graphics character set
+        m_charsets[0] = Charset::DecSpecialGraphics;
+        break;
+    case 'G':
+        m_charsets[0] = Charset::Ascii;
+        break;
+    case 'H':
+        m_screen.moveCursor(0, 0);
+        break;
+    case 'I':
+        m_screen.reverseIndex();
+        break;
+    case 'J':
+        m_screen.eraseInDisplay(0);
+        break;
+    case 'K':
+        m_screen.eraseInLine(0);
+        break;
+    case 'Y': // direct cursor address: ESC Y row+32 col+32
+        m_state = State::Vt52Row;
+        break;
+    case 'Z': // identify
+        reply("\x1b/Z");
+        break;
+    case '=':
+        setExtraFlag(ApplicationKeypad, true);
+        break;
+    case '>':
+        setExtraFlag(ApplicationKeypad, false);
+        break;
+    case '<':
+        setExtraFlag(Vt52Mode, false);
+        break;
+    default:
+        break;
+    }
+}
+
+void Terminal::processVt52AddressByte(unsigned char c)
+{
+    if (c < 0x20) {
+        executeControl(c);
+        return;
+    }
+    if (m_state == State::Vt52Row) {
+        m_csiParams = QByteArray(1, static_cast<char>(c)); // keep the row byte
+        m_state = State::Vt52Column;
+        return;
+    }
+    m_state = State::Ground;
+    // An out-of-range line or column leaves that coordinate unchanged, as
+    // on the VT52.
+    const int row = static_cast<unsigned char>(m_csiParams.front()) - 32;
+    const int col = static_cast<int>(c) - 32;
+    m_screen.moveCursor(row < m_screen.rows() ? row : m_screen.cursorRow(),
+                        col < m_screen.cols() ? col : m_screen.cursorCol());
+}
+
 void Terminal::processEscapeIntermediateByte(unsigned char c)
 {
     if (c < 0x20) {
         executeControl(c);
     } else if (c >= 0x30 && c <= 0x7e) {
         m_state = State::Ground;
-        handleEscIntermediate(m_escIntermediate, static_cast<char>(c));
+        handleEscIntermediate(m_csiIntermediates, static_cast<char>(c));
+    } else if (isIntermediateByte(c) && m_csiIntermediates.size() < kMaxCsiIntermediates) {
+        m_csiIntermediates.append(static_cast<char>(c)); // ESC ( % 6
     }
     // Further intermediates (and DEL) are consumed.
 }
@@ -377,31 +469,13 @@ void Terminal::printCodePoint(unsigned int codePoint)
     m_lastGraphic = codePoint;
 }
 
-namespace
-{
-// DEC Special Graphics (ESC ( 0) for 0x5f..0x7e: line drawing and symbols.
-constexpr std::array<char16_t, 32> kDecSpecialGraphics{
-    u'\u00a0', u'\u25c6', u'\u2592', u'\u2409', u'\u240c', u'\u240d', u'\u240a', u'\u00b0',
-    u'\u00b1', u'\u2424', u'\u240b', u'\u2518', u'\u2510', u'\u250c', u'\u2514', u'\u253c',
-    u'\u23ba', u'\u23bb', u'\u2500', u'\u23bc', u'\u23bd', u'\u251c', u'\u2524', u'\u2534',
-    u'\u252c', u'\u2502', u'\u2264', u'\u2265', u'\u03c0', u'\u2260', u'\u00a3', u'\u00b7',
-};
-} // namespace
-
 // Maps a printable ASCII byte through the character set in GL (or the one a
 // single shift selected for this character).
 unsigned int Terminal::mapCharset(unsigned char c)
 {
     const unsigned char set = m_singleShift != 0 ? m_singleShift : m_glSet;
     m_singleShift = 0;
-    const char charset = m_charsets[set];
-    if (charset == '0' && c >= 0x5f && c <= 0x7e) {
-        return kDecSpecialGraphics[c - 0x5f];
-    }
-    if (charset == 'A' && c == '#') {
-        return 0xa3; // UK set: pound sign
-    }
-    return c;
+    return mapCharsetByte(m_charsets[set], c, (m_extraFlags & NrcMode) != 0);
 }
 
 // REP: repeat the preceding graphic character; bounded by the screen size.
@@ -413,6 +487,7 @@ void Terminal::repeatLastCharacter(int count)
     const int times = std::min(std::max(count, 1), m_screen.rows() * m_screen.cols());
     // printCodePoint keeps m_lastGraphic unchanged while repeating it.
     std::ranges::for_each(std::views::iota(0, times), [this](int) { printCodePoint(m_lastGraphic); });
+    m_lastGraphic = 0; // a second REP does not repeat again
 }
 
 bool Terminal::isZeroWidth(unsigned int codePoint)
@@ -488,6 +563,12 @@ int Terminal::paramAt(const std::vector<int> &p, int i, int def) // NOLINT: i/de
 
 void Terminal::handleCsi(char final)
 {
+    // REP repeats a graphic character only when it directly precedes it; any
+    // other sequence in between makes it a no-op (vttest 11.7.2).
+    const unsigned int lastGraphic = std::exchange(m_lastGraphic, 0);
+    if (final == 'b' && m_csiPrefix == 0 && m_csiIntermediates.isEmpty()) {
+        m_lastGraphic = lastGraphic;
+    }
     // Dispatch on prefix + intermediates + final: CSI ? 1049 s (XTSAVE),
     // CSI ? 2026 $ p (DECRQM) and CSI > 4 ; 2 m (modifyOtherKeys) only share
     // their final byte with CSI s, CSI p and SGR.
@@ -564,21 +645,21 @@ void Terminal::handleCsi(char final)
     case 'l': // RM
         handleAnsiMode(final == 'h', p);
         break;
-    case 'J': // NOLINT: similar erase branches
-        m_screen.eraseInDisplay(paramAt(p, 0, 0));
+    case 'J':
+        m_screen.eraseInDisplay(paramAt(p, 0, 0), isoProtection());
         if (paramAt(p, 0, 0) == 2) {
             setExtraFlag(ClearPending, true); // full-screen erase: selection now sits over blanks.
         }
         break;
-    case 'K': // NOLINT: similar erase branches
-        m_screen.eraseInLine(paramAt(p, 0, 0));
+    case 'K':
+        m_screen.eraseInLine(paramAt(p, 0, 0), isoProtection());
         break;
     case 'm':
         handleSgr(parseParamGroups(m_csiParams));
         m_screen.setEraseBackground(m_pen.bg);
         break;
     case 'X':
-        m_screen.eraseChars(paramAt(p, 0, 1));
+        m_screen.eraseChars(paramAt(p, 0, 1), isoProtection());
         break;
     case 'P':
         m_screen.deleteColumns(paramAt(p, 0, 1));
@@ -612,6 +693,12 @@ void Terminal::handleCsi(char final)
     case 't': // XTWINOPS
         handleWindowOps(p);
         break;
+    case 'x': // DECREQTPARM: solicited (0) / unsolicited (1) VT100 parameters
+        if (paramAt(p, 0, 0) <= 1) {
+            // No parity, 8 bits, 38400 baud transmit/receive, clock 1, flags 0.
+            reply("\x1b[" + QByteArray::number(paramAt(p, 0, 0) + 2) + ";1;1;128;128;1;0x");
+        }
+        break;
     default:
         break;
     }
@@ -632,13 +719,11 @@ void Terminal::handlePrivateCsi(char final)
     case 'n': // DECDSR
         handleDeviceStatus(paramAt(params, 0, 0), true);
         break;
-    case 'J':
-        // DECSED: no protected cells, so it is a plain erase.
-        m_screen.eraseInDisplay(paramAt(params, 0, 0));
+    case 'J': // DECSED: selective erase keeps protected cells
+        m_screen.eraseInDisplay(paramAt(params, 0, 0), CellAttr::DecProtected | CellAttr::IsoProtected);
         break;
-    case 'K':
-        // DECSEL.
-        m_screen.eraseInLine(paramAt(params, 0, 0));
+    case 'K': // DECSEL
+        m_screen.eraseInLine(paramAt(params, 0, 0), CellAttr::DecProtected | CellAttr::IsoProtected);
         break;
     default:
         break;
@@ -666,6 +751,16 @@ void Terminal::handleCsiWithIntermediates(char final)
 {
     if (m_csiIntermediates == "!" && final == 'p') {
         softReset(); // DECSTR
+    } else if (m_csiIntermediates == " " && (final == '@' || final == 'A')) {
+        // SL / SR: scroll the region left / right.
+        const std::vector<int> params = parseParams(m_csiParams);
+        m_screen.scrollHorizontally(final == '@' ? paramAt(params, 0, 1) : -paramAt(params, 0, 1));
+    } else if (m_csiIntermediates == "\"" && final == 'q') {
+        // DECSCA: 1 protects the following characters, 0 / 2 do not.
+        const std::vector<int> params = parseParams(m_csiParams);
+        const bool protect = paramAt(params, 0, 0) == 1;
+        m_pen.attrs = static_cast<unsigned char>(protect ? (m_pen.attrs | CellAttr::DecProtected)
+                                                         : (m_pen.attrs & ~CellAttr::DecProtected));
     } else if (m_csiIntermediates == " " && final == 'q') {
         // DECSCUSR: cursor shape and blinking.
         const std::vector<int> params = parseParams(m_csiParams);
@@ -677,32 +772,35 @@ void Terminal::handleCsiWithIntermediates(char final)
     }
 }
 
-void Terminal::handleEscIntermediate(char intermediate, char final)
+void Terminal::handleEscIntermediate(const QByteArray &intermediates, char final)
 {
-    switch (intermediate) {
-    case '(': // designate G0..G3 (SCS)
-    case ')':
-    case '*':
-    case '+': {
-        const auto set = static_cast<std::size_t>(std::string_view("()*+").find(intermediate));
-        m_charsets[set] = final;
-        break;
-    }
-    case '#':
+    if (intermediates == "#") {
         if (final == '8') {
             m_screen.alignmentTest(); // DECALN
         }
-        break;
-    default:
-        // ESC % G (UTF-8), ESC SP F (7-bit controls), ...: nothing to do.
-        break;
+        return;
     }
+    // SCS: designate a character set into G0..G3.
+    int slot = -1;
+    const char charset = designatedCharset(intermediates, final, slot);
+    if (slot >= 0) {
+        m_charsets[static_cast<std::size_t>(slot)] = charset;
+    }
+    // ESC % G (UTF-8), ESC SP F (7-bit controls), ...: nothing to do.
+}
+
+// ED/EL/ECH skip ISO-protected cells unless ERM (erasure mode) is set.
+unsigned int Terminal::isoProtection() const
+{
+    return (m_extraFlags & ErasureMode) != 0 ? 0u : CellAttr::IsoProtected;
 }
 
 void Terminal::handleAnsiMode(bool set, const std::vector<int> &params)
 {
     std::ranges::for_each(params, [this, &set](int mode) {
-        if (mode == 4) {
+        if (mode == 6) {
+            setExtraFlag(ErasureMode, set); // ERM
+        } else if (mode == 4) {
             m_screen.setInsertMode(set); // IRM
         } else if (mode == 20) {
             setExtraFlag(NewlineMode, set); // LNM
@@ -817,8 +915,27 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
         case 1:
             setExtraFlag(ApplicationCursorKeys, set);
             break;
+        case 2:
+            setExtraFlag(Vt52Mode, !set); // DECANM reset: VT52 mode
+            break;
+        case 3:
+            // DECCOLM: the width stays (the window decides it), but the
+            // mode switch still clears the screen, resets the margins and
+            // homes the cursor, as xterm does; ?95 (DECNCSM) keeps content.
+            if ((m_extraFlags & NoClearOnColumnChange) == 0) {
+                m_screen.eraseInDisplay(2);
+            }
+            m_screen.resetScrollRegion();
+            m_screen.moveCursor(0, 0);
+            break;
         case 5:
             setExtraFlag(ReverseVideo, set); // DECSCNM
+            break;
+        case 42:
+            setExtraFlag(NrcMode, set); // DECNRCM
+            break;
+        case 95:
+            setExtraFlag(NoClearOnColumnChange, set); // DECNCSM
             break;
         case 6:
             m_screen.setOriginMode(set); // DECOM
@@ -1219,6 +1336,12 @@ void Terminal::handleEsc(char c)
         break;
     case 'H': // HTS
         m_screen.setTabStop();
+        break;
+    case 'V': // SPA: start of guarded (ISO protected) area
+        m_pen.attrs = static_cast<unsigned char>(m_pen.attrs | CellAttr::IsoProtected);
+        break;
+    case 'W': // EPA
+        m_pen.attrs = static_cast<unsigned char>(m_pen.attrs & ~CellAttr::IsoProtected);
         break;
     case 'n': // LS2
         m_glSet = 2;

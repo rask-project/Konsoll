@@ -33,6 +33,10 @@ inline constexpr unsigned int Blink = 1u << 1;
 inline constexpr unsigned int Overline = 1u << 2;
 inline constexpr unsigned int UnderlineShift = 3u;
 inline constexpr unsigned int UnderlineMask = 7u << UnderlineShift;
+// Erase protection: DECSCA cells resist DECSED/DECSEL; SPA (ISO guarded
+// area) cells also resist ED/EL/ECH while ERM is reset.
+inline constexpr unsigned int DecProtected = 1u << 6;
+inline constexpr unsigned int IsoProtected = 1u << 7;
 }
 
 // SGR 4:n underline styles, stored in CellAttr::UnderlineMask.

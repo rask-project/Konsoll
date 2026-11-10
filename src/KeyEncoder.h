@@ -20,6 +20,8 @@ namespace KeyMode
 inline constexpr unsigned int ApplicationCursor = 1u << 0; // DECCKM
 inline constexpr unsigned int ApplicationKeypad = 1u << 1; // DECKPAM
 inline constexpr unsigned int FromKeypad = 1u << 2;        // the key is on the numeric keypad
+inline constexpr unsigned int NewlineMode = 1u << 3;       // LNM: Return sends CR LF
+inline constexpr unsigned int Vt52 = 1u << 4;              // VT52 mode: ESC A, ESC P, ...
 }
 
 // Encodes a key press for the PTY, as xterm does: control bytes, cursor and

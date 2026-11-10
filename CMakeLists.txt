@@ -96,9 +96,13 @@ qt_add_qml_module(konsoll
         src/pty/PtyWorker.cpp
         src/pty/PtyWorker.h
         src/parserselftest.cpp
+        src/screendump.cpp
+        src/screendump.h
         src/selftest.cpp
         src/selftest.h
         src/term/Cell.h
+        src/term/Charsets.cpp
+        src/term/Charsets.h
         src/term/CharWidth.cpp
         src/term/CharWidth.h
         src/term/Palette.cpp

@@ -443,58 +443,86 @@ void Screen::reverseIndex()
     }
 }
 
-void Screen::eraseInDisplay(int mode)
+// Blanks columns [first, last] of `row`, skipping cells whose attrs carry
+// any of `protectedMask` (DECSCA / SPA protection).
+void Screen::eraseCells(int row, int first, int last, unsigned int protectedMask)
 {
-    auto &g = grid();
+    if (first > last) {
+        return;
+    }
+    Line &line = grid()[row];
+    const Cell blank = eraseCell();
+    std::for_each(line.begin() + first, line.begin() + last + 1, [&blank, protectedMask](Cell &cell) {
+        if ((cell.attrs & protectedMask) == 0u) {
+            cell = blank;
+        }
+    });
+}
+
+void Screen::eraseInDisplay(int mode, unsigned int protectedMask)
+{
     if (mode == 3) {
         clearScrollback();
+        return;
     }
-
+    const auto eraseRows = [this, protectedMask](int from, int to) {
+        std::ranges::for_each(std::views::iota(from, to),
+                              [this, protectedMask](int r) { eraseCells(r, 0, m_cols - 1, protectedMask); });
+    };
     if (mode == 0) {
         // Cursor to end of screen.
-        for (int c = m_cursorCol; c < m_cols; ++c) {
-            g[m_cursorRow][c] = eraseCell();
-        }
-        for (int r = m_cursorRow + 1; r < m_rows; ++r) {
-            g[r].assign(m_cols, eraseCell());
-        }
+        breakWideAt(m_cursorCol);
+        eraseCells(m_cursorRow, m_cursorCol, m_cols - 1, protectedMask);
+        eraseRows(m_cursorRow + 1, m_rows);
     } else if (mode == 1) {
         // Start of screen to cursor.
-        for (int r = 0; r < m_cursorRow; ++r) {
-            g[r].assign(m_cols, eraseCell());
-        }
-        for (int c = 0; c <= m_cursorCol; ++c) {
-            g[m_cursorRow][c] = eraseCell();
-        }
+        breakWideAt(m_cursorCol);
+        eraseRows(0, m_cursorRow);
+        eraseCells(m_cursorRow, 0, m_cursorCol, protectedMask);
     } else if (mode == 2) {
-        g.assign(m_rows, Line(m_cols, eraseCell()));
+        eraseRows(0, m_rows);
     }
 }
 
-void Screen::eraseInLine(int mode)
+void Screen::eraseInLine(int mode, unsigned int protectedMask)
 {
     breakWideAt(m_cursorCol);
-    auto &g = grid();
     if (mode == 0) {
-        for (int c = m_cursorCol; c < m_cols; ++c) {
-            g[m_cursorRow][c] = eraseCell();
-        }
+        eraseCells(m_cursorRow, m_cursorCol, m_cols - 1, protectedMask);
     } else if (mode == 1) {
-        for (int c = 0; c <= m_cursorCol; ++c) {
-            g[m_cursorRow][c] = eraseCell();
-        }
+        eraseCells(m_cursorRow, 0, m_cursorCol, protectedMask);
     } else if (mode == 2) {
-        g[m_cursorRow].assign(m_cols, eraseCell());
+        eraseCells(m_cursorRow, 0, m_cols - 1, protectedMask);
     }
 }
 
-void Screen::eraseChars(int count)
+void Screen::eraseChars(int count, unsigned int protectedMask)
 {
     const int last = std::min(m_cursorCol + std::max(count, 1), m_cols) - 1;
     breakWideAt(m_cursorCol);
     breakWideAt(last);
-    Line &line = grid()[m_cursorRow];
-    std::fill(line.begin() + m_cursorCol, line.begin() + last + 1, eraseCell());
+    eraseCells(m_cursorRow, m_cursorCol, last, protectedMask);
+}
+
+// SL / SR: shift every line of the scroll region left (positive) or right
+// (negative) by `count` columns, blanking the columns shifted in.
+void Screen::scrollHorizontally(int count)
+{
+    const int n = std::min(std::abs(count), m_cols);
+    if (n == 0) {
+        return;
+    }
+    const Cell blank = eraseCell();
+    std::ranges::for_each(std::views::iota(m_scrollTop, m_scrollBottom + 1), [&](int r) {
+        Line &line = grid()[r];
+        if (count > 0) {
+            std::move(line.begin() + n, line.end(), line.begin());
+            std::fill(line.end() - n, line.end(), blank);
+        } else {
+            std::move_backward(line.begin(), line.end() - n, line.end());
+            std::fill(line.begin(), line.begin() + n, blank);
+        }
+    });
 }
 
 void Screen::scrollUp(int count)

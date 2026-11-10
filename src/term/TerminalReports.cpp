@@ -227,8 +227,16 @@ int Terminal::decModeState(int mode) const
     switch (mode) {
     case 1:
         return flag(ApplicationCursorKeys);
+    case 2: // DECANM: ANSI
+        return flag(Vt52Mode) == 1 ? 2 : 1;
+    case 3: // DECCOLM: 80 columns
+        return 2;
     case 5:
         return flag(ReverseVideo);
+    case 42:
+        return flag(NrcMode);
+    case 95:
+        return flag(NoClearOnColumnChange);
     case 6:
         return state(m_screen.originMode());
     case 7:
@@ -287,6 +295,8 @@ void Terminal::reportMode(int mode, bool privateMode)
         state = m_screen.insertMode() ? 1 : 2; // IRM
     } else if (mode == 20) {
         state = (m_extraFlags & NewlineMode) != 0 ? 1 : 2; // LNM
+    } else if (mode == 6) {
+        state = (m_extraFlags & ErasureMode) != 0 ? 1 : 2; // ERM
     }
     reply("\x1b[" + number(mode) + ";" + number(state) + "$y");
 }
@@ -330,7 +340,7 @@ void Terminal::handleDecrqss(const QByteArray &request)
     } else if (request == "\"p") {
         setting = "62;1\"p"; // DECSCL: VT200, 7-bit controls
     } else if (request == "\"q") {
-        setting = "0\"q"; // DECSCA: no protected characters
+        setting = (m_pen.attrs & CellAttr::DecProtected) != 0 ? "1\"q" : "0\"q"; // DECSCA
     }
     if (setting.isEmpty()) {
         reply("\x1bP0$r\x1b\\");

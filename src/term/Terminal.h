@@ -108,6 +108,8 @@ public:
     bool synchronizedUpdates() const { return (m_extraFlags & SynchronizedUpdates) != 0; }
     bool reverseVideo() const { return (m_extraFlags & ReverseVideo) != 0; }
     bool applicationKeypad() const { return (m_extraFlags & ApplicationKeypad) != 0; }
+    bool newlineMode() const { return (m_extraFlags & NewlineMode) != 0; }
+    bool vt52Mode() const { return (m_extraFlags & Vt52Mode) != 0; }
     QByteArray mouseReport(int button, int row, int col, int event, unsigned int modifiers) const;
 
 
@@ -139,6 +141,10 @@ private:
     static constexpr unsigned int FocusReporting = 1u << 20; // ?1004
     static constexpr unsigned int ColorsDirty = 1u << 21;
     static constexpr unsigned int AlternateScroll = 1u << 22; // ?1007, on by default
+    static constexpr unsigned int NoClearOnColumnChange = 1u << 23; // ?95
+    static constexpr unsigned int NrcMode = 1u << 24;               // ?42
+    static constexpr unsigned int Vt52Mode = 1u << 25;              // ?2 reset (DECANM)
+    static constexpr unsigned int ErasureMode = 1u << 26;           // ERM (6): erase protected cells too
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.
@@ -160,7 +166,9 @@ private:
         Osc,   // OSC string: collected, dispatched on BEL or ST.
         Dcs,   // DCS string: collected, dispatched on ST.
         IgnoreString, // SOS / PM / APC: consumed and dropped.
-        StringEscape // ESC inside a string: ST (ESC \) or a new sequence.
+        StringEscape, // ESC inside a string: ST (ESC \) or a new sequence.
+        Vt52Row,      // VT52 ESC Y: row byte next
+        Vt52Column    // VT52 ESC Y row: column byte next
     };
 
     // Which string an ESC inside StringEscape belongs to.
@@ -177,13 +185,15 @@ private:
     void enterEscape();
     void enterString(State state, StringKind kind);
     void processEscapeByte(unsigned char c);
+    void handleVt52Escape(unsigned char c);
+    void processVt52AddressByte(unsigned char c);
     void processEscapeIntermediateByte(unsigned char c);
     void processCsiByte(unsigned char c);
     void processCsiIgnoreByte(unsigned char c);
     void processStringByte(unsigned char c);
     void processStringEscapeByte(unsigned char c);
     void finishString();
-    void handleEscIntermediate(char intermediate, char final);
+    void handleEscIntermediate(const QByteArray &intermediates, char final);
     void handlePrivateCsi(char final);
     void handlePrefixedCsi(char final);
     void handleCsiWithIntermediates(char final);
@@ -213,6 +223,7 @@ private:
     unsigned int mapCharset(unsigned char c);
     void repeatLastCharacter(int count);
     void handleAnsiMode(bool set, const std::vector<int> &params);
+    unsigned int isoProtection() const;
 
     // Query replies (TerminalReports.cpp).
     void reply(const QByteArray &bytes) { m_responses += bytes; }
@@ -246,7 +257,8 @@ private:
     Screen m_screen;
     std::vector<CommandBlock> m_commandBlocks;
     // CSI being parsed: parameter bytes (digits, ';', ':'), intermediate bytes
-    // (0x20-0x2F) and the private prefix ('?', '>', '<', '=', or 0).
+    // (0x20-0x2F; also an ESC sequence's) and the private prefix ('?', '>',
+    // '<', '=', or 0).
     QByteArray m_csiParams;
     QByteArray m_csiIntermediates;
     // OSC / DCS string body.
@@ -279,24 +291,23 @@ private:
     unsigned int m_utf8CodePoint = 0;
     unsigned int m_utf8Minimum = 0;
     int m_commandStartLine = -1;
+    unsigned short m_cellPixelWidth = 8;
+    unsigned short m_cellPixelHeight = 16;
     State m_state = State::Ground;
     StringKind m_stringKind = StringKind::Ignore;
 
     unsigned char m_utf8Remaining = 0;
     char m_csiPrefix = 0;
-    char m_escIntermediate = 0;
     // G0..G3 designations ('B' ASCII, '0' DEC special graphics, 'A' UK), the
     // set invoked into GL (SO/SI, LS2/LS3) and a pending single shift.
     std::array<char, 4> m_charsets{'B', 'B', 'B', 'B'};
     unsigned char m_glSet = 0;
     unsigned char m_singleShift = 0;
     bool m_commandRunning = false;
-    unsigned short m_cellPixelWidth = 8;
-    unsigned short m_cellPixelHeight = 16;
     unsigned char m_mouseModes = 0;
     // Kitty keyboard flags stack: [depth] holds the current flags, the
-    // entries below it the levels CSI > u pushed (at most 8).
-    std::array<unsigned char, 9> m_kittyStack{};
+    // entries below it the levels CSI > u pushed (at most 9).
+    std::array<unsigned char, 10> m_kittyStack{};
     unsigned char m_kittyDepth = 0;
     unsigned char m_cursorStyle = 0;
 };

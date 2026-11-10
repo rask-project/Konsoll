@@ -80,9 +80,13 @@ public:
     void reverseIndex();
 
     // Erase.
-    void eraseInDisplay(int mode); // 0,1,2,3
-    void eraseInLine(int mode);    // 0,1,2
-    void eraseChars(int count);    // ECH: blank `count` cells from the cursor
+    // Erases skip cells whose attrs carry any of `protectedMask` (DECSCA /
+    // SPA protection; 0 erases everything).
+    void eraseInDisplay(int mode, unsigned int protectedMask = 0); // 0,1,2,3
+    void eraseInLine(int mode, unsigned int protectedMask = 0);    // 0,1,2
+    void eraseChars(int count, unsigned int protectedMask = 0);    // ECH: blank `count` cells from the cursor
+    // SL (count > 0) / SR (count < 0): shift the scroll region sideways.
+    void scrollHorizontally(int count);
 
     // Background Color Erase: erased, inserted and scrolled-in cells take the
     // current SGR background (as in xterm/iTerm2), so full-screen apps can
@@ -161,6 +165,7 @@ private:
     void scrollUpOne(int top, int bottom);
     void scrollDownOne(int top, int bottom);
     void blankLine(int row);
+    void eraseCells(int row, int first, int last, unsigned int protectedMask);
     void resetTabStops(int fromCol);
     void applySavedCursor(const SavedCursor &saved);
     int previousCharCol() const;
