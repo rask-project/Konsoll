@@ -113,6 +113,18 @@ int runSelfTest()
               "csi: CSI > 4;2 m (modifyOtherKeys) is not SGR");
     }
 
+    // 0d. Control characters never land in a cell: a stray C0 byte or C1 code
+    // point rendered as a missing-glyph box over the text.
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write(QByteArray("a\x0e\x0f\x01\x7f" "b\xc2\x9b" "c"));
+        const Screen &screen = term.screen();
+        check(failures,
+              screen.cellAt(0, 0).ch == 'a' && screen.cellAt(0, 1).ch == 'b' && screen.cellAt(0, 2).ch == 'c' &&
+                  screen.cursorCol() == 3,
+              "controls: C0 and C1 controls take no cell");
+    }
+
     // 0c. Background Color Erase + ECH: Neovim paints its theme background with
     // erase sequences after setting the SGR background.
     {

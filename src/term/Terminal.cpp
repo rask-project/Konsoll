@@ -153,14 +153,17 @@ void Terminal::processGroundByte(unsigned char c)
         m_csiPrivate = false;
     } else if (c == '\r') {
         m_screen.carriageReturn();
-    } else if (c == '\n') {
+    } else if (c == '\n' || c == 0x0b || c == 0x0c) {
+        // VT and FF act as LF, as in xterm.
         m_screen.lineFeed();
     } else if (c == '\b') {
         m_screen.backspace();
     } else if (c == '\t') {
         m_screen.tab();
-    } else if (c == 0x00 || c == 0x07 || c == 0x08 || c == 0x09) {
-        // NUL / BEL / SO / SI: dropped (charset shift and bell are ignored).
+    } else if (c < 0x20 || c == 0x7f) {
+        // Every other C0 control (NUL, BEL, SO/SI, ...) and DEL has no glyph:
+        // drop it instead of storing it in a cell, where it renders as a
+        // missing-glyph box over the text.
     } else if (c < 0x80) {
         m_screen.putChar(c, m_fg, m_bg, m_flags);
     } else if (c >= 0xc2 && c <= 0xdf) {
@@ -254,6 +257,11 @@ void Terminal::putCodePoint(unsigned int codePoint)
     // the next row). Fold the mark into the previous character when NFC has a
     // precomposed form (e + U+0301 -> é, as in macOS NFD file names);
     // otherwise drop it.
+    // C1 controls (U+0080..U+009F) have no glyph either; drop them.
+    if (codePoint >= 0x80 && codePoint <= 0x9f) {
+        return;
+    }
+
     if (isZeroWidth(codePoint)) {
         combineWithPrevious(codePoint);
         return;
