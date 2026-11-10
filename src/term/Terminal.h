@@ -79,6 +79,16 @@ public:
     // DECSCUSR cursor style: 0/1 blinking block, 2 block, 3/4 underline,
     // 5/6 bar (odd = blinking).
     int cursorStyle() const { return m_cursorStyle; }
+    // 0 block, 1 underline, 2 bar.
+    int cursorShape() const { return m_cursorStyle >= 5 ? 2 : (m_cursorStyle >= 3 ? 1 : 0); }
+    // Blinking from DECSCUSR 1/3/5, or ?12 for the default style.
+    bool cursorBlinking() const
+    {
+        return (m_cursorStyle != 0 && (m_cursorStyle % 2) == 1) ||
+               (m_cursorStyle == 0 && (m_extraFlags & CursorBlinkMode) != 0);
+    }
+    // ?1004: the application wants CSI I / CSI O on focus changes.
+    bool focusReporting() const { return (m_extraFlags & FocusReporting) != 0; }
     bool synchronizedUpdates() const { return (m_extraFlags & SynchronizedUpdates) != 0; }
     bool reverseVideo() const { return (m_extraFlags & ReverseVideo) != 0; }
     bool applicationKeypad() const { return (m_extraFlags & ApplicationKeypad) != 0; }
@@ -93,6 +103,7 @@ private:
     static constexpr unsigned int RemoteHostDirty = 1u << 0;
     static constexpr unsigned int BracketedPasteEnabled = 1u << 1;
     static constexpr unsigned int SynchronizedUpdates = 1u << 2;
+    static constexpr unsigned int CursorBlinkMode = 1u << 3; // ?12
     static constexpr unsigned int SgrMouse = 1u << 4;
     static constexpr unsigned int ApplicationCursorKeys = 1u << 5;
     static constexpr unsigned int InBandResize = 1u << 6; // ?2048
@@ -109,6 +120,7 @@ private:
     static constexpr unsigned int UrxvtMouse = 1u << 17;         // ?1015
     static constexpr unsigned int SgrPixelMouse = 1u << 18;      // ?1016
     static constexpr unsigned int DarkColorScheme = 1u << 19;
+    static constexpr unsigned int FocusReporting = 1u << 20; // ?1004
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.

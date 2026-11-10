@@ -822,8 +822,14 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
         case 7:
             m_screen.setAutoWrap(set); // DECAWM
             break;
+        case 12:
+            setExtraFlag(CursorBlinkMode, set); // AT&T 610 cursor blinking
+            break;
         case 25:
             m_screen.showCursor(set);
+            break;
+        case 1004:
+            setExtraFlag(FocusReporting, set);
             break;
         case 47:
         case 1047:

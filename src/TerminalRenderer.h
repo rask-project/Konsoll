@@ -80,6 +80,9 @@ protected:
     QSGNode *updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *data) override;
 
 private:
+    static constexpr int CursorBlinking = 0x01;
+    static constexpr int CursorFocused = 0x02;
+
     struct Row {
         std::vector<Cell> cells; // resolved colors, selection/cursor applied
         int selLeft{-1};
@@ -114,6 +117,10 @@ private:
     const QFont &fontFor(const Cell &cell) const;
     void toggleBlink();
     void appendUnderline(std::vector<ColorRect> &rects, const Cell &cell, const QRectF &span) const;
+    void appendCursor(std::vector<ColorRect> &rects, bool overlay) const;
+    // Whether the cursor cell's glyph is drawn inverted (a filled block).
+    bool cursorInvertsGlyph() const;
+    void updateBlinkTimer();
     QRectF cellSpan(int row, int col, int count) const;
 
     static void uploadRects(QSGGeometryNode &node, const std::vector<ColorRect> &rects);
@@ -129,7 +136,7 @@ private:
     QFont m_boldItalicFont;
     std::unordered_map<char32_t, bool> m_coverage; // code point -> in m_font
     QRawFont m_rawFont; // primary family only, for coverage checks
-    QTimer m_blinkTimer; // runs only while blinking cells are on screen
+    QTimer m_blinkTimer; // runs only while blinking cells or a blinking cursor are shown
     qreal m_cellWidth{8.0};
     qreal m_cellHeight{16.0};
     QColor m_accent{0x0a, 0x84, 0xff};
@@ -145,7 +152,9 @@ private:
     QRgb m_defaultBg{0xff141414};
     QRgb m_defaultFg{0xffe0e0e0};
     int m_blinkRows{0};  // rows holding SGR 5/6 blinking cells
-    int m_blinkPhase{1}; // 1 = blinking text shown, 0 = hidden
+    int m_blinkPhase{1}; // 1 = blinking text / cursor shown, 0 = hidden
+    int m_cursorShape{0}; // 0 block, 1 underline, 2 bar
+    int m_cursorState{0}; // CursorBlinking | CursorFocused
 };
 
 } // namespace konsoll

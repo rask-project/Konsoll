@@ -278,6 +278,23 @@ void queryReplies(int &failures)
     }
 }
 
+// Stage 4b: cursor style and focus reporting modes.
+void cursorStyle(int &failures)
+{
+    const Terminal bar = feed("\x1b[5 q");
+    const Terminal underline = feed("\x1b[4 q");
+    const Terminal block = feed("\x1b[2 q");
+    selfTestCheck(failures, bar.cursorShape() == 2 && bar.cursorBlinking() && underline.cursorShape() == 1 &&
+                                !underline.cursorBlinking() && block.cursorShape() == 0 && !block.cursorBlinking(),
+                  "cursor: DECSCUSR bar / underline / block and blinking");
+    selfTestCheck(failures, !feed("").cursorBlinking() && feed("\x1b[?12h").cursorBlinking() &&
+                                !feed("\x1b[?12h\x1b[2 q").cursorBlinking(),
+                  "cursor: ?12 blinks the default style, DECSCUSR overrides it");
+    selfTestCheck(failures, feed("\x1b[?1004h").focusReporting() && !feed("\x1b[?1004h\x1b[?1004l").focusReporting() &&
+                                replies("\x1b[?1004h\x1b[?1004$p\x1b[?12$p") == "\x1b[?1004;1$y\x1b[?12;2$y",
+                  "focus: ?1004 focus reporting mode");
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
@@ -287,6 +304,7 @@ void runParserSelfTest(int &failures)
     cursorSequences(failures);
     screenModes(failures);
     queryReplies(failures);
+    cursorStyle(failures);
 }
 
 } // namespace konsoll

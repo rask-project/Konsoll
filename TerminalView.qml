@@ -37,6 +37,7 @@ Item {
         if (session) {
             syncSessionSize();
             applySystemColors();
+            session.setFocused(input.terminalFocused);
         }
     }
     onVisibleChanged: scheduleSessionResize()
@@ -104,6 +105,14 @@ Item {
         focus: view.active
 
         property bool _clearing: false
+
+        // Focus for the cursor style (hollow when unfocused) and ?1004
+        // focus reports: this view has keyboard focus in the active window.
+        readonly property bool terminalFocused: activeFocus && Window.active
+        onTerminalFocusedChanged: {
+            if (view.session)
+                view.session.setFocused(terminalFocused);
+        }
 
         readonly property var specialKeys: [Qt.Key_Return, Qt.Key_Enter, Qt.Key_Backspace, Qt.Key_Tab, Qt.Key_Escape, Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right, Qt.Key_Home, Qt.Key_End, Qt.Key_Delete, Qt.Key_PageUp, Qt.Key_PageDown]
 

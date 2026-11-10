@@ -230,8 +230,12 @@ int Terminal::decModeState(int mode) const
         return state(m_screen.originMode());
     case 7:
         return state(m_screen.autoWrap());
+    case 12:
+        return flag(CursorBlinkMode);
     case 25:
         return state(m_screen.cursorVisible());
+    case 1004:
+        return flag(FocusReporting);
     case 47:
     case 1047:
     case 1049:

@@ -1668,6 +1668,28 @@ bool TerminalBackend::cursorVisible() const
     return m_terminal ? m_terminal->screen().cursorVisible() : true;
 }
 
+int TerminalBackend::cursorShape() const
+{
+    return m_terminal ? m_terminal->cursorShape() : 0;
+}
+
+bool TerminalBackend::cursorBlinking() const
+{
+    return m_terminal && m_terminal->cursorBlinking();
+}
+
+void TerminalBackend::setFocused(bool focused)
+{
+    if (m_focused == focused) {
+        return;
+    }
+    m_focused = focused;
+    if (m_terminal && m_terminal->focusReporting() && m_worker) {
+        writeToPty(focused ? QByteArray("\x1b[I") : QByteArray("\x1b[O"));
+    }
+    scheduleFrame();
+}
+
 QString TerminalBackend::detectDefaultShell()
 {
     struct passwd pwd{};

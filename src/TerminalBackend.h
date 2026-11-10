@@ -155,6 +155,13 @@ public:
     Q_INVOKABLE int cursorRow() const;
     Q_INVOKABLE int cursorCol() const;
     Q_INVOKABLE bool cursorVisible() const;
+    // DECSCUSR shape (0 block, 1 underline, 2 bar) and blinking.
+    int cursorShape() const;
+    bool cursorBlinking() const;
+    // Keyboard focus of this session's view (window active + view focused):
+    // drives the hollow unfocused cursor and ?1004 focus reports.
+    Q_INVOKABLE void setFocused(bool focused);
+    bool focused() const { return m_focused; }
 
     QString title() const { return m_title; }
     QString currentDirectory() const { return m_currentDirectory; }
@@ -278,6 +285,7 @@ private:
     unsigned int m_defaultFg{0xffe0e0e0};
     unsigned int m_defaultBg{0xff141414};
     bool m_hasForeground{false};
+    bool m_focused{true};
     SessionState m_state{SessionState::Created};
 };
 

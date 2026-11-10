@@ -264,8 +264,18 @@ void TerminalRenderer::refresh()
     m_defaultBg = static_cast<QRgb>(s.backgroundColor());
     m_defaultFg = static_cast<QRgb>(s.foregroundColor());
     const bool cursorShown = s.cursorVisible() && s.scrollOffset() == 0;
-    m_cursorRow = cursorShown ? s.cursorRow() : -1;
+    const int cursorRow = cursorShown ? s.cursorRow() : -1;
+    if (cursorRow != m_cursorRow || s.cursorCol() != m_cursorCol) {
+        // A moving cursor stays visible: restart the blink cycle.
+        m_blinkPhase = 1;
+        if (m_blinkTimer.isActive()) {
+            m_blinkTimer.start();
+        }
+    }
+    m_cursorRow = cursorRow;
     m_cursorCol = s.cursorCol();
+    m_cursorShape = s.cursorShape();
+    m_cursorState = (s.cursorBlinking() ? CursorBlinking : 0) | (s.focused() ? CursorFocused : 0);
     m_highlightFirst = s.highlightActive() ? s.highlightStartRow() : -1;
     m_highlightLast = s.highlightActive() ? s.highlightEndRow() : -1;
 
@@ -280,24 +290,44 @@ void TerminalRenderer::refresh()
 
     m_blinkRows = static_cast<int>(
         std::ranges::count_if(m_rows, [](const Row &r) { return std::ranges::any_of(r.cells, isBlinking); }));
-    if (m_blinkRows > 0 && !m_blinkTimer.isActive()) {
+    updateBlinkTimer();
+    update();
+}
+
+void TerminalRenderer::updateBlinkTimer()
+{
+    // A blinking cursor only blinks while focused, as in native terminals.
+    const bool cursorBlinks = m_cursorRow >= 0 && (m_cursorState & CursorBlinking) != 0 &&
+                              (m_cursorState & CursorFocused) != 0;
+    const bool needed = m_blinkRows > 0 || cursorBlinks;
+    if (needed && !m_blinkTimer.isActive()) {
         m_blinkTimer.start();
-    } else if (m_blinkRows == 0 && m_blinkTimer.isActive()) {
+    } else if (!needed && m_blinkTimer.isActive()) {
         m_blinkTimer.stop();
         m_blinkPhase = 1;
     }
-    update();
+}
+
+bool TerminalRenderer::cursorInvertsGlyph() const
+{
+    const bool blinkHidden = (m_cursorState & CursorBlinking) != 0 && m_blinkPhase == 0;
+    return m_cursorShape == 0 && (m_cursorState & CursorFocused) != 0 && !blinkHidden;
 }
 
 void TerminalRenderer::toggleBlink()
 {
     m_blinkPhase = 1 - m_blinkPhase;
-    // Only rows holding blinking cells need their text rebuilt.
+    // Only rows holding blinking cells need their text rebuilt; the cursor
+    // row is re-pulled so its glyph color follows the cursor block.
     std::ranges::for_each(std::views::iota(std::size_t{0}, m_rows.size()), [this](std::size_t row) {
         if (std::ranges::any_of(m_rows[row].cells, isBlinking)) {
             m_dirty[row] = 1;
         }
     });
+    if (m_session && m_cursorRow >= 0 && m_cursorRow < static_cast<int>(m_rows.size())) {
+        std::vector<Cell> scratch;
+        pullRow(m_cursorRow, scratch);
+    }
     update();
 }
 
@@ -321,7 +351,7 @@ void TerminalRenderer::pullRow(int row, std::vector<Cell> &scratch)
         const auto last = scratch.begin() + std::min(target.selRight + 1, cols);
         std::ranges::for_each(first, last, [selectedFg](Cell &cell) { cell.fg = selectedFg; });
     }
-    if (row == m_cursorRow && m_cursorCol >= 0 && m_cursorCol < cols) {
+    if (row == m_cursorRow && m_cursorCol >= 0 && m_cursorCol < cols && cursorInvertsGlyph()) {
         scratch[static_cast<std::size_t>(m_cursorCol)].fg = m_defaultBg;
     }
 
@@ -375,18 +405,41 @@ void TerminalRenderer::appendBackgroundRects(std::vector<ColorRect> &rects) cons
                           [&](int row) { appendRowBackground(rects, row); });
     appendHighlightFrame(rects);
 
+    appendCursor(rects, false);
+}
+
+// The filled block goes under the text (its glyph is drawn inverted); the
+// underline, bar and the hollow unfocused block go over it.
+void TerminalRenderer::appendCursor(std::vector<ColorRect> &rects, bool overlay) const
+{
     const bool cursorInGrid = m_cursorRow >= 0 && m_cursorRow < static_cast<int>(m_rows.size()) && m_cursorCol >= 0 &&
                               m_cursorCol < static_cast<int>(m_rows[static_cast<std::size_t>(m_cursorRow)].cells.size());
-    if (cursorInGrid) {
-        const Cell &under = m_rows[static_cast<std::size_t>(m_cursorRow)].cells[static_cast<std::size_t>(m_cursorCol)];
-        const bool onWide = (under.flags & CellFlag::Wide) != 0u &&
-                            m_cursorCol + 1 < static_cast<int>(m_rows[static_cast<std::size_t>(m_cursorRow)].cells.size());
-        const QRectF r = cellSpan(m_cursorRow, m_cursorCol, onWide ? 2 : 1);
-        rects.push_back({.x = static_cast<float>(r.x()),
-                         .y = static_cast<float>(r.y()),
-                         .w = static_cast<float>(r.width()),
-                         .h = static_cast<float>(r.height()),
-                         .color = m_defaultFg});
+    const bool blinkHidden = (m_cursorState & CursorBlinking) != 0 && m_blinkPhase == 0 &&
+                             (m_cursorState & CursorFocused) != 0;
+    if (!cursorInGrid || blinkHidden || overlay == cursorInvertsGlyph()) {
+        return;
+    }
+    const std::vector<Cell> &cells = m_rows[static_cast<std::size_t>(m_cursorRow)].cells;
+    const bool onWide = (cells[static_cast<std::size_t>(m_cursorCol)].flags & CellFlag::Wide) != 0u &&
+                        m_cursorCol + 1 < static_cast<int>(cells.size());
+    const QRectF r = cellSpan(m_cursorRow, m_cursorCol, onWide ? 2 : 1);
+    const auto x = static_cast<float>(r.x());
+    const auto y = static_cast<float>(r.y());
+    const auto w = static_cast<float>(r.width());
+    const auto h = static_cast<float>(r.height());
+    constexpr float kThickness = 2.0F;
+    if (!overlay) {
+        rects.push_back({.x = x, .y = y, .w = w, .h = h, .color = m_defaultFg});
+    } else if (m_cursorShape == 1) {
+        rects.push_back({.x = x, .y = y + h - kThickness, .w = w, .h = kThickness, .color = m_defaultFg});
+    } else if (m_cursorShape == 2) {
+        rects.push_back({.x = x, .y = y, .w = kThickness, .h = h, .color = m_defaultFg});
+    } else {
+        // Unfocused block: a 1 px outline.
+        rects.push_back({.x = x, .y = y, .w = w, .h = 1.0F, .color = m_defaultFg});
+        rects.push_back({.x = x, .y = y + h - 1.0F, .w = w, .h = 1.0F, .color = m_defaultFg});
+        rects.push_back({.x = x, .y = y + 1.0F, .w = 1.0F, .h = h - 2.0F, .color = m_defaultFg});
+        rects.push_back({.x = x + w - 1.0F, .y = y + 1.0F, .w = 1.0F, .h = h - 2.0F, .color = m_defaultFg});
     }
 }
 
@@ -466,6 +519,8 @@ void TerminalRenderer::appendOverlayRects(std::vector<ColorRect> &rects) const
             col += count;
         }
     });
+
+    appendCursor(rects, true);
 
     if (m_hoverRow >= 0 && m_hoverStart >= 0 && m_hoverEnd > m_hoverStart) {
         const QRectF r = cellSpan(m_hoverRow, m_hoverStart, m_hoverEnd - m_hoverStart);
