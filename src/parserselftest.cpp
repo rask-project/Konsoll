@@ -648,6 +648,33 @@ void lineSizes(int &failures)
                   "lines: ED 2 and DECALN reset sizes, the alternate screen keeps the main ones");
 }
 
+// xterm modifyOtherKeys (XTMODKEYS / XTFMTKEYS / XTQMODKEYS).
+void modifyOtherKeys(int &failures)
+{
+    selfTestCheck(failures, feed("\x1b[>4;2m").modifyOtherKeys() == 2 && feed("\x1b[>4;1m").modifyOtherKeys() == 1 &&
+                                feed("\x1b[>4;2m\x1b[>4n").modifyOtherKeys() == 0 && feed("\x1b[>4;1f").otherKeysCsiU() &&
+                                replies("\x1b[>4;2m\x1b[?4m") == "\x1b[>4;2m",
+                  "modifyOtherKeys: set, reset, format and query");
+    const auto key = [](int k, const QString &text, unsigned int mods, unsigned int modes) {
+        return encodeKey(k, text, mods, modes, 0);
+    };
+    const unsigned int one = KeyMode::OtherKeys1;
+    const unsigned int two = KeyMode::OtherKeys2;
+    selfTestCheck(failures, key(Qt::Key_A, {}, KeyMod::Control, one) == "\x01" &&
+                                key(Qt::Key_A, {}, KeyMod::Control | KeyMod::Shift, one) == "\x1b[27;6;65~" &&
+                                key(Qt::Key_1, {}, KeyMod::Control, one) == "\x1b[27;5;49~" &&
+                                key(Qt::Key_Return, {}, KeyMod::Control, one) == "\x1b[27;5;13~" &&
+                                key(Qt::Key_Return, {}, KeyMod::Shift, one) == "\x1b[27;2;13~" &&
+                                key(Qt::Key_Tab, {}, KeyMod::Shift, one) == "\x1b[Z",
+                  "modifyOtherKeys 1: only keys the legacy encoding cannot tell apart");
+    selfTestCheck(failures, key(Qt::Key_A, {}, KeyMod::Control, two) == "\x1b[27;5;97~" &&
+                                key(Qt::Key_X, QStringLiteral("x"), KeyMod::Alt, two) == "\x1b[27;3;120~" &&
+                                key(Qt::Key_A, QStringLiteral("A"), KeyMod::Shift, two) == "A" &&
+                                key(Qt::Key_2, QStringLiteral(u"™"), KeyMod::Alt, two) == "\xe2\x84\xa2" &&
+                                key(Qt::Key_A, {}, KeyMod::Control, two | KeyMode::OtherKeysCsiU) == "\x1b[97;5u",
+                  "modifyOtherKeys 2: every Ctrl / Alt key, CSI u format");
+}
+
 // tests/fixtures: recorded program output replayed against its expected
 // screen (see tools/regress.py).
 void fixtureRegressions(int &failures)
@@ -687,6 +714,7 @@ void runParserSelfTest(int &failures)
     sessionRequests(failures);
     marginsAndRectangles(failures);
     lineSizes(failures);
+    modifyOtherKeys(failures);
     fixtureRegressions(failures);
 }
 

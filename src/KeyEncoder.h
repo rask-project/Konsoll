@@ -30,6 +30,9 @@ inline constexpr unsigned int ApplicationKeypad = 1u << 1; // DECKPAM
 inline constexpr unsigned int FromKeypad = 1u << 2;        // the key is on the numeric keypad
 inline constexpr unsigned int NewlineMode = 1u << 3;       // LNM: Return sends CR LF
 inline constexpr unsigned int Vt52 = 1u << 4;              // VT52 mode: ESC A, ESC P, ...
+inline constexpr unsigned int OtherKeys1 = 1u << 5;        // xterm modifyOtherKeys 1
+inline constexpr unsigned int OtherKeys2 = 1u << 6;        // xterm modifyOtherKeys 2
+inline constexpr unsigned int OtherKeysCsiU = 1u << 7;     // formatOtherKeys 1: CSI k ; m u
 }
 
 // Encodes a key event for the PTY, as xterm does: control bytes, cursor and

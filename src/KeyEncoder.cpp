@@ -332,6 +332,69 @@ QByteArray encodeKitty(int key, const QString &text, unsigned int mods, unsigned
     return kittySequence(*kitty, shifted, mods, eventType, withText ? text : QString{});
 }
 
+// The modifyOtherKeys code of a key: Enter / Tab / Backspace / Escape, or a
+// text key's character with Shift applied (Ctrl+Shift+A = 65). 0 = none.
+int otherKeyCode(int key, unsigned int mods, bool level2)
+{
+    switch (key) {
+    case Qt::Key_Return:
+    case Qt::Key_Enter:
+        return 13;
+    case Qt::Key_Tab:
+    case Qt::Key_Backtab:
+        return 9;
+    case Qt::Key_Backspace:
+        return 127;
+    case Qt::Key_Escape:
+        return level2 ? 27 : 0;
+    default:
+        break;
+    }
+    if (key < 0x20 || key > 0x7e) {
+        return 0;
+    }
+    const bool letter = key >= 'A' && key <= 'Z';
+    return letter && (mods & KeyMod::Shift) == 0 ? key - 'A' + 'a' : key;
+}
+
+// modifyOtherKeys 1 encodes only what the legacy bytes cannot tell apart:
+// Ctrl+Shift+letter, Ctrl+digit / punctuation without a control byte, and
+// modified Enter / Tab / Backspace (Shift+Tab keeps its CSI Z).
+bool legacyIsAmbiguous(int key, unsigned int mods)
+{
+    const bool control = (mods & KeyMod::Control) != 0;
+    const bool textKey = key >= 0x20 && key <= 0x7e;
+    const bool letter = key >= Qt::Key_A && key <= Qt::Key_Z;
+    if (!textKey) {
+        const bool shiftTab = (key == Qt::Key_Tab || key == Qt::Key_Backtab) && mods == KeyMod::Shift;
+        return !shiftTab;
+    }
+    return control && (letter ? (mods & KeyMod::Shift) != 0 : controlByte(key, {}).isEmpty());
+}
+
+// xterm modifyOtherKeys: CSI 27 ; mods ; code ~ (or CSI code ; mods u with
+// formatOtherKeys 1). Level 2 covers every Ctrl / Alt combination and the
+// modified Enter / Tab / Backspace / Escape; level 1 see legacyIsAmbiguous.
+QByteArray encodeOtherKeys(int key, const QString &text, unsigned int mods, unsigned int modes)
+{
+    const bool level2 = (modes & KeyMode::OtherKeys2) != 0;
+    if ((!level2 && (modes & KeyMode::OtherKeys1) == 0) || mods == 0) {
+        return {};
+    }
+    const int code = otherKeyCode(key, mods, level2);
+    const bool textKey = key >= 0x20 && key <= 0x7e;
+    const bool composed = !text.isEmpty() && text.at(0).unicode() >= 0x80 && (mods & KeyMod::Control) == 0;
+    const bool shiftedText = textKey && (mods & (KeyMod::Control | KeyMod::Alt)) == 0;
+    if (code == 0 || composed || shiftedText || (!level2 && !legacyIsAmbiguous(key, mods))) {
+        return {}; // Shift alone on a text key just types it
+    }
+    const QByteArray modifiers = modifierParam(mods);
+    if ((modes & KeyMode::OtherKeysCsiU) != 0) {
+        return "\x1b[" + QByteArray::number(code) + ";" + modifiers + "u";
+    }
+    return "\x1b[27;" + modifiers + ";" + QByteArray::number(code) + "~";
+}
+
 QByteArray encodeEditingKey(int key, unsigned int mods, unsigned int modes)
 {
     const bool shift = (mods & KeyMod::Shift) != 0;
@@ -379,6 +442,10 @@ QByteArray encodeKey(int key, const QString &text, unsigned int mods, unsigned i
     }
     if (eventType == KeyEventType::Release) {
         return {}; // legacy encodings have no releases
+    }
+    const QByteArray otherKeys = encodeOtherKeys(key, text, mods, modes);
+    if (!otherKeys.isEmpty()) {
+        return otherKeys;
     }
     if ((modes & KeyMode::FromKeypad) != 0 && (modes & KeyMode::ApplicationKeypad) != 0 && mods == 0) {
         const auto *const keypad = std::ranges::find(kKeypadKeys, key, &KeypadKey::key);

@@ -723,6 +723,11 @@ void Terminal::handlePrivateCsi(char final)
     case 'S': // XTSMGRAPHICS
         handleGraphicsAttributes(params);
         break;
+    case 'm': // XTQMODKEYS: CSI ? 4 m
+        if (paramAt(params, 0, 0) == 4) {
+            reply("\x1b[>4;" + QByteArray::number(modifyOtherKeys()) + "m");
+        }
+        break;
     case 'J': // DECSED: selective erase keeps protected cells
         m_screen.eraseInDisplay(paramAt(params, 0, 0), CellAttr::DecProtected | CellAttr::IsoProtected);
         break;
@@ -746,9 +751,27 @@ void Terminal::handlePrefixedCsi(char final)
     } else if (final == 'q' && m_csiPrefix == '>') {
         // XTVERSION: DCS > | name version ST.
         reply(QByteArray("\x1bP>|Konsoll ") + KONSOLL_VERSION + "\x1b\\");
+    } else if (m_csiPrefix == '>' && (final == 'm' || final == 'n' || final == 'f')) {
+        handleKeyModifierOptions(final, params); // XTMODKEYS / XTFMTKEYS
     }
-    // Other prefixed sequences (modifyOtherKeys CSI > 4 ; 2 m, ...) are
-    // consumed without effect; they are not SGR.
+    // Other prefixed sequences are consumed without effect; they are not SGR.
+}
+
+// XTMODKEYS (CSI > 4 ; Pv m sets modifyOtherKeys, CSI > 4 n resets it) and
+// XTFMTKEYS (CSI > 4 ; Pv f picks CSI 27 ; m ; k ~ or CSI k ; m u). The other
+// resources (modifyCursorKeys, ...) keep xterm's defaults.
+void Terminal::handleKeyModifierOptions(char final, const std::vector<int> &params)
+{
+    if (params.empty() || params.front() != 4) {
+        return;
+    }
+    const int value = params.size() > 1 ? std::clamp(params[1], 0, 2) : 0;
+    if (final == 'f') {
+        setExtraFlag(OtherKeysCsiU, value == 1);
+        return;
+    }
+    const unsigned int level = final == 'n' ? 0u : static_cast<unsigned int>(value);
+    m_extraFlags = (m_extraFlags & ~OtherKeysMask) | (level << OtherKeysShift);
 }
 
 void Terminal::handleCsiWithIntermediates(char final)

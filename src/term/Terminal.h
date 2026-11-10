@@ -131,6 +131,9 @@ public:
     bool applicationKeypad() const { return (m_extraFlags & ApplicationKeypad) != 0; }
     bool newlineMode() const { return (m_extraFlags & NewlineMode) != 0; }
     bool vt52Mode() const { return (m_extraFlags & Vt52Mode) != 0; }
+    // xterm modifyOtherKeys level (0-2) and whether keys use CSI code ; mods u.
+    int modifyOtherKeys() const { return static_cast<int>((m_extraFlags & OtherKeysMask) >> OtherKeysShift); }
+    bool otherKeysCsiU() const { return (m_extraFlags & OtherKeysCsiU) != 0; }
     QByteArray mouseReport(int button, int row, int col, int event, unsigned int modifiers) const;
 
 
@@ -168,6 +171,9 @@ private:
     static constexpr unsigned int ErasureMode = 1u << 26;           // ERM (6): erase protected cells too
     static constexpr unsigned int SixelDisplayMode = 1u << 27;      // ?80 DECSDM: no sixel scrolling
     static constexpr unsigned int RectangleExtent = 1u << 28;       // DECSACE 2: rectangle, else stream
+    static constexpr unsigned int OtherKeysShift = 29u;             // XTMODKEYS modifyOtherKeys 0-2 (2 bits)
+    static constexpr unsigned int OtherKeysMask = 3u << OtherKeysShift;
+    static constexpr unsigned int OtherKeysCsiU = 1u << 31;         // XTFMTKEYS formatOtherKeys 1
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.
@@ -267,6 +273,7 @@ private:
     void handleDecrqss(const QByteArray &request);
     void handleXtgettcap(const QByteArray &names);
     void handleKittyKeyboard(char prefix, const std::vector<int> &params);
+    void handleKeyModifierOptions(char final, const std::vector<int> &params);
     QByteArray sgrReport() const;
     bool handleOscColor(const QByteArray &body);
     void handleOscPalette(const QByteArray &body);
