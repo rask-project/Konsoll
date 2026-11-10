@@ -10,6 +10,11 @@ Item {
     id: itemWorkspace
 
     signal saveBufferRequested(var session)
+    signal workspaceDropRequested(var workspace, real globalX, real globalY)
+
+    function tabInsertionIndexAtGlobal(globalX, globalY) {
+        return tabStrip.insertionIndexAtGlobal(globalX, globalY);
+    }
 
     required property TerminalManager sessionManager
     required property font terminalFont
@@ -48,6 +53,7 @@ Item {
         }
         onReorderRequested: (fromIndex, toIndex) => itemWorkspace.sessionManager.moveWorkspace(fromIndex, toIndex)
         onAddRequested: itemWorkspace.sessionManager.addWorkspace()
+        onWindowDropRequested: (workspace, globalX, globalY) => itemWorkspace.workspaceDropRequested(workspace, globalX, globalY)
     }
 
     StackLayout {

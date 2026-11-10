@@ -543,7 +543,14 @@ Window {
         window: appWindow
     }
 
+    // Where a workspace dropped at a global point joins this window's tabs.
+    function workspaceDropIndex(globalX, globalY) {
+        return workspaceView.tabInsertionIndexAtGlobal(globalX, globalY);
+    }
+
     TerminalWorkspace {
+        id: workspaceView
+
         sessionManager: sessionManager
         windowTranslucency: translucency
         fullScreen: appWindow.visibility === Window.FullScreen
@@ -555,5 +562,8 @@ Window {
         safeRight: appWindow.SafeArea.margins.right
 
         onSaveBufferRequested: session => saveTextDialog.openFor(session, appWindow.activeFocusItem)
+        // Deferred: the move destroys the dragged tab, whose release handler
+        // is still running.
+        onWorkspaceDropRequested: (workspace, globalX, globalY) => Qt.callLater(() => appWindow.windowManager.dropWorkspace(workspace, appWindow, globalX, globalY))
     }
 }

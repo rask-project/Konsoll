@@ -25,6 +25,11 @@ Rectangle {
     property real dragPointerY: 0
     property real dragGrabOffsetX: 0
     property real dragGrabOffsetY: 0
+    // Pointer in global coordinates, and whether it has left the strip to
+    // drop the tab on another window (or tear it off into a new one).
+    property real dragGlobalX: 0
+    property real dragGlobalY: 0
+    property bool dragDetached: false
 
     readonly property real rowHeight: 34
     readonly property real tabSpacing: 6
@@ -40,6 +45,7 @@ Rectangle {
     signal closeRequested(var workspace)
     signal reorderRequested(int fromIndex, int toIndex)
     signal addRequested
+    signal windowDropRequested(var workspace, real globalX, real globalY)
 
     onWindowTranslucencyChanged: updateWindowMovable()
     Component.onCompleted: updateWindowMovable()
@@ -149,6 +155,26 @@ Rectangle {
         return nearest;
     }
 
+    // Where a tab dropped at a global point lands: before the first tab whose
+    // centre lies past the pointer in its row.
+    function insertionIndexAtGlobal(globalX, globalY) {
+        const point = strip.mapFromGlobal(globalX, globalY);
+        const firstRowY = (Math.max(40, baseSafeTop) - rowHeight) / 2;
+        const row = Math.max(0, Math.min(rowCount - 1, Math.floor((point.y - firstRowY) / rowHeight)));
+        let insertion = 0;
+        for (let index = 0; index < tabs.length; ++index) {
+            const indexRow = tabRow(index);
+            if (indexRow < row || (indexRow === row && tabX(index) + tabWidth(index) / 2 < point.x))
+                insertion = index + 1;
+        }
+        return insertion;
+    }
+
+    // Well outside the strip: the drop goes to another window.
+    function isDetachPoint(point) {
+        return point.y > strip.height + 40 || point.y < -8 || point.x < -8 || point.x > strip.width + 8;
+    }
+
     function updateWindowMovable() {
         let overTab = false;
         for (let index = 0; index < tabRepeater.count; ++index) {
@@ -181,6 +207,14 @@ Rectangle {
         const point = strip.mapFromItem(null, sceneX, sceneY);
         dragPointerX = point.x;
         dragPointerY = point.y;
+        const global = strip.mapToGlobal(point.x, point.y);
+        dragGlobalX = global.x;
+        dragGlobalY = global.y;
+        dragDetached = isDetachPoint(point);
+        if (dragDetached) {
+            dragTargetIndex = dragSourceIndex;
+            return;
+        }
         const targetIndex = nearestTabIndex(point.x, point.y);
         if (targetIndex >= 0 && targetIndex !== dragTargetIndex)
             dragTargetIndex = targetIndex;
@@ -192,15 +226,21 @@ Rectangle {
         const point = strip.mapFromItem(null, sceneX, sceneY);
         const fromIndex = dragSourceIndex;
         const toIndex = nearestTabIndex(point.x, point.y);
+        const workspace = dragWorkspace;
+        const global = strip.mapToGlobal(point.x, point.y);
         dragSourceIndex = -1;
         dragTargetIndex = -1;
         dragWorkspace = null;
+        dragDetached = false;
         updateWindowMovable();
-        if (toIndex >= 0)
+        if (isDetachPoint(point))
+            windowDropRequested(workspace, global.x, global.y);
+        else if (toIndex >= 0)
             reorderRequested(fromIndex, toIndex);
     }
 
     function cancelTabDrag() {
+        dragDetached = false;
         dragSourceIndex = -1;
         dragTargetIndex = -1;
         dragWorkspace = null;
@@ -256,7 +296,7 @@ Rectangle {
     }
 
     Controls.TerminalTabButton {
-        visible: strip.dragSourceIndex >= 0
+        visible: strip.dragSourceIndex >= 0 && !strip.dragDetached
         enabled: false
 
         x: strip.dragPointerX - strip.dragGrabOffsetX
@@ -271,6 +311,43 @@ Rectangle {
         dragging: false
         dragged: false
         sessionManager: strip.sessionManager
+    }
+
+    // Outside the strip the tab follows the pointer in a frameless window of
+    // its own, so it shows over other windows and the desktop.
+    Loader {
+        active: strip.dragDetached
+
+        sourceComponent: Window {
+            flags: Qt.ToolTip | Qt.FramelessWindowHint | Qt.WindowTransparentForInput | Qt.WindowDoesNotAcceptFocus
+            color: "transparent"
+            visible: true
+
+            x: strip.dragGlobalX - strip.dragGrabOffsetX
+            y: strip.dragGlobalY - strip.dragGrabOffsetY
+            width: previewTab.width
+            height: previewTab.height
+
+            Rectangle {
+                anchors.fill: parent
+                radius: height / 2
+                color: systemPalette.window
+                opacity: 0.92
+            }
+
+            Controls.TerminalTabButton {
+                id: previewTab
+
+                enabled: false
+                width: 220
+
+                workspace: strip.dragWorkspace
+                active: true
+                dragging: false
+                dragged: false
+                sessionManager: strip.sessionManager
+            }
+        }
     }
 
     Controls.ToolButton {

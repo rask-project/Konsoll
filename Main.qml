@@ -53,7 +53,7 @@ Item {
     // Moves `workspace` from `source` to `target` (a new window when null) at
     // `index` (the end when negative). Its shells keep running; a source left
     // empty closes.
-    function moveWorkspace(workspace, source: TerminalWindow, target: TerminalWindow, index: int) {
+    function moveWorkspace(workspace, source: TerminalWindow, target: TerminalWindow, index: int): TerminalWindow {
         const newWindow = target === null;
         if (newWindow)
             target = manager.openWindow("", true);
@@ -61,10 +61,33 @@ Item {
         if (!source.terminalManager.moveWorkspaceTo(workspace, target.terminalManager, position)) {
             if (newWindow)
                 target.close();
-            return;
+            return null;
         }
         target.raise();
         target.requestActivate();
+        return target;
+    }
+
+    // A tab dragged out of `source` and released at a global point joins the
+    // window under it, or tears off into a new window placed there.
+    function dropWorkspace(workspace, source: TerminalWindow, globalX: real, globalY: real) {
+        const target = manager.windows.find(w => w !== source && w.visible && w.visibility !== Window.Minimized
+                                            && globalX >= w.x && globalX < w.x + w.width
+                                            && globalY >= w.y && globalY < w.y + w.height) ?? null;
+        if (target) {
+            manager.moveWorkspace(workspace, source, target, target.workspaceDropIndex(globalX, globalY));
+            return;
+        }
+        // A lone workspace torn off would just be its window again.
+        if (source.terminalManager.workspaces.length < 2)
+            return;
+        const w = manager.moveWorkspace(workspace, source, null, 0);
+        if (w && w.visibility === Window.Windowed) {
+            w.width = source.width;
+            w.height = source.height;
+            w.x = globalX - 100;
+            w.y = globalY - 18;
+        }
     }
 
     function noteActiveWindow(w: TerminalWindow) {
