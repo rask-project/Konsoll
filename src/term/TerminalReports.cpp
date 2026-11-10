@@ -119,8 +119,8 @@ void Terminal::setDefaultColors(unsigned int foreground, unsigned int background
 
 void Terminal::setCellPixelSize(int width, int height)
 {
-    m_cellPixelWidth = static_cast<unsigned short>(std::clamp(width, 1, 0xffff));
-    m_cellPixelHeight = static_cast<unsigned short>(std::clamp(height, 1, 0xffff));
+    m_cellPixelWidth = std::clamp(width, 1, 0xffff);
+    m_cellPixelHeight = std::clamp(height, 1, 0xffff);
 }
 
 void Terminal::handleDeviceAttributes(char prefix, int param)
@@ -243,7 +243,7 @@ void Terminal::reportInBandSize()
 int Terminal::decModeState(int mode) const
 {
     const auto state = [](bool on) { return on ? 1 : 2; };
-    const auto flag = [this, &state](unsigned int bit) { return state((m_extraFlags & bit) != 0); };
+    const auto flag = [this, &state](std::uint64_t bit) { return state((m_extraFlags & bit) != 0); };
     switch (mode) {
     case 1:
         return flag(ApplicationCursorKeys);
@@ -295,6 +295,9 @@ int Terminal::decModeState(int mode) const
         return flag(BracketedPasteEnabled);
     case 2026:
         return flag(SynchronizedUpdates);
+    case 1036:
+    case 1039:
+        return flag(MetaSendsEscape);
     case 2027:
         return state(m_screen.graphemeClustering());
     case 2031:

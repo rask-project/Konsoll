@@ -316,7 +316,8 @@ QByteArray encodeKitty(int key, const QString &text, unsigned int mods, unsigned
     }
     // Option composing a character (Option+2 = ™) sends that text, as kitty
     // does by default on macOS.
-    const bool composed = (mods & KeyMod::Control) == 0 && !text.isEmpty() && text.at(0).unicode() >= 0x80;
+    const bool composed = (modes & KeyMode::OptionMeta) == 0 && (mods & KeyMod::Control) == 0 && !text.isEmpty() &&
+                          text.at(0).unicode() >= 0x80;
     const bool plainText = textKey && ((mods & ~KeyMod::Shift) == 0 || composed);
     const bool legacyKey = kitty->kind == kKittyLegacy && mods == 0;
     if (!allKeys && eventType != KeyEventType::Release && (plainText || legacyKey)) {
@@ -383,7 +384,8 @@ QByteArray encodeOtherKeys(int key, const QString &text, unsigned int mods, unsi
     }
     const int code = otherKeyCode(key, mods, level2);
     const bool textKey = key >= 0x20 && key <= 0x7e;
-    const bool composed = !text.isEmpty() && text.at(0).unicode() >= 0x80 && (mods & KeyMod::Control) == 0;
+    const bool composed = (modes & KeyMode::OptionMeta) == 0 && !text.isEmpty() && text.at(0).unicode() >= 0x80 &&
+                          (mods & KeyMod::Control) == 0;
     const bool shiftedText = textKey && (mods & (KeyMod::Control | KeyMod::Alt)) == 0;
     if (code == 0 || composed || shiftedText || (!level2 && !legacyIsAmbiguous(key, mods))) {
         return {}; // Shift alone on a text key just types it
@@ -424,6 +426,25 @@ QByteArray encodeEditingKey(int key, unsigned int mods, unsigned int modes)
     default:
         return {};
     }
+}
+
+
+// A text key in the legacy encoding: Ctrl's control byte (ESC-prefixed with
+// Option), ESC + the key under Option as Meta, else the text the key typed
+// (Option composes characters on macOS: Option+e is a dead acute).
+QByteArray encodeTextKey(int key, const QString &text, unsigned int mods, unsigned int modes)
+{
+    const bool alt = (mods & KeyMod::Alt) != 0;
+    if ((mods & KeyMod::Control) != 0) {
+        const QByteArray byte = controlByte(key, text);
+        return alt && !byte.isEmpty() ? "\x1b" + byte : byte;
+    }
+    if (alt && (modes & KeyMode::OptionMeta) != 0 && key >= 0x20 && key <= 0x7e) {
+        const bool letter = key >= 'A' && key <= 'Z';
+        const int ch = letter && (mods & KeyMod::Shift) == 0 ? key - 'A' + 'a' : key;
+        return QByteArray("\x1b") + static_cast<char>(ch);
+    }
+    return text.toUtf8();
 }
 
 } // namespace
@@ -468,13 +489,7 @@ QByteArray encodeKey(int key, const QString &text, unsigned int mods, unsigned i
     if (special != kSpecialKeys.end()) {
         return encodeSpecial(*special, mods, modes);
     }
-    if (control) {
-        const QByteArray byte = controlByte(key, text);
-        return alt && !byte.isEmpty() ? "\x1b" + byte : byte;
-    }
-    // Option composes characters on macOS (Option+e = dead acute); send
-    // whatever text the key produced.
-    return text.toUtf8();
+    return encodeTextKey(key, text, mods, modes);
 }
 
 } // namespace konsoll

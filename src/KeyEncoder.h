@@ -33,6 +33,7 @@ inline constexpr unsigned int Vt52 = 1u << 4;              // VT52 mode: ESC A, 
 inline constexpr unsigned int OtherKeys1 = 1u << 5;        // xterm modifyOtherKeys 1
 inline constexpr unsigned int OtherKeys2 = 1u << 6;        // xterm modifyOtherKeys 2
 inline constexpr unsigned int OtherKeysCsiU = 1u << 7;     // formatOtherKeys 1: CSI k ; m u
+inline constexpr unsigned int OptionMeta = 1u << 8;        // Option is Meta: ESC + key, no composition
 }
 
 // Encodes a key event for the PTY, as xterm does: control bytes, cursor and

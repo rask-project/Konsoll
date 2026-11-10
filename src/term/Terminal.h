@@ -131,6 +131,8 @@ public:
     bool applicationKeypad() const { return (m_extraFlags & ApplicationKeypad) != 0; }
     bool newlineMode() const { return (m_extraFlags & NewlineMode) != 0; }
     bool vt52Mode() const { return (m_extraFlags & Vt52Mode) != 0; }
+    // ?1036 metaSendsEscape / ?1039 altSendsEscape: Option prefixes ESC.
+    bool metaSendsEscape() const { return (m_extraFlags & MetaSendsEscape) != 0; }
     // xterm modifyOtherKeys level (0-2) and whether keys use CSI code ; mods u.
     int modifyOtherKeys() const { return static_cast<int>((m_extraFlags & OtherKeysMask) >> OtherKeysShift); }
     bool otherKeysCsiU() const { return (m_extraFlags & OtherKeysCsiU) != 0; }
@@ -142,38 +144,39 @@ private:
     // (SGR 4:3, 38:2::r:g:b). An omitted value is -1.
     using ParamGroups = std::vector<std::vector<int>>;
 
-    static constexpr unsigned int RemoteHostDirty = 1u << 0;
-    static constexpr unsigned int BracketedPasteEnabled = 1u << 1;
-    static constexpr unsigned int SynchronizedUpdates = 1u << 2;
-    static constexpr unsigned int CursorBlinkMode = 1u << 3; // ?12
-    static constexpr unsigned int SgrMouse = 1u << 4;
-    static constexpr unsigned int ApplicationCursorKeys = 1u << 5;
-    static constexpr unsigned int InBandResize = 1u << 6; // ?2048
-    static constexpr unsigned int NewlineMode = 1u << 7;  // LNM: LF also returns
-    static constexpr unsigned int ReverseVideo = 1u << 8; // DECSCNM
-    static constexpr unsigned int ApplicationKeypad = 1u << 9; // DECKPAM
-    static constexpr unsigned int TitleDirty = 1u << 10;
-    static constexpr unsigned int CurrentDirectoryDirty = 1u << 11;
-    static constexpr unsigned int ClipboardTextDirty = 1u << 12;
-    static constexpr unsigned int CommandFinishedPending = 1u << 13;
-    static constexpr unsigned int ClearPending = 1u << 14;
-    static constexpr unsigned int ColorSchemeReports = 1u << 15; // ?2031
-    static constexpr unsigned int Utf8Mouse = 1u << 16;          // ?1005
-    static constexpr unsigned int UrxvtMouse = 1u << 17;         // ?1015
-    static constexpr unsigned int SgrPixelMouse = 1u << 18;      // ?1016
-    static constexpr unsigned int DarkColorScheme = 1u << 19;
-    static constexpr unsigned int FocusReporting = 1u << 20; // ?1004
-    static constexpr unsigned int ColorsDirty = 1u << 21;
-    static constexpr unsigned int AlternateScroll = 1u << 22; // ?1007, on by default
-    static constexpr unsigned int NoClearOnColumnChange = 1u << 23; // ?95
-    static constexpr unsigned int NrcMode = 1u << 24;               // ?42
-    static constexpr unsigned int Vt52Mode = 1u << 25;              // ?2 reset (DECANM)
-    static constexpr unsigned int ErasureMode = 1u << 26;           // ERM (6): erase protected cells too
-    static constexpr unsigned int SixelDisplayMode = 1u << 27;      // ?80 DECSDM: no sixel scrolling
-    static constexpr unsigned int RectangleExtent = 1u << 28;       // DECSACE 2: rectangle, else stream
+    static constexpr std::uint64_t RemoteHostDirty = std::uint64_t{1} << 0;
+    static constexpr std::uint64_t BracketedPasteEnabled = std::uint64_t{1} << 1;
+    static constexpr std::uint64_t SynchronizedUpdates = std::uint64_t{1} << 2;
+    static constexpr std::uint64_t CursorBlinkMode = std::uint64_t{1} << 3; // ?12
+    static constexpr std::uint64_t SgrMouse = std::uint64_t{1} << 4;
+    static constexpr std::uint64_t ApplicationCursorKeys = std::uint64_t{1} << 5;
+    static constexpr std::uint64_t InBandResize = std::uint64_t{1} << 6; // ?2048
+    static constexpr std::uint64_t NewlineMode = std::uint64_t{1} << 7;  // LNM: LF also returns
+    static constexpr std::uint64_t ReverseVideo = std::uint64_t{1} << 8; // DECSCNM
+    static constexpr std::uint64_t ApplicationKeypad = std::uint64_t{1} << 9; // DECKPAM
+    static constexpr std::uint64_t TitleDirty = std::uint64_t{1} << 10;
+    static constexpr std::uint64_t CurrentDirectoryDirty = std::uint64_t{1} << 11;
+    static constexpr std::uint64_t ClipboardTextDirty = std::uint64_t{1} << 12;
+    static constexpr std::uint64_t CommandFinishedPending = std::uint64_t{1} << 13;
+    static constexpr std::uint64_t ClearPending = std::uint64_t{1} << 14;
+    static constexpr std::uint64_t ColorSchemeReports = std::uint64_t{1} << 15; // ?2031
+    static constexpr std::uint64_t Utf8Mouse = std::uint64_t{1} << 16;          // ?1005
+    static constexpr std::uint64_t UrxvtMouse = std::uint64_t{1} << 17;         // ?1015
+    static constexpr std::uint64_t SgrPixelMouse = std::uint64_t{1} << 18;      // ?1016
+    static constexpr std::uint64_t DarkColorScheme = std::uint64_t{1} << 19;
+    static constexpr std::uint64_t FocusReporting = std::uint64_t{1} << 20; // ?1004
+    static constexpr std::uint64_t ColorsDirty = std::uint64_t{1} << 21;
+    static constexpr std::uint64_t AlternateScroll = std::uint64_t{1} << 22; // ?1007, on by default
+    static constexpr std::uint64_t NoClearOnColumnChange = std::uint64_t{1} << 23; // ?95
+    static constexpr std::uint64_t NrcMode = std::uint64_t{1} << 24;               // ?42
+    static constexpr std::uint64_t Vt52Mode = std::uint64_t{1} << 25;              // ?2 reset (DECANM)
+    static constexpr std::uint64_t ErasureMode = std::uint64_t{1} << 26;           // ERM (6): erase protected cells too
+    static constexpr std::uint64_t SixelDisplayMode = std::uint64_t{1} << 27;      // ?80 DECSDM: no sixel scrolling
+    static constexpr std::uint64_t RectangleExtent = std::uint64_t{1} << 28;       // DECSACE 2: rectangle, else stream
     static constexpr unsigned int OtherKeysShift = 29u;             // XTMODKEYS modifyOtherKeys 0-2 (2 bits)
-    static constexpr unsigned int OtherKeysMask = 3u << OtherKeysShift;
-    static constexpr unsigned int OtherKeysCsiU = 1u << 31;         // XTFMTKEYS formatOtherKeys 1
+    static constexpr std::uint64_t OtherKeysMask = std::uint64_t{3} << OtherKeysShift;
+    static constexpr std::uint64_t OtherKeysCsiU = std::uint64_t{1} << 31;         // XTFMTKEYS formatOtherKeys 1
+    static constexpr std::uint64_t MetaSendsEscape = std::uint64_t{1} << 32;       // ?1036 / ?1039
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.
@@ -251,7 +254,7 @@ private:
     void handleCommandMark(char mark);
     void handleEsc(char c);
     void cursorMove(int dRow, int dCol);
-    void setExtraFlag(unsigned int flag, bool on);
+    void setExtraFlag(std::uint64_t flag, bool on);
     void saveCursorState();
     void restoreCursorState(bool position);
     void setAltScreenMode(int mode, bool set);
@@ -313,6 +316,7 @@ private:
     // the OSC 8 id parameter and URI.
     std::vector<QString> m_links;
     QHash<QString, unsigned short> m_linkIds;
+    std::uint64_t m_extraFlags = DarkColorScheme | AlternateScroll; // the default background is dark
     std::array<unsigned int, 256> m_paletteOverrides{};
     QString m_title;
     QString m_currentDirectory;
@@ -323,7 +327,6 @@ private:
     Cell m_pen;
     std::array<SavedTerminalState, 2> m_savedStates{}; // [0] main, [1] alternate
     unsigned int m_lastGraphic = 0; // last printed code point, for REP (0 = none)
-    unsigned int m_extraFlags = DarkColorScheme | AlternateScroll; // the default background is dark
     unsigned int m_fgOverride = 0;
     unsigned int m_bgOverride = 0;
     unsigned int m_cursorOverride = 0;
@@ -333,8 +336,8 @@ private:
     unsigned int m_utf8CodePoint = 0;
     unsigned int m_utf8Minimum = 0;
     int m_commandStartLine = -1;
-    unsigned short m_cellPixelWidth = 8;
-    unsigned short m_cellPixelHeight = 16;
+    int m_cellPixelWidth = 8;
+    int m_cellPixelHeight = 16;
     State m_state = State::Ground;
     StringKind m_stringKind = StringKind::Ignore;
 

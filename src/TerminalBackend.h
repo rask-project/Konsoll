@@ -242,6 +242,7 @@ private:
     // Settings > Security choices.
     void handleRequests();
     void answerClipboardRead(const QByteArray &selection);
+    bool optionAsMeta() const;
     void checkScrollOffsetChanged();
     int visibleStart() const;
     // Last non-space column of an absolute line (full width if the line is blank).

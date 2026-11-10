@@ -495,7 +495,8 @@ QByteArray TerminalBackend::keyOutputBytes(int key, const QString &text, unsigne
                                (m_terminal->vt52Mode() ? KeyMode::Vt52 : 0u) |
                                (m_terminal->modifyOtherKeys() == 1 ? KeyMode::OtherKeys1 : 0u) |
                                (m_terminal->modifyOtherKeys() == 2 ? KeyMode::OtherKeys2 : 0u) |
-                               (m_terminal->otherKeysCsiU() ? KeyMode::OtherKeysCsiU : 0u);
+                               (m_terminal->otherKeysCsiU() ? KeyMode::OtherKeysCsiU : 0u) |
+                               (optionAsMeta() ? KeyMode::OptionMeta : 0u);
     return encodeKey(key, text, mods, modes, m_terminal->kittyKeyboardFlags(), eventType);
 }
 
@@ -1710,6 +1711,13 @@ std::vector<TerminalBackend::VisibleImage> TerminalBackend::visibleImages() cons
     });
     std::ranges::stable_sort(out, {}, &VisibleImage::z);
     return out;
+}
+
+// Settings > Keyboard "Use Option as Meta", or ?1036 / ?1039 from the app.
+bool TerminalBackend::optionAsMeta() const
+{
+    return (m_terminal && m_terminal->metaSendsEscape()) ||
+           QSettings().value(QStringLiteral("General/optionAsMeta"), false).toBool();
 }
 
 int TerminalBackend::visibleRowSize(int row) const

@@ -27,6 +27,10 @@ Window {
             iconName: "window"
         },
         {
+            title: qsTr("Keyboard"),
+            iconName: "keyboard"
+        },
+        {
             title: qsTr("Security"),
             iconName: "security"
         }
@@ -291,6 +295,39 @@ Window {
                         Layout.rightMargin: 10
 
                         text: qsTr("These settings apply to all windows and are saved automatically.")
+                        font.pointSize: 11
+                        color: control.secondaryTextColor
+                        wrapMode: Text.Wrap
+                    }
+
+                    Item {
+                        Layout.fillHeight: true
+                    }
+                }
+
+                // Keyboard: how modifier keys reach programs.
+                ColumnLayout {
+                    spacing: 6
+
+                    FormGroup {
+                        FormRow {
+                            label: qsTr("Use Option as Meta key")
+                            detail: qsTr("Option+key sends Esc+key instead of typing special characters")
+                            showSeparator: false
+
+                            Switch {
+                                checked: control.preferences.optionAsMeta
+                                onToggled: control.preferences.optionAsMeta = checked
+                            }
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 10
+                        Layout.rightMargin: 10
+
+                        text: qsTr("Turn on for Alt shortcuts in Emacs, tmux, readline and Neovim. Programs can also ask for it (xterm metaSendsEscape).")
                         font.pointSize: 11
                         color: control.secondaryTextColor
                         wrapMode: Text.Wrap

@@ -676,6 +676,27 @@ void modifyOtherKeys(int &failures)
                   "modifyOtherKeys 2: every Ctrl / Alt key, CSI u format");
 }
 
+// Option as Meta (setting, ?1036 / ?1039).
+void optionAsMeta(int &failures)
+{
+    const auto key = [](int k, const QString &text, unsigned int mods, unsigned int modes, unsigned int kitty = 0) {
+        return encodeKey(k, text, mods, modes, kitty);
+    };
+    const unsigned int meta = KeyMode::OptionMeta;
+    selfTestCheck(failures, key(Qt::Key_F, QStringLiteral(u"ƒ"), KeyMod::Alt, meta) == "\x1b" "f" &&
+                                key(Qt::Key_F, QStringLiteral(u"ƒ"), KeyMod::Alt | KeyMod::Shift, meta) == "\x1b" "F" &&
+                                key(Qt::Key_E, {}, KeyMod::Alt, meta) == "\x1b" "e" &&
+                                key(Qt::Key_F, QStringLiteral(u"ƒ"), KeyMod::Alt, 0) == "\xc6\x92",
+                  "meta: Option+key sends ESC + key (dead keys too) instead of the composed text");
+    selfTestCheck(failures, key(Qt::Key_Left, {}, KeyMod::Alt, meta) == "\x1b" "b" &&
+                                key(Qt::Key_2, QStringLiteral(u"™"), KeyMod::Alt, meta, 1) == "\x1b[50;3u",
+                  "meta: word movement stays, kitty reports Option as Alt");
+    selfTestCheck(failures, feed("\x1b[?1036h").metaSendsEscape() && feed("\x1b[?1039h").metaSendsEscape() &&
+                                !feed("\x1b[?1036h\x1b[?1036l").metaSendsEscape() &&
+                                replies("\x1b[?1036h\x1b[?1036$p") == "\x1b[?1036;1$y",
+                  "meta: ?1036 / ?1039 metaSendsEscape / altSendsEscape");
+}
+
 // Grapheme clusters (mode 2027).
 void graphemeClusters(int &failures)
 {
@@ -747,6 +768,7 @@ void runParserSelfTest(int &failures)
     lineSizes(failures);
     modifyOtherKeys(failures);
     graphemeClusters(failures);
+    optionAsMeta(failures);
     fixtureRegressions(failures);
 }
 

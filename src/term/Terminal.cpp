@@ -803,7 +803,7 @@ void Terminal::handleKeyModifierOptions(char final, const std::vector<int> &para
         setExtraFlag(OtherKeysCsiU, value == 1);
         return;
     }
-    const unsigned int level = final == 'n' ? 0u : static_cast<unsigned int>(value);
+    const std::uint64_t level = final == 'n' ? 0u : static_cast<std::uint64_t>(value);
     m_extraFlags = (m_extraFlags & ~OtherKeysMask) | (level << OtherKeysShift);
 }
 
@@ -1275,6 +1275,10 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
         case 1016:
             setExtraFlag(SgrPixelMouse, set);
             break;
+        case 1036: // metaSendsEscape
+        case 1039: // altSendsEscape
+            setExtraFlag(MetaSendsEscape, set);
+            break;
         case 2027:
             m_screen.setGraphemeClustering(set);
             break;
@@ -1686,7 +1690,7 @@ void Terminal::handleEsc(char c)
     }
 }
 
-void Terminal::setExtraFlag(unsigned int flag, bool on)
+void Terminal::setExtraFlag(std::uint64_t flag, bool on)
 {
     m_extraFlags = on ? (m_extraFlags | flag) : (m_extraFlags & ~flag);
 }
