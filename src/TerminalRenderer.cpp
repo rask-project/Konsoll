@@ -730,7 +730,11 @@ void TerminalRenderer::buildRowText(QSGNode &rowNode, int row)
         matrix.translate(0.0F, -anchor);
     }
     transform.setMatrix(matrix);
-    clip.setClipRect(QRectF(0.0, rowTop, width() + (2.0 * m_cellWidth), m_cellHeight));
+    // The clip only bounds double-height text vertically; its width comes
+    // from the row's cells, never from the item, which is 0 while the view
+    // is hidden (a background workspace) and rows built then stay clipped.
+    const auto cells = static_cast<qreal>(m_rows[static_cast<std::size_t>(row)].cells.size());
+    clip.setClipRect(QRectF(0.0, rowTop, (cells + 1.0) * 2.0 * m_cellWidth, m_cellHeight));
 
     // A glyph missing from the primary font is drawn by a fallback font with
     // a different advance, which would push the rest of a shared layout off
