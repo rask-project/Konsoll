@@ -607,11 +607,13 @@ void Terminal::handleCsi(char final)
         m_screen.carriageReturn();
         break;
     case 'C': // CUF
+        m_screen.cursorForward(paramAt(p, 0, 1));
+        break;
     case 'a': // HPR
         cursorMove(0, paramAt(p, 0, 1));
         break;
     case 'D': // CUB
-        cursorMove(0, -paramAt(p, 0, 1));
+        m_screen.cursorBack(paramAt(p, 0, 1));
         break;
     case 'G': // CHA
     case '`': // HPA
@@ -639,8 +641,13 @@ void Terminal::handleCsi(char final)
     case 'g': // TBC
         m_screen.clearTabStop(paramAt(p, 0, 0));
         break;
-    case 's': // SCOSC (no left/right margin mode, so CSI s never means DECSLRM)
-        saveCursorState();
+    case 's':
+        // DECSLRM under DECLRMM (?69), otherwise SCOSC.
+        if (m_screen.leftRightMarginMode()) {
+            m_screen.setLeftRightMargins(paramAt(p, 0, 1), paramAt(p, 1, m_screen.cols()));
+        } else {
+            saveCursorState();
+        }
         break;
     case 'u': // SCORC
         restoreCursorState(true);
@@ -777,7 +784,125 @@ void Terminal::handleCsiWithIntermediates(char final)
         // DECRQM: CSI ? Ps $ p (DEC mode) / CSI Ps $ p (ANSI mode).
         const std::vector<int> params = parseParams(m_csiParams);
         reportMode(paramAt(params, 0, 0), m_csiPrefix == '?');
+    } else if (m_csiIntermediates == "$" || m_csiIntermediates == "*") {
+        handleRectangle(m_csiIntermediates.front(), final);
+    } else if (m_csiIntermediates == "'" && (final == '}' || final == '~')) {
+        // DECIC / DECDC: insert / delete columns.
+        const std::vector<int> params = parseParams(m_csiParams);
+        if (final == '}') {
+            m_screen.insertColumnsInRegion(paramAt(params, 0, 1));
+        } else {
+            m_screen.deleteColumnsInRegion(paramAt(params, 0, 1));
+        }
     }
+}
+
+namespace
+{
+bool applyBasicColor(int code, Cell &pen); // SGR 30-37 / 40-47 / 90-97 / 100-107, defined with the SGR code
+} // namespace
+
+// A rectangle from CSI Pt ; Pl ; Pb ; Pr starting at params[first]; in
+// origin mode relative to the scroll region and the left/right margins.
+Screen::Rect Terminal::rectangleParams(const std::vector<int> &params, int first) const
+{
+    const bool origin = m_screen.originMode();
+    const int top = origin ? m_screen.scrollTop() : 0;
+    const int left = origin ? m_screen.leftMargin() : 0;
+    const int bottomLimit = origin ? m_screen.scrollBottom() : m_screen.rows() - 1;
+    const int rightLimit = origin ? m_screen.rightMargin() : m_screen.cols() - 1;
+    return Screen::Rect{
+        .top = std::min(top + paramAt(params, first, 1) - 1, bottomLimit),
+        .left = std::min(left + paramAt(params, first + 1, 1) - 1, rightLimit),
+        .bottom = std::min(top + paramAt(params, first + 2, bottomLimit - top + 1) - 1, bottomLimit),
+        .right = std::min(left + paramAt(params, first + 3, rightLimit - left + 1) - 1, rightLimit),
+    };
+}
+
+// VT420 rectangular area operations: CSI ... $ x/z/{/v/r/t and * x / * y.
+void Terminal::handleRectangle(char intermediate, char final)
+{
+    const std::vector<int> p = parseParams(m_csiParams);
+    if (intermediate == '*') {
+        if (final == 'x') {
+            setExtraFlag(RectangleExtent, paramAt(p, 0, 0) == 2); // DECSACE
+        } else if (final == 'y') {
+            // DECRQCRA: DCS Pid ! ~ checksum ST.
+            const int checksum = m_screen.checksumRect(rectangleParams(p, 2));
+            reply("\x1bP" + QByteArray::number(paramAt(p, 0, 0)) + "!~" +
+                  QByteArray::number(checksum, 16).toUpper().rightJustified(4, '0') + "\x1b\\");
+        }
+        return;
+    }
+    switch (final) {
+    case 'x': { // DECFRA: fill with a character in the current rendition
+        const int ch = paramAt(p, 0, 0);
+        if ((ch >= 32 && ch <= 126) || (ch >= 160 && ch <= 255)) {
+            Cell cell = m_pen;
+            cell.ch = static_cast<unsigned int>(ch);
+            m_screen.fillRect(rectangleParams(p, 1), cell);
+        }
+        break;
+    }
+    case 'z': // DECERA
+        m_screen.eraseRect(rectangleParams(p, 0), 0);
+        break;
+    case '{': // DECSERA: selective
+        m_screen.eraseRect(rectangleParams(p, 0), CellAttr::DecProtected | CellAttr::IsoProtected);
+        break;
+    case 'v': { // DECCRA: copy (single page) to Ptd ; Pld
+        const Screen::Rect target = rectangleParams(p, 5);
+        m_screen.copyRect(rectangleParams(p, 0), target.top, target.left);
+        break;
+    }
+    case 'r': // DECCARA
+    case 't': // DECRARA
+        changeRectangleAttributes(p, final == 't');
+        break;
+    default:
+        break;
+    }
+}
+
+// DECCARA sets / DECRARA toggles bold (1), underline (4), blink (5),
+// reverse (7) and hidden (8); DECCARA also clears them (0, 22-28) and sets
+// colors.
+void Terminal::changeRectangleAttributes(const std::vector<int> &params, bool reverse)
+{
+    struct Attribute {
+        int code;
+        unsigned int flag;
+        unsigned int attr;
+    };
+    static constexpr std::array kAttributes{
+        Attribute{.code = 1, .flag = CellFlag::Bold, .attr = 0},
+        Attribute{.code = 4, .flag = CellFlag::Underline, .attr = 0},
+        Attribute{.code = 5, .flag = 0, .attr = CellAttr::Blink},
+        Attribute{.code = 7, .flag = CellFlag::Reverse, .attr = 0},
+        Attribute{.code = 8, .flag = CellFlag::Invisible, .attr = 0},
+    };
+    std::vector<int> codes(params.begin() + std::min<std::ptrdiff_t>(4, std::ssize(params)), params.end());
+    if (codes.empty()) {
+        codes.push_back(0);
+    }
+    const bool stream = (m_extraFlags & RectangleExtent) == 0;
+    m_screen.changeRect(rectangleParams(params, 0), stream, [&codes, &reverse](Cell &cell) {
+        std::ranges::for_each(codes, [&cell, &reverse](int code) {
+            std::ranges::for_each(kAttributes, [&](const Attribute &a) {
+                const bool selected = code == a.code || code == 0 || code == a.code + 20;
+                if (!selected) {
+                    return;
+                }
+                const bool on = reverse ? ((cell.flags & a.flag) == 0u && (cell.attrs & a.attr) == 0u)
+                                        : (code == a.code);
+                cell.flags = static_cast<unsigned char>(on ? (cell.flags | a.flag) : (cell.flags & ~a.flag));
+                cell.attrs = static_cast<unsigned char>(on ? (cell.attrs | a.attr) : (cell.attrs & ~a.attr));
+            });
+            if (!reverse) {
+                applyBasicColor(code, cell);
+            }
+        });
+    });
 }
 
 void Terminal::handleEscIntermediate(const QByteArray &intermediates, char final)
@@ -1033,6 +1158,9 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
             break;
         case 80:
             setExtraFlag(SixelDisplayMode, set); // DECSDM
+            break;
+        case 69:
+            m_screen.setLeftRightMarginMode(set); // DECLRMM
             break;
         case 95:
             setExtraFlag(NoClearOnColumnChange, set); // DECNCSM
@@ -1445,6 +1573,12 @@ void Terminal::handleEsc(char c)
         break;
     case 'H': // HTS
         m_screen.setTabStop();
+        break;
+    case '6': // DECBI
+        m_screen.backIndex();
+        break;
+    case '9': // DECFI
+        m_screen.forwardIndex();
         break;
     case 'V': // SPA: start of guarded (ISO protected) area
         m_pen.attrs = static_cast<unsigned char>(m_pen.attrs | CellAttr::IsoProtected);

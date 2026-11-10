@@ -129,9 +129,11 @@ void Terminal::handleDeviceAttributes(char prefix, int param)
         return;
     }
     if (prefix == 0) {
-        reply("\x1b[?62;4;22c"); // DA1: VT220 with sixel graphics and ANSI color
+        // DA1: VT420 with sixel (4), selective erase (6), horizontal
+        // scrolling (21), ANSI color (22) and rectangular editing (28).
+        reply("\x1b[?64;4;6;21;22;28c");
     } else if (prefix == '>') {
-        reply("\x1b[>1;" + number(versionNumber()) + ";0c"); // DA2: VT220, firmware version
+        reply("\x1b[>41;" + number(versionNumber()) + ";0c"); // DA2: VT420, firmware version
     } else if (prefix == '=') {
         reply("\x1bP!|00000000\x1b\\"); // DA3: unit id
     }
@@ -297,8 +299,8 @@ int Terminal::decModeState(int mode) const
         return flag(ColorSchemeReports);
     case 2048:
         return flag(InBandResize);
-    case 69: // DECLRMM: left/right margins are not supported
-        return 4;
+    case 69:
+        return state(m_screen.leftRightMarginMode()); // DECLRMM
     default:
         return 0;
     }
@@ -355,10 +357,12 @@ void Terminal::handleDecrqss(const QByteArray &request)
         setting = sgrReport() + "m";
     } else if (request == "r") {
         setting = number(m_screen.scrollTop() + 1) + ";" + number(m_screen.scrollBottom() + 1) + "r";
+    } else if (request == "s" && m_screen.leftRightMarginMode()) {
+        setting = number(m_screen.leftMargin() + 1) + ";" + number(m_screen.rightMargin() + 1) + "s"; // DECSLRM
     } else if (request == " q") {
         setting = number(m_cursorStyle) + " q"; // DECSCUSR
     } else if (request == "\"p") {
-        setting = "62;1\"p"; // DECSCL: VT200, 7-bit controls
+        setting = "64;1\"p"; // DECSCL: VT400, 7-bit controls
     } else if (request == "\"q") {
         setting = (m_pen.attrs & CellAttr::DecProtected) != 0 ? "1\"q" : "0\"q"; // DECSCA
     }

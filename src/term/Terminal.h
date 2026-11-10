@@ -167,6 +167,7 @@ private:
     static constexpr unsigned int Vt52Mode = 1u << 25;              // ?2 reset (DECANM)
     static constexpr unsigned int ErasureMode = 1u << 26;           // ERM (6): erase protected cells too
     static constexpr unsigned int SixelDisplayMode = 1u << 27;      // ?80 DECSDM: no sixel scrolling
+    static constexpr unsigned int RectangleExtent = 1u << 28;       // DECSACE 2: rectangle, else stream
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.
@@ -220,6 +221,9 @@ private:
     void handlePrivateCsi(char final);
     void handlePrefixedCsi(char final);
     void handleCsiWithIntermediates(char final);
+    void handleRectangle(char intermediate, char final);
+    Screen::Rect rectangleParams(const std::vector<int> &params, int first) const;
+    void changeRectangleAttributes(const std::vector<int> &params, bool reverse);
     void handleDcs(const QByteArray &body);
     void handleApc(const QByteArray &body);
     void handleSixel(const QByteArray &body);

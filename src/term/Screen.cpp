@@ -74,7 +74,7 @@ void ensureRows(std::vector<Line> &grid, int rows, int width)
 }
 } // namespace
 
-Screen::Screen(int rows, int cols) : m_rows(rows), m_cols(cols), m_scrollBottom(rows - 1)
+Screen::Screen(int rows, int cols) : m_rows(rows), m_cols(cols), m_scrollBottom(rows - 1), m_marginRight(cols - 1)
 {
     m_main = makeGrid(rows, cols);
     m_mainWrapped.assign(rows, false);
@@ -135,6 +135,8 @@ void Screen::resize(int rows, int cols)
     m_cursorCol = std::clamp(m_cursorCol, 0, cols - 1);
     m_scrollTop = 0;
     m_scrollBottom = rows - 1;
+    m_marginLeft = 0;
+    m_marginRight = cols - 1;
     m_pendingWrap = false;
     resetTabStops(oldCols);
 }
@@ -153,7 +155,8 @@ void Screen::moveCursor(int row, int col)
 void Screen::moveCursorAddressed(int row, int col)
 {
     if (originMode()) {
-        moveCursor(std::clamp(row + m_scrollTop, m_scrollTop, m_scrollBottom), col);
+        moveCursor(std::clamp(row + m_scrollTop, m_scrollTop, m_scrollBottom),
+                   std::clamp(col + leftMargin(), leftMargin(), rightMargin()));
     } else {
         moveCursor(row, col);
     }
@@ -298,12 +301,25 @@ void Screen::breakWideAt(int col)
     }
 }
 
+// The column after which a character wraps: the right margin when the
+// cursor is inside the left/right margins, else the last column.
+int Screen::wrapColumn() const
+{
+    return m_cursorCol <= rightMargin() ? rightMargin() : m_cols - 1;
+}
+
+void Screen::wrapToNextLine()
+{
+    // Wrapping from the right margin continues at the left margin.
+    m_cursorCol = m_cursorCol == rightMargin() ? leftMargin() : 0;
+    lineFeedImpl(true); // right-margin wrap: the new row is a continuation.
+    m_pendingWrap = false;
+}
+
 void Screen::putChar(unsigned int ch, const Cell &pen)
 {
     if (m_pendingWrap) {
-        m_cursorCol = 0;
-        lineFeedImpl(true); // right-margin wrap: the new row is a continuation.
-        m_pendingWrap = false;
+        wrapToNextLine();
     }
     breakWideAt(m_cursorCol);
     if (insertMode()) {
@@ -312,7 +328,7 @@ void Screen::putChar(unsigned int ch, const Cell &pen)
     Cell &c = grid()[m_cursorRow][m_cursorCol];
     c = pen;
     c.ch = ch;
-    if (m_cursorCol + 1 >= m_cols) {
+    if (m_cursorCol >= wrapColumn()) {
         // Without DECAWM the cursor stays put and the next character
         // overwrites the last column.
         m_pendingWrap = autoWrap();
@@ -328,18 +344,16 @@ void Screen::putWideChar(unsigned int ch, const Cell &pen)
         return;
     }
     if (m_pendingWrap) {
-        m_cursorCol = 0;
-        lineFeedImpl(true);
-        m_pendingWrap = false;
+        wrapToNextLine();
     }
-    if (m_cursorCol + 1 >= m_cols && !autoWrap()) {
-        m_cursorCol = m_cols - 2; // no wrap: the pair takes the last two columns
-    } else if (m_cursorCol + 1 >= m_cols) {
+    const int lastColumn = wrapColumn();
+    if (m_cursorCol + 1 > lastColumn && !autoWrap()) {
+        m_cursorCol = lastColumn - 1; // no wrap: the pair takes the last two columns
+    } else if (m_cursorCol + 1 > lastColumn) {
         // Only the last column is left: pad it and wrap, as xterm does.
         breakWideAt(m_cursorCol);
         grid()[m_cursorRow][m_cursorCol] = Cell{.fg = 0, .bg = pen.bg, .ch = ' ', .flags = CellFlag::WideSpacer};
-        m_cursorCol = 0;
-        lineFeedImpl(true);
+        wrapToNextLine();
     }
     breakWideAt(m_cursorCol);
     breakWideAt(m_cursorCol + 1);
@@ -355,8 +369,8 @@ void Screen::putWideChar(unsigned int ch, const Cell &pen)
     spacer.flags = withFlag(pen.flags, CellFlag::WideSpacer);
     line[m_cursorCol] = lead;
     line[m_cursorCol + 1] = spacer;
-    if (m_cursorCol + 2 >= m_cols) {
-        m_cursorCol = m_cols - 1;
+    if (m_cursorCol + 2 > wrapColumn()) {
+        m_cursorCol = wrapColumn();
         m_pendingWrap = autoWrap();
     } else {
         m_cursorCol += 2;
@@ -371,8 +385,12 @@ void Screen::lineFeed()
 void Screen::lineFeedImpl(bool soft)
 {
     // Only the bottom margin scrolls the region; below it (a status line
-    // under the scroll region) the cursor moves down to the last row.
+    // under the scroll region) the cursor moves down to the last row. With
+    // left/right margins only a cursor inside them scrolls.
     if (m_cursorRow == m_scrollBottom) {
+        if (hasSideMargins() && !insideMargins()) {
+            return;
+        }
         scrollUpOne(m_scrollTop, m_scrollBottom);
         if (!m_inAlt) {
             m_mainWrapped[m_scrollBottom] = soft;
@@ -387,13 +405,13 @@ void Screen::lineFeedImpl(bool soft)
 
 void Screen::carriageReturn()
 {
-    m_cursorCol = 0;
+    m_cursorCol = m_cursorCol >= leftMargin() ? leftMargin() : 0;
     m_pendingWrap = false;
 }
 
 void Screen::backspace()
 {
-    if (m_cursorCol > 0) {
+    if (m_cursorCol > 0 && m_cursorCol != leftMargin()) {
         --m_cursorCol;
     }
     m_pendingWrap = false;
@@ -402,9 +420,12 @@ void Screen::backspace()
 void Screen::tab(int count)
 {
     std::ranges::for_each(std::views::iota(0, std::max(count, 1)), [this](int) {
+        // Tabs stop at the right margin when the cursor is inside it.
+        const int limit = wrapColumn();
         const auto from = m_tabStops.begin() + std::min(m_cursorCol + 1, m_cols);
         const auto stop = std::find(from, m_tabStops.end(), true);
-        m_cursorCol = stop == m_tabStops.end() ? m_cols - 1 : static_cast<int>(stop - m_tabStops.begin());
+        const int next = stop == m_tabStops.end() ? m_cols - 1 : static_cast<int>(stop - m_tabStops.begin());
+        m_cursorCol = std::min(next, limit);
     });
     m_pendingWrap = false;
 }
@@ -412,9 +433,11 @@ void Screen::tab(int count)
 void Screen::backTab(int count)
 {
     std::ranges::for_each(std::views::iota(0, std::max(count, 1)), [this](int) {
+        const int limit = m_cursorCol >= leftMargin() ? leftMargin() : 0;
         const auto before = std::make_reverse_iterator(m_tabStops.begin() + m_cursorCol);
         const auto stop = std::find(before, m_tabStops.rend(), true);
-        m_cursorCol = stop == m_tabStops.rend() ? 0 : static_cast<int>(stop.base() - m_tabStops.begin()) - 1;
+        const int previous = stop == m_tabStops.rend() ? 0 : static_cast<int>(stop.base() - m_tabStops.begin()) - 1;
+        m_cursorCol = std::max(previous, limit);
     });
     m_pendingWrap = false;
 }
@@ -437,6 +460,9 @@ void Screen::reverseIndex()
 {
     // Mirror of LF: only the top margin scrolls the region.
     if (m_cursorRow == m_scrollTop) {
+        if (hasSideMargins() && !insideMargins()) {
+            return;
+        }
         scrollDownOne(m_scrollTop, m_scrollBottom);
     } else if (m_cursorRow > 0) {
         --m_cursorRow;
@@ -508,21 +534,7 @@ void Screen::eraseChars(int count, unsigned int protectedMask)
 // (negative) by `count` columns, blanking the columns shifted in.
 void Screen::scrollHorizontally(int count)
 {
-    const int n = std::min(std::abs(count), m_cols);
-    if (n == 0) {
-        return;
-    }
-    const Cell blank = eraseCell();
-    std::ranges::for_each(std::views::iota(m_scrollTop, m_scrollBottom + 1), [&](int r) {
-        Line &line = grid()[r];
-        if (count > 0) {
-            std::move(line.begin() + n, line.end(), line.begin());
-            std::fill(line.end() - n, line.end(), blank);
-        } else {
-            std::move_backward(line.begin(), line.end() - n, line.end());
-            std::fill(line.begin(), line.begin() + n, blank);
-        }
-    });
+    shiftColumns(m_scrollTop, m_scrollBottom, leftMargin(), rightMargin(), count);
 }
 
 void Screen::scrollUp(int count)
@@ -544,7 +556,13 @@ void Screen::scrollDown(int count)
 
 void Screen::insertLines(int count)
 {
-    if (m_cursorRow < m_scrollTop || m_cursorRow > m_scrollBottom) {
+    if (m_cursorRow < m_scrollTop || m_cursorRow > m_scrollBottom || !insideMargins()) {
+        return;
+    }
+    if (hasSideMargins()) {
+        shiftRows(m_cursorRow, m_scrollBottom, leftMargin(), rightMargin(), -std::max(count, 1));
+        m_cursorCol = leftMargin();
+        m_pendingWrap = false;
         return;
     }
 
@@ -573,7 +591,13 @@ void Screen::insertLines(int count)
 
 void Screen::deleteLines(int count)
 {
-    if (m_cursorRow < m_scrollTop || m_cursorRow > m_scrollBottom) {
+    if (m_cursorRow < m_scrollTop || m_cursorRow > m_scrollBottom || !insideMargins()) {
+        return;
+    }
+    if (hasSideMargins()) {
+        shiftRows(m_cursorRow, m_scrollBottom, leftMargin(), rightMargin(), std::max(count, 1));
+        m_cursorCol = leftMargin();
+        m_pendingWrap = false;
         return;
     }
 
@@ -624,34 +648,32 @@ void Screen::resetScrollRegion()
 
 void Screen::deleteColumns(int count)
 {
-    if (count <= 0) {
+    if (count <= 0 || (hasSideMargins() && !insideMargins())) {
         return;
     }
     // Never more than the cells from the cursor to the right margin.
-    const int n = std::min(count, m_cols - m_cursorCol);
+    const int end = wrapColumn() + 1;
+    const int n = std::min(count, end - m_cursorCol);
     breakWideAt(m_cursorCol);
-    if (m_cursorCol + n < m_cols) {
+    if (m_cursorCol + n < end) {
         breakWideAt(m_cursorCol + n);
     }
-    Line &row = grid()[m_cursorRow];
-    std::move(row.begin() + m_cursorCol + n, row.end(), row.begin() + m_cursorCol);
-    std::fill(row.end() - n, row.end(), eraseCell());
+    shiftColumns(m_cursorRow, m_cursorRow, m_cursorCol, end - 1, n);
     m_pendingWrap = false;
 }
 
 void Screen::insertColumns(int count)
 {
-    if (count <= 0) {
+    if (count <= 0 || (hasSideMargins() && !insideMargins())) {
         return;
     }
-    const int n = std::min(count, m_cols - m_cursorCol);
+    const int end = wrapColumn() + 1;
+    const int n = std::min(count, end - m_cursorCol);
     breakWideAt(m_cursorCol);
-    if (m_cols - n > m_cursorCol) {
-        breakWideAt(m_cols - n); // the pair pushed across the right margin
+    if (end - n > m_cursorCol) {
+        breakWideAt(end - n); // the pair pushed across the right margin
     }
-    Line &row = grid()[m_cursorRow];
-    std::move_backward(row.begin() + m_cursorCol, row.end() - n, row.end());
-    std::fill(row.begin() + m_cursorCol, row.begin() + m_cursorCol + n, eraseCell());
+    shiftColumns(m_cursorRow, m_cursorRow, m_cursorCol, end - 1, -n);
     m_pendingWrap = false;
 }
 
@@ -715,6 +737,8 @@ void Screen::fullReset()
     m_modes = AutoWrapMode;
     m_cursorVisible = true;
     m_savedCursors = {};
+    m_marginLeft = 0;
+    m_marginRight = m_cols - 1;
     resetScrollRegion();
     std::ranges::fill(m_tabStops, false);
     resetTabStops(0);
@@ -724,6 +748,8 @@ void Screen::fullReset()
 void Screen::softReset()
 {
     m_modes = AutoWrapMode;
+    m_marginLeft = 0;
+    m_marginRight = m_cols - 1;
     m_cursorVisible = true;
     m_pendingWrap = false;
     m_savedCursors[m_inAlt ? 1 : 0] = {};
@@ -745,6 +771,11 @@ void Screen::alignmentTest()
 
 void Screen::scrollUpOne(int top, int bottom) // NOLINT: top/bottom are inherently swappable
 {
+    if (hasSideMargins()) {
+        // A rectangle scrolls; nothing reaches the history.
+        shiftRows(top, bottom, leftMargin(), rightMargin(), 1);
+        return;
+    }
     auto &g = grid();
     if (top == 0 && !m_inAlt) {
         pushScrollback(g[top], m_mainWrapped[top]);
@@ -765,6 +796,10 @@ void Screen::scrollUpOne(int top, int bottom) // NOLINT: top/bottom are inherent
 
 void Screen::scrollDownOne(int top, int bottom) // NOLINT: top/bottom are inherently swappable
 {
+    if (hasSideMargins()) {
+        shiftRows(top, bottom, leftMargin(), rightMargin(), -1);
+        return;
+    }
     auto &g = grid();
     for (int r = bottom; r > top; --r) {
         g[r] = g[r - 1];

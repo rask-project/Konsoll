@@ -216,9 +216,9 @@ QByteArray replies(const QByteArray &bytes, int rows = 4, int cols = 10)
 // Stage 4a: query replies.
 void queryReplies(int &failures)
 {
-    selfTestCheck(failures, replies("\x1b[c") == "\x1b[?62;4;22c" && replies("\x1b[0c") == "\x1b[?62;4;22c",
+    selfTestCheck(failures, replies("\x1b[c") == "\x1b[?64;4;6;21;22;28c" && replies("\x1b[0c") == "\x1b[?64;4;6;21;22;28c",
                   "reply: DA1");
-    selfTestCheck(failures, replies("\x1b[>c").startsWith("\x1b[>1;") && replies("\x1b[=c") == "\x1bP!|00000000\x1b\\",
+    selfTestCheck(failures, replies("\x1b[>c").startsWith("\x1b[>41;") && replies("\x1b[=c") == "\x1bP!|00000000\x1b\\",
                   "reply: DA2 / DA3");
     selfTestCheck(failures, replies("\x1b[>q").startsWith("\x1bP>|Konsoll "), "reply: XTVERSION");
     selfTestCheck(failures, replies("\x1b]11;?\x07\x1b[5n") == "\x1b]11;rgb:1414/1414/1414\x1b\\\x1b[0n",
@@ -405,7 +405,7 @@ void vttestFindings(int &failures)
         Terminal term(4, 10, QStringLiteral("selftest"));
         term.write("\x1b[?2l\x1bY\"%x\x1bZ\x1b<\x1b[c");
         selfTestCheck(failures, term.screen().cellAt(2, 5).ch == 'x' && !term.vt52Mode() &&
-                                    term.takeResponses() == "\x1b/Z\x1b[?62;4;22c",
+                                    term.takeResponses() == "\x1b/Z\x1b[?64;4;6;21;22;28c",
                       "vt52: ESC Y addressing, identify, ESC < back to ANSI");
     }
     selfTestCheck(failures, replies("\x1b[0x\x1b[1x") == "\x1b[2;1;1;128;128;1;0x\x1b[3;1;1;128;128;1;0x", "reply: DECREQTPARM");
@@ -551,6 +551,71 @@ void sessionRequests(int &failures)
                   "requests: OSC 52 reads, title reports and window operations wait for the session");
 }
 
+// Left/right margins (DECSLRM) and VT420 rectangular operations.
+void marginsAndRectangles(int &failures)
+{
+    // Margins at columns 3..6 (1-based).
+    const QByteArray margins = "\x1b[?69h\x1b[3;6s";
+    selfTestCheck(failures, rowText(feed("\x1b[?69h\x1b[3;6s\x1b[1;3Habcdef"), 0) == QStringLiteral("abcd") &&
+                                rowText(feed("\x1b[?69h\x1b[3;6s\x1b[1;3Habcdef"), 1) == QStringLiteral("ef"),
+                  "margins: autowrap at the right margin continues at the left margin");
+    selfTestCheck(failures, cursorAt(feed(margins + "\x1b[1;5H\r"), 0, 2) && cursorAt(feed(margins + "\x1b[1;1H\r"), 0, 0),
+                  "margins: CR goes to the left margin from inside it");
+    selfTestCheck(failures, cursorAt(feed(margins + "\x1b[1;4H\x1b[20C"), 0, 5) && cursorAt(feed(margins + "\x1b[1;4H\x1b[20D"), 0, 2),
+                  "margins: CUF / CUB stop at the margins");
+    selfTestCheck(failures, cursorAt(feed(margins + "\x1b[?6h\x1b[1;1H"), 0, 2) && cursorAt(feed(margins + "\x1b[?6h\x1b[1;99H"), 0, 5),
+                  "margins: origin mode addresses inside the margins");
+    {
+        const Terminal term = feed("0123456789\r\n0123456789\x1b[?69h\x1b[3;6s\x1b[1;3H\x1b[L");
+        selfTestCheck(failures, rowText(term, 0) == QStringLiteral("01    6789") && rowText(term, 1) == QStringLiteral("0123456789"),
+                      "margins: IL only shifts the margin columns");
+    }
+    selfTestCheck(failures, rowText(feed("0123456789\x1b[?69h\x1b[3;6s\x1b[1;3H\x1b[P"), 0) == QStringLiteral("01345 6789") &&
+                                rowText(feed("0123456789\x1b[?69h\x1b[3;6s\x1b[1;3H\x1b[@"), 0) == QStringLiteral("01 2346789"),
+                  "margins: DCH / ICH stop at the right margin");
+    selfTestCheck(failures, rowText(feed("0123456789\x1b[?69h\x1b[3;6s\x1b[1;3H\x1b[2'}"), 0) == QStringLiteral("01  236789") &&
+                                rowText(feed("0123456789\x1b[?69h\x1b[3;6s\x1b[1;3H\x1b[2'~"), 0) == QStringLiteral("0145  6789"),
+                  "csi: DECIC / DECDC inside the margins");
+    selfTestCheck(failures, rowText(feed("0123456789\x1b[?69h\x1b[3;6s\x1b[1;3H\x1b" "6"), 0) == QStringLiteral("01 2346789") &&
+                                rowText(feed("0123456789\x1b[?69h\x1b[3;6s\x1b[1;6H\x1b" "9"), 0) == QStringLiteral("01345 6789"),
+                  "esc: DECBI / DECFI scroll the margin columns");
+    selfTestCheck(failures, replies(margins + "\x1b[?69$p\x1bP$qs\x1b\\") == "\x1b[?69;1$y\x1bP1$r3;6s\x1b\\" &&
+                                rowText(feed("\x1b[?69l\x1b[3;6sx\x1b[ux"), 0) == QStringLiteral("x"),
+                  "margins: DECRQM / DECRQSS, and CSI s is SCOSC without DECLRMM");
+    {
+        const Terminal term = feed("\x1b[42;2;2;3;5$x");
+        selfTestCheck(failures, rowText(term, 1) == QStringLiteral("****") && rowText(term, 2) == QStringLiteral("****") &&
+                                    rowText(term, 0).isEmpty(),
+                      "rect: DECFRA fills a rectangle");
+    }
+    selfTestCheck(failures, rowText(feed("abcdef\r\nabcdef\x1b[1;2;2;3$z"), 0) == QStringLiteral("a  def") &&
+                                rowText(feed("abcdef\r\nabcdef\x1b[1;2;2;3$z"), 1) == QStringLiteral("a  def"),
+                  "rect: DECERA erases a rectangle");
+    selfTestCheck(failures, rowText(feed("ab\x1b[1\"qcd\x1b[0\"qef\x1b[1;1;1;6${"), 0) == QStringLiteral("cd"),
+                  "rect: DECSERA keeps DECSCA-protected cells");
+    selfTestCheck(failures, rowText(feed("abc\x1b[1;1;1;3;1;3;5;1$v"), 2) == QStringLiteral("abc"),
+                  "rect: DECCRA copies a rectangle");
+    {
+        const Terminal term = feed("abcdef\r\nabcdef\x1b[2*x\x1b[1;2;2;3;1;7$r");
+        const auto flags = [&term](int row, int col) { return term.screen().cellAt(row, col).flags; };
+        selfTestCheck(failures, (flags(0, 1) & CellFlag::Bold) != 0u && (flags(1, 2) & CellFlag::Reverse) != 0u &&
+                                    (flags(0, 3) & CellFlag::Bold) == 0u && (flags(1, 0) & CellFlag::Bold) == 0u,
+                      "rect: DECCARA in rectangle mode (DECSACE 2)");
+    }
+    {
+        const Terminal term = feed("abcdef\r\nabcdef\x1b[1;5;2;2;1$r");
+        const auto bold = [&term](int row, int col) { return (term.screen().cellAt(row, col).flags & CellFlag::Bold) != 0u; };
+        selfTestCheck(failures, bold(0, 5) && bold(1, 0) && !bold(1, 2) && !bold(0, 3),
+                      "rect: DECCARA in stream mode by default");
+    }
+    selfTestCheck(failures, (feed("ab\x1b[1;1;1;1$t").screen().cellAt(0, 0).flags & CellFlag::Reverse) != 0u &&
+                                (feed("ab\x1b[1;1;1;1;7$t\x1b[1;1;1;1;7$t").screen().cellAt(0, 0).flags & CellFlag::Reverse) == 0u &&
+                                (feed("ab\x1b[1;1;1;1;7$t").screen().cellAt(0, 1).flags & CellFlag::Reverse) == 0u,
+                  "rect: DECRARA toggles attributes (0 = all of them)");
+    // 'A' + 'B' = 131 -> -131 & 0xffff = 0xff7d
+    selfTestCheck(failures, replies("AB\x1b[5;1;1;1;1;2*y") == "\x1bP5!~FF7D\x1b\\", "rect: DECRQCRA checksum");
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
@@ -567,6 +632,7 @@ void runParserSelfTest(int &failures)
     kittyKeyboard(failures);
     graphicsProtocols(failures);
     sessionRequests(failures);
+    marginsAndRectangles(failures);
 }
 
 } // namespace konsoll

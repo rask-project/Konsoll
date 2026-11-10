@@ -2,9 +2,11 @@
 
 #include "Cell.h"
 
+#include <algorithm>
 #include <array>
 #include <deque>
 #include <optional>
+#include <ranges>
 #include <vector>
 
 namespace konsoll
@@ -35,6 +37,9 @@ public:
     // CUU/CUD: stop at the scroll margin when the cursor is inside it.
     void cursorUp(int count);
     void cursorDown(int count);
+    // CUF/CUB: stop at the left/right margin when the cursor is inside it.
+    void cursorForward(int count);
+    void cursorBack(int count);
     // DECSC/DECRC: position, pending wrap and origin mode, one slot per
     // screen (main / alternate), as in xterm.
     void saveCursor();
@@ -49,6 +54,36 @@ public:
     void setAutoWrap(bool on);
     bool insertMode() const { return (m_modes & InsertMode) != 0; }
     void setInsertMode(bool on);
+    // DECLRMM (?69) and DECSLRM: left/right margins (0-based inclusive).
+    bool leftRightMarginMode() const { return (m_modes & LeftRightMarginMode) != 0; }
+    void setLeftRightMarginMode(bool on);
+    void setLeftRightMargins(int left, int right); // 1-based inclusive
+    int leftMargin() const { return leftRightMarginMode() ? m_marginLeft : 0; }
+    int rightMargin() const { return leftRightMarginMode() ? m_marginRight : m_cols - 1; }
+
+    // DECBI / DECFI: move left / right, scrolling the margins' columns when
+    // the cursor is at the left / right margin.
+    void backIndex();
+    void forwardIndex();
+    // DECIC / DECDC: insert / delete columns at the cursor in the scroll
+    // region, inside the margins.
+    void insertColumnsInRegion(int count);
+    void deleteColumnsInRegion(int count);
+
+    // Rectangular operations (VT420), 0-based inclusive and clamped.
+    struct Rect {
+        int top{0};
+        int left{0};
+        int bottom{0};
+        int right{0};
+    };
+    void fillRect(const Rect &rect, const Cell &cell);                // DECFRA
+    void eraseRect(const Rect &rect, unsigned int protectedMask);     // DECERA / DECSERA
+    void copyRect(const Rect &source, int top, int left);             // DECCRA
+    // DECCARA / DECRARA: `change` applies to every cell of the rectangle,
+    // or of the character stream from its top-left to its bottom-right.
+    template <typename Change> void changeRect(const Rect &rect, bool stream, Change change);
+    int checksumRect(const Rect &rect) const;                         // DECRQCRA
 
     // Cell access for rendering.
     const Cell &cellAt(int row, int col) const;
@@ -158,6 +193,7 @@ private:
     static constexpr unsigned char OriginMode = 0x01;
     static constexpr unsigned char AutoWrapMode = 0x02;
     static constexpr unsigned char InsertMode = 0x04;
+    static constexpr unsigned char LeftRightMarginMode = 0x08;
     static constexpr int SavedPendingWrap = 0x01;
     static constexpr int SavedOriginMode = 0x02;
 
@@ -175,6 +211,17 @@ private:
     void scrollUpOne(int top, int bottom);
     void scrollDownOne(int top, int bottom);
     void blankLine(int row);
+    int wrapColumn() const;
+    void wrapToNextLine();
+    bool insideMargins() const { return m_cursorCol >= leftMargin() && m_cursorCol <= rightMargin(); }
+    bool hasSideMargins() const { return leftMargin() > 0 || rightMargin() < m_cols - 1; }
+    // Move rows [top, bottom] up (count > 0) / down within columns
+    // [left, right], blanking what is vacated.
+    void shiftRows(int top, int bottom, int left, int right, int count);
+    // Move columns [left, right] of rows [top, bottom] left (count > 0) /
+    // right, blanking what is vacated.
+    void shiftColumns(int top, int bottom, int left, int right, int count);
+    Rect clampRect(const Rect &rect) const;
     void eraseCells(int row, int first, int last, unsigned int protectedMask);
     void resetTabStops(int fromCol);
     void applySavedCursor(const SavedCursor &saved);
@@ -223,11 +270,26 @@ private:
     int m_scrollBottom = 0; // 0-based inclusive
     int m_maxScrollback = 0; // 0 = unlimited
     int m_scrollOffset = 0; // 0 = at the bottom
+    int m_marginLeft = 0;   // DECSLRM, 0-based inclusive
+    int m_marginRight = 0;
     std::array<SavedCursor, 2> m_savedCursors{}; // [0] main, [1] alternate
     bool m_cursorVisible = true;
     bool m_inAlt = false;
     bool m_pendingWrap = false;
     unsigned char m_modes = AutoWrapMode;
 };
+
+template <typename Change> void Screen::changeRect(const Rect &rect, bool stream, Change change)
+{
+    const Rect r = clampRect(rect);
+    std::ranges::for_each(std::views::iota(r.top, r.bottom + 1), [&](int row) {
+        // In stream mode (DECSACE 0/1) the first and last rows run from / to
+        // the line edges, like a text selection.
+        const int first = stream && row != r.top ? 0 : r.left;
+        const int last = stream && row != r.bottom ? m_cols - 1 : r.right;
+        Line &line = grid()[row];
+        std::for_each(line.begin() + first, line.begin() + last + 1, change);
+    });
+}
 
 } // namespace konsoll

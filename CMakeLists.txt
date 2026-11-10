@@ -113,6 +113,7 @@ qt_add_qml_module(konsoll
         src/term/Palette.h
         src/term/Screen.cpp
         src/term/Screen.h
+        src/term/ScreenRect.cpp
         src/term/Terminal.cpp
         src/term/Terminal.h
         src/term/TerminalReports.cpp
