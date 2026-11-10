@@ -1,0 +1,63 @@
+%@[0cP$q"p\[>c[?1l[?3l[?4l[?5l[?6l[?7h[?8l[?40h[?45l[r[0m%G[2J[3;10HVT100 test program, version 2.7 (20251205)[4;10H[5;10HChoose test type:
+[6;1H[0J
+          0. Exit
+          1. Test of cursor movements
+          2. Test of screen features
+          3. Test of character sets
+          4. Test of double-sized characters
+          5. Test of keyboard
+          6. Test of terminal reports
+          7. Test of VT52 mode
+          8. Test of VT102 features (Insert/Delete Char/Line)
+          9. Test of known bugs
+          10. Test of reset and self-test
+          11. Test non-VT100 (e.g., VT220, XTERM) terminals
+          12. Modify test-parameters
+
+          Enter choice number (0 - 12): 11
+[2J[2J[3;10HMenu 11: Non-VT100 Tests[5;10HChoose test type:
+[6;1H[0J
+          0. Exit
+          1. Test of VT220 features
+          2. Test of VT320 features
+          3. Test of VT420 features
+          4. Test of VT520 features
+          5. Test ISO-6429 cursor-movement
+          6. Test ISO-6429 colors
+          7. Test other ISO-6429 features
+          8. Test XTERM special features
+
+          Enter choice number (0 - 8): 3
+[2J[2J[3;10HMenu 11.3: VT420 Tests[5;10HChoose test type:
+[6;1H[0J
+          0. Exit
+          1. Test VT320 features
+          2. Test cursor-movement
+          3. Test editing sequences
+          4. Test keyboard-control
+          5* Test macro-definition (DECDMAC)
+          6. Test rectangular area functions
+          7. Test reporting functions
+          8. Test screen-display functions
+
+          Enter choice number (0 - 8): 6
+[2J[2J[3;10HMenu 11.3.6: VT420 Rectangular Area Tests[5;10HChoose test type:
+[6;1H[0J
+          0. Exit
+          1. Enable DECOM (origin mode)
+          2. Enable DECLRMM (left/right mode)
+          3. Top/Bottom margins are reset
+          4. Left/right margins are reset
+          5. Do not color test-regions (xterm)
+          6. Do not use line-drawing characters
+          7. Test Change-Attributes in Rectangular Area (DECCARA)
+          8. Test Copy Rectangular area (DECCRA)
+          9. Test Erase Rectangular area (DECERA)
+          10. Test Fill Rectangular area (DECFRA)
+          11. Test Reverse-Attributes in Rectangular Area (DECRARA)
+          12. Test Selective-Erase Rectangular area (DECSERA)
+
+          Enter choice number (0 - 12): 7
+[2J[r[s[2*x#8[5;5;14;75;7$r[6;6;13;74;0$r[r[s[0m[20;1H[0JTest Change-Attributes in Rectangular Area (DECCARA)
+There should be an open rectangle formed by reverse-video E's
+Push <RETURN>

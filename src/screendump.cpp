@@ -62,6 +62,44 @@ QByteArray printable(const QByteArray &bytes)
 
 } // namespace
 
+QByteArray dumpTerminal(Terminal &term, bool attrs)
+{
+    QByteArray out;
+    const Screen &screen = term.screen();
+    std::ranges::for_each(std::views::iota(0, screen.rows()), [&](int row) {
+        QString text;
+        QByteArray marks;
+        std::ranges::for_each(std::views::iota(0, screen.cols()), [&](int col) {
+            const Cell &cell = screen.cellAt(row, col);
+            if ((cell.flags & CellFlag::WideSpacer) != 0u) {
+                return;
+            }
+            const auto cp = static_cast<char32_t>(cell.ch);
+            text += QString::fromUcs4(&cp, 1);
+            marks += styleMark(cell);
+        });
+        out += "|" + text.toUtf8() + "|";
+        const int history = screen.inAltScreen() ? 0 : screen.scrollbackSize();
+        if (const int size = screen.lineSize(history + row); size != Screen::SingleLine) {
+            out += " size=" + QByteArray::number(size); // double width / height
+        }
+        out += "\n";
+        if (attrs) {
+            out += " " + marks + "\n";
+        }
+    });
+    out += "--cursor " + QByteArray::number(screen.cursorRow()) + "," + QByteArray::number(screen.cursorCol()) +
+           " alt=" + QByteArray::number(screen.inAltScreen() ? 1 : 0) +
+           " visible=" + QByteArray::number(screen.cursorVisible() ? 1 : 0) + "\n";
+    std::ranges::for_each(term.graphics().placements(), [&out](const GraphicsPlacement &p) {
+        out += "--image id=" + QByteArray::number(p.imageId) + " anchor=" + QByteArray::number(p.anchor) +
+               " col=" + QByteArray::number(p.column) + " size=" + QByteArray::number(p.columns) + "x" +
+               QByteArray::number(p.rows) + "\n";
+    });
+    out += "--responses " + printable(term.takeResponses()) + "\n";
+    return out;
+}
+
 int runScreenDump(std::span<char *> args)
 {
     if (args.size() < 4) {
@@ -78,28 +116,7 @@ int runScreenDump(std::span<char *> args)
     }
     Terminal term(std::max(rows, 2), std::max(cols, 2), QStringLiteral("screendump"));
     term.write(input.readAll());
-
-    const Screen &screen = term.screen();
-    std::ranges::for_each(std::views::iota(0, screen.rows()), [&](int row) {
-        QString text;
-        QByteArray marks;
-        std::ranges::for_each(std::views::iota(0, screen.cols()), [&](int col) {
-            const Cell &cell = screen.cellAt(row, col);
-            if ((cell.flags & CellFlag::WideSpacer) != 0u) {
-                return;
-            }
-            const auto cp = static_cast<char32_t>(cell.ch);
-            text += QString::fromUcs4(&cp, 1);
-            marks += styleMark(cell);
-        });
-        std::println(std::cout, "|{}|", text.toStdString());
-        if (attrs) {
-            std::println(std::cout, " {}", marks.toStdString());
-        }
-    });
-    std::println(std::cout, "--cursor {},{} alt={} visible={}", screen.cursorRow(), screen.cursorCol(),
-                 screen.inAltScreen() ? 1 : 0, screen.cursorVisible() ? 1 : 0);
-    std::println(std::cout, "--responses {}", printable(term.takeResponses()).toStdString());
+    std::print(std::cout, "{}", dumpTerminal(term, attrs).toStdString());
     return 0;
 }
 

@@ -76,3 +76,18 @@ Guidance for AI agents working in this repository.
 - AppKit colors expect **0.0–1.0** components: use `QColor::redF()`/
   `greenF()`/`blueF()`, not `red()`/`green()`/`blue()` (which return 0–255
   ints and clamp to white).
+
+## Testing the terminal
+
+- `konsoll --selftest` runs the parser checks (`src/parserselftest.cpp`), the
+  recorded fixtures and the session tests. Run it after any change to
+  `src/term/`, the key encoder or the renderer.
+- `tests/fixtures/NAME-ROWSxCOLS.raw` is a program's raw output and
+  `.expected` the screen it must produce. Record new ones with
+  `tools/vtdrive.py --raw FILE ... -- PROGRAM`, regenerate with
+  `tools/regress.py --update` and review the diff before committing.
+- `konsoll --screen-dump ROWS COLS [--attrs]` prints what stdin draws;
+  `konsoll --render-dump ROWS COLS OUT.png` renders it with the real
+  `TerminalRenderer` — use it to check rendering changes visually.
+- `tools/vtdrive.py` drives a program (vttest, nvim) in a pty, answers its
+  queries with Konsoll's replies and dumps the screen.

@@ -1,0 +1,19 @@
+%@[0cP$q"p\[>c[?1l[?3l[?4l[?5l[?6l[?7h[?8l[?40h[?45l[r[0m%G[2J[3;10HVT100 test program, version 2.7 (20251205)[4;10H[5;10HChoose test type:
+[6;1H[0J
+          0. Exit
+          1. Test of cursor movements
+          2. Test of screen features
+          3. Test of character sets
+          4. Test of double-sized characters
+          5. Test of keyboard
+          6. Test of terminal reports
+          7. Test of VT52 mode
+          8. Test of VT102 features (Insert/Delete Char/Line)
+          9. Test of known bugs
+          10. Test of reset and self-test
+          11. Test non-VT100 (e.g., VT220, XTERM) terminals
+          12. Modify test-parameters
+
+          Enter choice number (0 - 12): 4
+[2J[2J[1;1H[?3l 80 column mode[5;3Hv------- left margin[7;3HThis is a normal-sized line#3#4#6#5[9;2HThis is a Double-width line#5#3#4#6[11;2H#6#5#4#3This is a Double-width-and-height line[12;2H#6#5#3#4This is a Double-width-and-height line[14;2H#6#5#4#3[2KThis is another such line[15;2H#6#5#3#4This is another such line[17;3H^------- left margin[21;1HThis is not a double-width line[21;6His not#5[23;1HPush <RETURN>
+[21;6H**is**#6[23;1HPush <RETURN>

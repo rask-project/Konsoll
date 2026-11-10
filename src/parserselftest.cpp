@@ -1,9 +1,13 @@
 #include "selftest.h"
 
 #include "KeyEncoder.h"
+#include "screendump.h"
 #include "term/Terminal.h"
 
 #include <QBuffer>
+#include <QDir>
+#include <QFile>
+#include <QRegularExpression>
 #include <QByteArray>
 #include <QImage>
 #include <QString>
@@ -644,6 +648,27 @@ void lineSizes(int &failures)
                   "lines: ED 2 and DECALN reset sizes, the alternate screen keeps the main ones");
 }
 
+// tests/fixtures: recorded program output replayed against its expected
+// screen (see tools/regress.py).
+void fixtureRegressions(int &failures)
+{
+    const QDir dir(QStringLiteral(KONSOLL_SOURCE_DIR "/tests/fixtures"));
+    static const QRegularExpression pattern(QStringLiteral(R"(^(.+)-(\d+)x(\d+)\.raw$)"));
+    const QStringList raws = dir.entryList({QStringLiteral("*.raw")}, QDir::Files, QDir::Name);
+    std::ranges::for_each(raws, [&](const QString &name) {
+        const QRegularExpressionMatch match = pattern.match(name);
+        QFile raw(dir.filePath(name));
+        QFile expected(dir.filePath(name.chopped(4) + QStringLiteral(".expected")));
+        if (!match.hasMatch() || !raw.open(QIODevice::ReadOnly) || !expected.open(QIODevice::ReadOnly)) {
+            return;
+        }
+        Terminal term(match.captured(2).toInt(), match.captured(3).toInt(), QStringLiteral("screendump"));
+        term.write(raw.readAll());
+        const QByteArray what = "fixture: " + name.toUtf8() + " matches its .expected screen";
+        selfTestCheck(failures, dumpTerminal(term, true) == expected.readAll(), what.constData());
+    });
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
@@ -662,6 +687,7 @@ void runParserSelfTest(int &failures)
     sessionRequests(failures);
     marginsAndRectangles(failures);
     lineSizes(failures);
+    fixtureRegressions(failures);
 }
 
 } // namespace konsoll

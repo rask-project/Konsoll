@@ -1,0 +1,62 @@
+|   14   - CMake 3.21.1+                          │<<<20   your Qt 6.12)                             |
+ ccccccccBB~~~~~ccccccccccccccccccccccccccccccccccBccccccccIIIIIIIIIIIIIccccccccccccccccccccccccccccc
+|   15   - A C++23 compiler (AppleClang / Xcode   │   21   cmake -S . -B build -G Ninja \            |
+ ccccccccBBcccccccccccccccccc~~~~~~~~~~cccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|        command-line tools)                      │   22   │   -DCMAKE_PREFIX_PATH=/path/to/Qt/6.12. |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   16                                            │        0/macos-arm64/lib/cmake \                 |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   17   ## Build                                 │   23   │   -DCMAKE_BUILD_TYPE=Debug              |
+ ccccccccBBBBBBBBcccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   18                                            │   24                                             |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   20   # Configure (point CMAKE_PREFIX_PATH at  │   25   # Build                                   |
+ ccccccccIIIIIIIIIIIIIIIIIII~~~~~IIIIIIIIIIIIIIIIIBccccccccIIIIIIIccccccccccccccccccccccccccccccccccc
+|        your Qt 6.12)                            │   26   cmake --build build --target konsoll      |
+ ccccccccIIIIIIIIIIIIIccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   21   cmake -S . -B build -G Ninja \           │   28                                             |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   22   │   -DCMAKE_PREFIX_PATH=/path/to/Qt/6.12.│   29   The app is produced at build/konsoll.     |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|        0/macos-arm64/lib/cmake \                │        app. (Qt Creator works too — it           |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   23   │   -DCMAKE_BUILD_TYPE=Debug             │   30   generates the build directory itself.)    |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   24                                            │   31                                             |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   25   # Build                                  │   32   ### Release bundle                        |
+ ccccccccIIIIIIIccccccccccccccccccccccccccccccccccBccccccccBBBBBBBBBBBBBBBBBBcccccccccccccccccccccccc
+|   26   cmake --build build --target konsoll     │   33                                             |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   28                                            │   34   The full build, signing, notarization,    |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   29   The app is produced at build/konsoll.    │        and packaging process is documented in    |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|        app. (Qt Creator works too — it          │   35   docs/RELEASE.md. To                       |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   30   generates the build directory itself.)   │        build the self-contained Release app:     |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   31                                            │   36                                             |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   32   ### Release bundle                       │   38   cmake -S . -B build/release -G Ninja \    |
+ ccccccccBBBBBBBBBBBBBBBBBBcccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   33                                            │   39   │   -DCMAKE_PREFIX_PATH=/path/to/Qt/6.12. |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   34   The full build, signing, notarization,   │        0/macos-arm64/lib/cmake \                 |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|        and packaging process is documented in   │   40   │   -DCMAKE_BUILD_TYPE=Release \          |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   35   docs/RELEASE.md. To                      │   41   │   -DCMAKE_OSX_ARCHITECTURES=arm64       |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBBBBBBBBBcccccccccccccccccccccccccccccccccccccccccc
+|        build the self-contained Release app:    │   42   cmake --build build/release --config      |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   36                                            │        Release --target package-macos            |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   38   cmake -S . -B build/release -G Ninja \   │   44                                             |
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+|   39   │   -DCMAKE_PREFIX_PATH=/path/to/Qt/6.@@@│   45   The complete, self-contained app bundle is|
+ cccccccccccccccccccccccccccccccccccccccccccccccccBcccccccccccccccccccccccccccccccccccccccccccccccccc
+| NORMAL   main    README.md                                           6  23%  41:17   14:09 |
+ cccccccccccccccccccccBBBBBBBBBBccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+--cursor 24,74 alt=1 visible=1
+--responses \e[?69;2$y\e[?2026;2$y\e[?2027;0$y\e[?2031;2$y\e[?2048;2$y\eP1$r0;4:3m\e\x5c\e[?0u\e[?64;4;6;21;22;28c\e]11;rgb:1414/1414/1414\e\x5c\e[0n\e]11;rgb:1414/1414/1414\e\x5c\e[0n\e[?64;4;6;21;22;28c\e[48;30;100;480;800t\eP1+r4d73=1b5d35323b25703125733b257032257307\e\x5c
