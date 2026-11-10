@@ -32,79 +32,15 @@ void Terminal::resize(int rows, int cols)
 {
     m_screen.resize(rows, cols);
     clearCommandBlocks();
+    if ((m_extraFlags & InBandResize) != 0) {
+        reportInBandSize();
+    }
 }
 
 void Terminal::clearCommandBlocks()
 {
     m_commandBlocks.clear();
     m_commandStartLine = -1;
-}
-
-QByteArray Terminal::daResponse()
-{
-    // Minimal "vt220-ish" primary device attributes reply.
-    return "\x1b[?62c";
-}
-
-QByteArray Terminal::colorQueryResponse(unsigned char query)
-{
-    // Match the default colors exposed by TerminalBackend (foreground
-    // #e0e0e0, background #141414), in the OSC 10/11 rgb: format.
-    if (query == 10) {
-        return "\x1b]10;rgb:e0e0/e0e0/e0e0\x1b\\";
-    }
-    return "\x1b]11;rgb:1414/1414/1414\x1b\\";
-}
-
-QByteArray Terminal::dsrResponse() const
-{
-    if (m_dsrQuery == 6) {
-        return QByteArray("\x1b[") + QByteArray::number(m_screen.cursorRow() + 1) + ";" +
-               QByteArray::number(m_screen.cursorCol() + 1) + "R";
-    }
-    return "\x1b[0n";
-}
-
-QByteArray Terminal::mouseReport(int button, int row, int col, int event, unsigned int modifiers) const
-{
-    const bool anyMotion = (m_mouseModes & 0x04u) != 0;
-    const bool buttonMotion = (m_mouseModes & 0x02u) != 0;
-    const bool motion = event == 2;
-    const bool release = event == 1;
-    const bool wheel = event == 3 || event == 4;
-    if (!mouseTracking() || (motion && !anyMotion && (!buttonMotion || button < 0))) {
-        return {};
-    }
-
-    int code = wheel ? (event == 3 ? 64 : 65) : ((button < 0) ? 3 : button);
-    if (motion) {
-        code |= 32;
-    }
-    if ((modifiers & 1u) != 0) {
-        code |= 4;
-    }
-    if ((modifiers & 2u) != 0) {
-        code |= 8;
-    }
-    if ((modifiers & 4u) != 0) {
-        code |= 16;
-    }
-
-    const int x = std::clamp(col + 1, 1, m_screen.cols());
-    const int y = std::clamp(row + 1, 1, m_screen.rows());
-    if (sgrMouse()) {
-        QByteArray report =
-            "\x1b[<" + QByteArray::number(code) + ";" + QByteArray::number(x) + ";" + QByteArray::number(y);
-        report.append(release ? 'm' : 'M');
-        return report;
-    }
-
-    const int legacyCode = (release ? 3 | (code & 28) : code) + 32;
-    if (x > 223 || y > 223 || legacyCode > 255) {
-        return {};
-    }
-    return QByteArray("\x1b[M") + QByteArray(1, static_cast<char>(legacyCode)) +
-           QByteArray(1, static_cast<char>(x + 32)) + QByteArray(1, static_cast<char>(y + 32));
 }
 
 namespace
@@ -667,16 +603,15 @@ void Terminal::handleCsi(char final)
         // the full-screen region. CSI r without parameters is not SU.
         m_screen.setScrollRegion(paramAt(p, 0, 1), paramAt(p, 1, m_screen.rows()));
         break;
-    case 'c':
-        if (paramAt(p, 0, 0) == 0) {
-            m_daPending = true; // Primary DA query.
-        }
+    case 'c': // DA1
+        handleDeviceAttributes(0, paramAt(p, 0, 0));
         break;
-    case 'n':
-        if (paramAt(p, 0, 0) == 5 || paramAt(p, 0, 0) == 6) {
-            m_dsrQuery = static_cast<unsigned char>(paramAt(p, 0, 0));
-        }
-        break; // Device status / cursor position report.
+    case 'n': // DSR
+        handleDeviceStatus(paramAt(p, 0, 0), false);
+        break;
+    case 't': // XTWINOPS
+        handleWindowOps(p);
+        break;
     default:
         break;
     }
@@ -691,9 +626,11 @@ void Terminal::handlePrivateCsi(char final)
         handleDec(final == 'h', params);
         break;
     case 'u':
-        // Kitty keyboard protocol query: CSI ? u. Report support for
-        // disambiguated key presses, including Shift+Enter.
-        setExtraFlag(KeyboardProtocolQueryPending, true);
+        // Kitty keyboard protocol query: CSI ? u.
+        handleKittyKeyboard('?', params);
+        break;
+    case 'n': // DECDSR
+        handleDeviceStatus(paramAt(params, 0, 0), true);
         break;
     case 'J':
         // DECSED: no protected cells, so it is a plain erase.
@@ -710,23 +647,33 @@ void Terminal::handlePrivateCsi(char final)
 
 void Terminal::handlePrefixedCsi(char final)
 {
-    if (final != 'u') {
-        return;
-    }
-    // Kitty keyboard protocol: CSI > flags u (push), CSI < u (pop),
-    // CSI = flags ; mode u (set).
-    if (m_csiPrefix == '<') {
-        setExtraFlag(KittyKeyboardEnabled, false);
-        return;
-    }
     const std::vector<int> params = parseParams(m_csiParams);
-    setExtraFlag(KittyKeyboardEnabled, !params.empty() && params.front() != 0);
+    if (final == 'u') {
+        // Kitty keyboard protocol: CSI > flags u (push), CSI < u (pop),
+        // CSI = flags ; mode u (set).
+        handleKittyKeyboard(m_csiPrefix, params);
+    } else if (final == 'c') {
+        handleDeviceAttributes(m_csiPrefix, paramAt(params, 0, 0)); // DA2 (>) / DA3 (=)
+    } else if (final == 'q' && m_csiPrefix == '>') {
+        // XTVERSION: DCS > | name version ST.
+        reply(QByteArray("\x1bP>|Konsoll ") + KONSOLL_VERSION + "\x1b\\");
+    }
+    // Other prefixed sequences (modifyOtherKeys CSI > 4 ; 2 m, ...) are
+    // consumed without effect; they are not SGR.
 }
 
 void Terminal::handleCsiWithIntermediates(char final)
 {
     if (m_csiIntermediates == "!" && final == 'p') {
         softReset(); // DECSTR
+    } else if (m_csiIntermediates == " " && final == 'q') {
+        // DECSCUSR: cursor shape and blinking.
+        const std::vector<int> params = parseParams(m_csiParams);
+        m_cursorStyle = static_cast<unsigned char>(std::clamp(paramAt(params, 0, 0), 0, 6));
+    } else if (m_csiIntermediates == "$" && final == 'p') {
+        // DECRQM: CSI ? Ps $ p (DEC mode) / CSI Ps $ p (ANSI mode).
+        const std::vector<int> params = parseParams(m_csiParams);
+        reportMode(paramAt(params, 0, 0), m_csiPrefix == '?');
     }
 }
 
@@ -839,12 +786,23 @@ void Terminal::fullReset()
     m_savedStates = {};
     m_lastGraphic = 0;
     m_mouseModes = 0;
+    m_kittyStack = {};
+    m_kittyDepth = 0;
+    m_cursorStyle = 0;
+    m_titleStack.clear();
     // Keep only notifications the backend has not consumed yet.
-    m_extraFlags &= RemoteHostDirty | TitleDirty | CurrentDirectoryDirty | ClipboardTextDirty | CommandFinishedPending;
+    m_extraFlags &= RemoteHostDirty | TitleDirty | CurrentDirectoryDirty | ClipboardTextDirty | CommandFinishedPending |
+                    DarkColorScheme;
 }
 
-void Terminal::handleDcs(const QByteArray & /*body*/)
+void Terminal::handleDcs(const QByteArray &body)
 {
+    if (body.startsWith("+q")) {
+        handleXtgettcap(body.mid(2)); // XTGETTCAP
+    } else if (body.startsWith("$q")) {
+        handleDecrqss(body.mid(2)); // DECRQSS
+    }
+    // Sixel, tmux passthrough and other DCS strings are consumed unused.
 }
 
 void Terminal::handleDec(bool set, const std::vector<int> &params)
@@ -885,8 +843,27 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
             m_mouseModes = set ? static_cast<unsigned char>(m_mouseModes | 0x04u)
                                : static_cast<unsigned char>(m_mouseModes & ~0x04u);
             break;
+        case 1005:
+            setExtraFlag(Utf8Mouse, set);
+            break;
         case 1006:
             setExtraFlag(SgrMouse, set);
+            break;
+        case 1015:
+            setExtraFlag(UrxvtMouse, set);
+            break;
+        case 1016:
+            setExtraFlag(SgrPixelMouse, set);
+            break;
+        case 2031:
+            setExtraFlag(ColorSchemeReports, set);
+            break;
+        case 2048:
+            // In-band resize: report the size now, then on every resize.
+            setExtraFlag(InBandResize, set);
+            if (set) {
+                reportInBandSize();
+            }
             break;
         case 2004:
             setExtraFlag(BracketedPasteEnabled, set);
@@ -1094,8 +1071,10 @@ void Terminal::handleOsc(const QByteArray &body)
         handleOscCommandMark(body);
         return;
     }
+    if (handleOscColorQuery(body)) {
+        return;
+    }
     handleOscTitle(body);
-    handleOscColorQuery(body);
     // "8;" (hyperlink) and others: ignored.
 }
 
@@ -1168,18 +1147,6 @@ void Terminal::handleOscTitle(const QByteArray &body)
             m_title = text;
             setExtraFlag(TitleDirty, true);
         }
-    }
-}
-
-void Terminal::handleOscColorQuery(const QByteArray &body)
-{
-    const int idx = static_cast<int>(body.indexOf(';'));
-    if (idx <= 0) {
-        return;
-    }
-    const QByteArray num = body.left(idx);
-    if ((num == "10" || num == "11") && body.mid(idx + 1) == "?") {
-        m_colorQuery = static_cast<unsigned char>(num == "10" ? 10 : 11);
     }
 }
 

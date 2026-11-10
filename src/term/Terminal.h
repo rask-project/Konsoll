@@ -6,6 +6,7 @@
 #include <QString>
 
 #include <array>
+#include <utility>
 #include <vector>
 
 namespace konsoll
@@ -43,13 +44,16 @@ public:
     bool clipboardTextDirty() const { return (m_extraFlags & ClipboardTextDirty) != 0; }
     void clearClipboardTextDirty() { setExtraFlag(ClipboardTextDirty, false); }
 
-    // Device-attributes reply (so apps like vim/less don't hang waiting).
-    bool daPending() const { return m_daPending; }
-    void clearDaPending() { m_daPending = false; }
-    static QByteArray daResponse();
-    int dsrQuery() const { return m_dsrQuery; }
-    void clearDsrQuery() { m_dsrQuery = 0; }
-    QByteArray dsrResponse() const;
+    // Replies to queries (DA, DSR, DECRQM, DECRQSS, XTGETTCAP, XTVERSION,
+    // XTWINOPS, OSC color queries, kitty keyboard), in the order the queries
+    // arrived, plus unsolicited reports (in-band resize, color scheme). The
+    // backend writes them to the PTY.
+    QByteArray takeResponses() { return std::exchange(m_responses, QByteArray{}); }
+    // The colors the session renders by default (0xAARRGGBB), for OSC
+    // 10/11/12 queries and the dark/light color-scheme report.
+    void setDefaultColors(unsigned int foreground, unsigned int background);
+    // Cell size in pixels, for XTWINOPS size reports and in-band resize.
+    void setCellPixelSize(int width, int height);
 
     const std::vector<CommandBlock> &commandBlocks() const { return m_commandBlocks; }
     int activeCommandStartLine() const { return m_commandStartLine; }
@@ -67,20 +71,19 @@ public:
     bool mouseTracking() const { return m_mouseModes != 0; }
     bool mouseMotionTracking() const { return (m_mouseModes & 0x06u) != 0; }
     bool sgrMouse() const { return (m_extraFlags & SgrMouse) != 0; }
-    bool kittyKeyboardEnabled() const { return (m_extraFlags & KittyKeyboardEnabled) != 0; }
+    bool kittyKeyboardEnabled() const { return kittyKeyboardFlags() != 0; }
     bool bracketedPasteEnabled() const { return (m_extraFlags & BracketedPasteEnabled) != 0; }
     bool applicationCursorKeys() const { return (m_extraFlags & ApplicationCursorKeys) != 0; }
-    bool keyboardProtocolQueryPending() const { return (m_extraFlags & KeyboardProtocolQueryPending) != 0; }
-    void clearKeyboardProtocolQueryPending() { setExtraFlag(KeyboardProtocolQueryPending, false); }
+    // Kitty keyboard protocol progressive-enhancement flags (CSI > flags u).
+    unsigned int kittyKeyboardFlags() const { return m_kittyStack[m_kittyDepth]; }
+    // DECSCUSR cursor style: 0/1 blinking block, 2 block, 3/4 underline,
+    // 5/6 bar (odd = blinking).
+    int cursorStyle() const { return m_cursorStyle; }
     bool synchronizedUpdates() const { return (m_extraFlags & SynchronizedUpdates) != 0; }
     bool reverseVideo() const { return (m_extraFlags & ReverseVideo) != 0; }
     bool applicationKeypad() const { return (m_extraFlags & ApplicationKeypad) != 0; }
     QByteArray mouseReport(int button, int row, int col, int event, unsigned int modifiers) const;
 
-    // OSC 10/11 foreground/background color queries from full-screen apps.
-    unsigned char colorQuery() const { return m_colorQuery; }
-    void clearColorQuery() { m_colorQuery = 0; }
-    static QByteArray colorQueryResponse(unsigned char query);
 
 private:
     // CSI parameters split on ';' into groups and on ':' into sub-parameters
@@ -90,10 +93,9 @@ private:
     static constexpr unsigned int RemoteHostDirty = 1u << 0;
     static constexpr unsigned int BracketedPasteEnabled = 1u << 1;
     static constexpr unsigned int SynchronizedUpdates = 1u << 2;
-    static constexpr unsigned int KittyKeyboardEnabled = 1u << 3;
     static constexpr unsigned int SgrMouse = 1u << 4;
     static constexpr unsigned int ApplicationCursorKeys = 1u << 5;
-    static constexpr unsigned int KeyboardProtocolQueryPending = 1u << 6;
+    static constexpr unsigned int InBandResize = 1u << 6; // ?2048
     static constexpr unsigned int NewlineMode = 1u << 7;  // LNM: LF also returns
     static constexpr unsigned int ReverseVideo = 1u << 8; // DECSCNM
     static constexpr unsigned int ApplicationKeypad = 1u << 9; // DECKPAM
@@ -102,6 +104,11 @@ private:
     static constexpr unsigned int ClipboardTextDirty = 1u << 12;
     static constexpr unsigned int CommandFinishedPending = 1u << 13;
     static constexpr unsigned int ClearPending = 1u << 14;
+    static constexpr unsigned int ColorSchemeReports = 1u << 15; // ?2031
+    static constexpr unsigned int Utf8Mouse = 1u << 16;          // ?1005
+    static constexpr unsigned int UrxvtMouse = 1u << 17;         // ?1015
+    static constexpr unsigned int SgrPixelMouse = 1u << 18;      // ?1016
+    static constexpr unsigned int DarkColorScheme = 1u << 19;
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.
@@ -163,7 +170,6 @@ private:
     void handleOscCurrentDirectory(const QByteArray &body);
     void handleOscCommandMark(const QByteArray &body);
     void handleOscTitle(const QByteArray &body);
-    void handleOscColorQuery(const QByteArray &body);
     void handleCommandMark(char mark);
     void handleEsc(char c);
     void cursorMove(int dRow, int dCol);
@@ -177,6 +183,20 @@ private:
     unsigned int mapCharset(unsigned char c);
     void repeatLastCharacter(int count);
     void handleAnsiMode(bool set, const std::vector<int> &params);
+
+    // Query replies (TerminalReports.cpp).
+    void reply(const QByteArray &bytes) { m_responses += bytes; }
+    void handleDeviceAttributes(char prefix, int param);
+    void handleDeviceStatus(int query, bool privateQuery);
+    void handleWindowOps(const std::vector<int> &params);
+    void reportMode(int mode, bool privateMode);
+    int decModeState(int mode) const;
+    void handleDecrqss(const QByteArray &request);
+    void handleXtgettcap(const QByteArray &names);
+    void handleKittyKeyboard(char prefix, const std::vector<int> &params);
+    QByteArray sgrReport() const;
+    bool handleOscColorQuery(const QByteArray &body);
+    void reportInBandSize();
 
     static ParamGroups parseParamGroups(const QByteArray &body);
     // The first value of each group, omitted -> 0 (the "default" marker).
@@ -196,6 +216,10 @@ private:
     QByteArray m_csiIntermediates;
     // OSC / DCS string body.
     QByteArray m_stringBody;
+    // Pending query replies (see takeResponses).
+    QByteArray m_responses;
+    // XTWINOPS 22/23 title stack.
+    std::vector<QString> m_titleStack;
     QString m_title;
     QString m_currentDirectory;
     QString m_remoteHost;
@@ -205,7 +229,11 @@ private:
     Cell m_pen;
     std::array<SavedTerminalState, 2> m_savedStates{}; // [0] main, [1] alternate
     unsigned int m_lastGraphic = 0; // last printed code point, for REP (0 = none)
-    unsigned int m_extraFlags = 0;
+    unsigned int m_extraFlags = DarkColorScheme; // the default background is dark
+    unsigned int m_defaultFg = 0xffe0e0e0;
+    unsigned int m_defaultBg = 0xff141414;
+    int m_cellPixelWidth = 8;
+    int m_cellPixelHeight = 16;
     unsigned int m_utf8CodePoint = 0;
     unsigned int m_utf8Minimum = 0;
     int m_commandStartLine = -1;
@@ -220,11 +248,13 @@ private:
     std::array<char, 4> m_charsets{'B', 'B', 'B', 'B'};
     unsigned char m_glSet = 0;
     unsigned char m_singleShift = 0;
-    bool m_daPending = false;
     bool m_commandRunning = false;
-    unsigned char m_dsrQuery = 0;
-    unsigned char m_colorQuery = 0;
     unsigned char m_mouseModes = 0;
+    // Kitty keyboard flags stack: [depth] holds the current flags, the
+    // entries below it the levels CSI > u pushed (at most 8).
+    std::array<unsigned char, 9> m_kittyStack{};
+    unsigned char m_kittyDepth = 0;
+    unsigned char m_cursorStyle = 0;
 };
 
 } // namespace konsoll

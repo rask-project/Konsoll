@@ -72,8 +72,10 @@ Item {
     }
 
     function syncSessionSize() {
-        if (session && width >= cellWidth * 2 + 2 * canvasInset && height >= cellHeight * 2 + 2 * canvasInset)
+        if (session && width >= cellWidth * 2 + 2 * canvasInset && height >= cellHeight * 2 + 2 * canvasInset) {
+            session.setCellPixelSize(Math.round(cellWidth), Math.round(cellHeight));
             session.resize(cols, rows);
+        }
     }
 
     function scheduleSessionResize() {

@@ -202,6 +202,82 @@ void screenModes(int &failures)
                   "mode 5: reverse video");
 }
 
+// The replies a terminal fed `bytes` queues for the PTY.
+QByteArray replies(const QByteArray &bytes, int rows = 4, int cols = 10)
+{
+    Terminal term(rows, cols, QStringLiteral("selftest"));
+    term.write(bytes);
+    return term.takeResponses();
+}
+
+// Stage 4a: query replies.
+void queryReplies(int &failures)
+{
+    selfTestCheck(failures, replies("\x1b[c") == "\x1b[?62;22c" && replies("\x1b[0c") == "\x1b[?62;22c",
+                  "reply: DA1");
+    selfTestCheck(failures, replies("\x1b[>c").startsWith("\x1b[>1;") && replies("\x1b[=c") == "\x1bP!|00000000\x1b\\",
+                  "reply: DA2 / DA3");
+    selfTestCheck(failures, replies("\x1b[>q").startsWith("\x1bP>|Konsoll "), "reply: XTVERSION");
+    selfTestCheck(failures, replies("\x1b]11;?\x07\x1b[5n") == "\x1b]11;rgb:1414/1414/1414\x1b\\\x1b[0n",
+                  "reply: OSC 11 then DSR 5, in order");
+    selfTestCheck(failures, replies("\x1b[2;3H\x1b[6n\x1b[?6n") == "\x1b[2;3R\x1b[?2;3R", "reply: CPR / DECXCPR");
+    selfTestCheck(failures, replies("\x1b[2;4r\x1b[?6h\x1b[2;1H\x1b[6n") == "\x1b[2;1R",
+                  "reply: CPR is origin-relative in origin mode");
+    selfTestCheck(failures, replies("\x1b[?996n") == "\x1b[?997;1n", "reply: color scheme (dark default)");
+    selfTestCheck(failures, replies("\x1b[?2026h\x1b[?2026$p\x1b[?1049$p\x1b[?9999$p") ==
+                                "\x1b[?2026;1$y\x1b[?1049;2$y\x1b[?9999;0$y",
+                  "reply: DECRQM for DEC modes (set, reset, unknown)");
+    selfTestCheck(failures, replies("\x1b[4h\x1b[4$p\x1b[20$p") == "\x1b[4;1$y\x1b[20;2$y", "reply: DECRQM for ANSI modes");
+    selfTestCheck(failures, replies("\x1b[1;3;4:3;38;5;196;48;2;1;2;3m\x1bP$qm\x1b\\") ==
+                                "\x1bP1$r0;1;3;4:3;38:5:196;48:2::1:2:3m\x1b\\",
+                  "reply: DECRQSS m (SGR)");
+    selfTestCheck(failures, replies("\x1b[2;3r\x1bP$qr\x1b\\\x1b[5 q\x1bP$q q\x1b\\\x1bP$qz\x1b\\") ==
+                                "\x1bP1$r2;3r\x1b\\\x1bP1$r5 q\x1b\\\x1bP0$r\x1b\\",
+                  "reply: DECRQSS r, SP q and an invalid request");
+    // "Tc" = 5463, "Co" = 436f, "xx" = 7878.
+    selfTestCheck(failures, replies("\x1bP+q5463;436f;7878\x1b\\") ==
+                                "\x1bP1+r5463\x1b\\\x1bP1+r436f=323536\x1b\\\x1bP0+r7878\x1b\\",
+                  "reply: XTGETTCAP boolean, string and unknown capabilities");
+    selfTestCheck(failures, replies("\x1b[18t\x1b[16t", 5, 20) == "\x1b[8;5;20t\x1b[6;16;8t", "reply: XTWINOPS 18t / 16t");
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b]2;one\x07\x1b[22;0t\x1b]2;two\x07\x1b[23;0t");
+        selfTestCheck(failures, term.title() == QStringLiteral("one"), "reply: XTWINOPS 22/23 push and pop the title");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b[?2048h");
+        const QByteArray enabled = term.takeResponses();
+        term.resize(6, 12);
+        selfTestCheck(failures, enabled == "\x1b[48;4;10;64;80t" && term.takeResponses() == "\x1b[48;6;12;96;96t",
+                      "report: in-band resize (2048) on enable and on resize");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b[?2031h");
+        term.setDefaultColors(0xff000000u, 0xffffffffu);
+        selfTestCheck(failures, term.takeResponses() == "\x1b[?997;2n", "report: color scheme change (2031)");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b[>1u\x1b[>5u\x1b[?u");
+        const QByteArray nested = term.takeResponses();
+        term.write("\x1b[<u\x1b[?u");
+        const QByteArray popped = term.takeResponses();
+        term.write("\x1b[<u\x1b[?u");
+        selfTestCheck(failures, nested == "\x1b[?5u" && popped == "\x1b[?1u" && term.takeResponses() == "\x1b[?0u",
+                      "kitty: keyboard flags are a push/pop stack");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b[?1000h\x1b[?1006h");
+        const QByteArray sgr = term.mouseReport(0, 1, 2, 0, 0);
+        term.write("\x1b[?1006l\x1b[?1015h");
+        const QByteArray urxvt = term.mouseReport(0, 1, 2, 0, 0);
+        selfTestCheck(failures, sgr == "\x1b[<0;3;2M" && urxvt == "\x1b[32;3;2M", "mouse: SGR (1006) and urxvt (1015) encodings");
+    }
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
@@ -210,6 +286,7 @@ void runParserSelfTest(int &failures)
     sgrAttributes(failures);
     cursorSequences(failures);
     screenModes(failures);
+    queryReplies(failures);
 }
 
 } // namespace konsoll

@@ -103,6 +103,7 @@ qt_add_qml_module(konsoll
         src/term/Screen.h
         src/term/Terminal.cpp
         src/term/Terminal.h
+        src/term/TerminalReports.cpp
         src/GlassEffect.cpp
         src/GlassEffect.h
         src/MacOSTranslucency.mm

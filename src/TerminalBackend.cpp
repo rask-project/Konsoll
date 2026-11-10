@@ -276,7 +276,29 @@ void TerminalBackend::setSystemColors(const QColor &background, const QColor &fo
     m_defaultFg = newForeground;
     emit colorSchemeChanged();
     if (m_terminal) {
+        m_terminal->setDefaultColors(m_defaultFg, m_defaultBg);
+        flushResponses(); // mode 2031 color-scheme notification
         scheduleFrame();
+    }
+}
+
+void TerminalBackend::setCellPixelSize(int width, int height)
+{
+    m_cellPixelWidth = width;
+    m_cellPixelHeight = height;
+    if (m_terminal) {
+        m_terminal->setCellPixelSize(width, height);
+    }
+}
+
+void TerminalBackend::flushResponses()
+{
+    if (!m_terminal) {
+        return;
+    }
+    const QByteArray responses = m_terminal->takeResponses();
+    if (!responses.isEmpty() && m_worker) {
+        writeToPty(responses);
     }
 }
 
@@ -287,6 +309,8 @@ void TerminalBackend::start(const QString &workingDirectory)
     }
 
     m_terminal = std::make_unique<Terminal>(m_rows, m_cols, m_remoteHostToken);
+    m_terminal->setDefaultColors(m_defaultFg, m_defaultBg);
+    m_terminal->setCellPixelSize(m_cellPixelWidth, m_cellPixelHeight);
     m_worker = std::make_unique<PtyWorker>();
     m_thread = std::make_unique<QThread>();
     m_worker->moveToThread(m_thread.get());
@@ -349,24 +373,9 @@ void TerminalBackend::onData(const QByteArray &data)
     if (wasCommandRunning != commandRunning()) {
         emit commandRunningChanged();
     }
-    if (m_terminal->keyboardProtocolQueryPending()) {
-        writeToPty("\x1b[?1u");
-        m_terminal->clearKeyboardProtocolQueryPending();
-    }
-    if (m_terminal->daPending()) {
-        writeToPty(Terminal::daResponse());
-        m_terminal->clearDaPending();
-    }
-    if (m_terminal->colorQuery() != 0) {
-        writeToPty(Terminal::colorQueryResponse(m_terminal->colorQuery()));
-        m_terminal->clearColorQuery();
-    }
-    // Neovim pairs OSC 11 with CSI 5n and expects the OSC color reply first;
-    // the following DSR response confirms that the color query was supported.
-    if (m_terminal->dsrQuery() != 0) {
-        writeToPty(m_terminal->dsrResponse());
-        m_terminal->clearDsrQuery();
-    }
+    // Query replies go out in the order the queries arrived: Neovim pairs
+    // OSC 11 with CSI 5n and expects the OSC color reply first.
+    flushResponses();
 
     if (m_terminal->titleDirty()) {
         m_title = m_terminal->title();
@@ -707,6 +716,7 @@ void TerminalBackend::resize(int cols, int rows)
     if (m_worker) {
         resizePty(cols, rows);
     }
+    flushResponses(); // mode 2048 in-band resize report
 
     // The reflow re-wraps the history, so absolute selection anchors are stale.
     m_selAnchor = {.line = -1, .col = 0};

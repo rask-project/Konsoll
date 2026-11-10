@@ -69,6 +69,8 @@ public:
     // stopped within the bounded wait; objects remain alive until it does.
     bool close();
     Q_INVOKABLE void setSystemColors(const QColor &background, const QColor &foreground);
+    // Cell size in (logical) pixels, for XTWINOPS and in-band size reports.
+    Q_INVOKABLE void setCellPixelSize(int width, int height);
 
     // Input from QML.
     Q_INVOKABLE void keyPress(int key, const QString &text, int modifiers);
@@ -197,6 +199,8 @@ private:
     void onForegroundChanged(bool hasForeground);
     void onFrameTimer();
     void scheduleFrame();
+    // Write the terminal's pending query replies and reports to the PTY.
+    void flushResponses();
     void checkScrollOffsetChanged();
     int visibleStart() const;
     // Last non-space column of an absolute line (full width if the line is blank).
@@ -268,6 +272,8 @@ private:
 
     int m_rows{24};
     int m_cols{80};
+    int m_cellPixelWidth{8};
+    int m_cellPixelHeight{16};
 
     unsigned int m_defaultFg{0xffe0e0e0};
     unsigned int m_defaultBg{0xff141414};

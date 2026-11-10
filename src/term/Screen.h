@@ -95,6 +95,8 @@ public:
     void insertLines(int count);
     void deleteLines(int count);
     void setScrollRegion(int top, int bottom); // 1-based inclusive
+    int scrollTop() const { return m_scrollTop; }       // 0-based inclusive
+    int scrollBottom() const { return m_scrollBottom; } // 0-based inclusive
     void resetScrollRegion();
 
     // Column operations at the cursor row.
