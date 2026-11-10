@@ -10,6 +10,9 @@ Window {
     required property AppSettings settings
     required property AboutDialog aboutDialog
     property string windowId: ""
+    // Set when the window opens to receive a workspace moved from another one.
+    property bool startEmpty: false
+    readonly property TerminalManager terminalManager: sessionManager
     readonly property WindowState windowState: windowStateObject
 
     readonly property font terminalFont: Qt.font({
@@ -179,7 +182,7 @@ Window {
             appWindow.x = windowState.x;
             appWindow.y = windowState.y;
         }
-        if (sessionManager.workspaces.length === 0) {
+        if (!appWindow.startEmpty && sessionManager.workspaces.length === 0) {
             sessionManager.start();
         }
     }

@@ -94,7 +94,7 @@ class TerminalManager : public QObject
 
     QML_ELEMENT
 
-    Q_PROPERTY(QObject *window READ window WRITE setWindow)
+    Q_PROPERTY(QObject *window READ window WRITE setWindow NOTIFY windowChanged)
     Q_PROPERTY(QVariantList workspaces READ workspaces NOTIFY workspacesChanged)
     Q_PROPERTY(QObject *activeSession READ activeSession NOTIFY activeSessionChanged)
     Q_PROPERTY(int activeWorkspaceIndex READ activeWorkspaceIndex NOTIFY activeWorkspaceChanged)
@@ -143,6 +143,7 @@ public:
     Q_INVOKABLE void restoreState(const QJsonArray &state);
 
 signals:
+    void windowChanged();
     void workspacesChanged();
     void activeWorkspaceChanged();
     void activeSessionChanged();

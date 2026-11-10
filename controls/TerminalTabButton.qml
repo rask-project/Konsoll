@@ -15,6 +15,8 @@ TabButton {
     property var windowTranslucency: null
     property var tabStrip: null
 
+    // The TerminalWindow showing this tab (its manager's window).
+    readonly property var hostWindow: sessionManager ? sessionManager.window : null
     readonly property string tabTitle: tab.workspace ? (tab.workspace.title || "Konsoll") : "Konsoll"
     readonly property color systemAccent: systemPalette.accent
 
@@ -23,6 +25,14 @@ TabButton {
     signal dragMoved(real sceneX, real sceneY)
     signal dragFinished(real sceneX, real sceneY)
     signal dragCanceled
+
+    // Deferred: the move rebuilds this window's tabs, destroying this tab and
+    // its menu while the triggered handler is still running.
+    function moveToWindow(target, index) {
+        const workspace = tab.workspace;
+        const source = tab.hostWindow;
+        Qt.callLater(() => source.windowManager.moveWorkspace(workspace, source, target, index));
+    }
 
     Controls.Menu {
         id: contextMenu
@@ -47,6 +57,37 @@ TabButton {
                 if (sessionManager.workspaceNeedsCloseConfirmation(tab.workspace) && !NativeDialogs.confirmClose())
                     return;
                 sessionManager.closeWorkspace(tab.workspace);
+            }
+        }
+
+        MenuSeparator {}
+
+        Controls.MenuItem {
+            text: qsTr("Move to new window")
+            // A lone workspace already is its own window.
+            enabled: tab.hostWindow !== null && tab.sessionManager.workspaces.length > 1
+            onTriggered: tab.moveToWindow(null, 0)
+        }
+
+        Controls.Menu {
+            id: moveMenu
+
+            title: qsTr("Move to window")
+            enabled: count > 0
+
+            // Every other window, listed by name like the Window menu.
+            Instantiator {
+                model: tab.hostWindow ? tab.hostWindow.windowManager.windows.filter(w => w !== tab.hostWindow) : []
+
+                delegate: Controls.MenuItem {
+                    required property var modelData
+
+                    text: modelData.title
+                    onTriggered: tab.moveToWindow(modelData, -1)
+                }
+
+                onObjectAdded: (index, object) => moveMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => moveMenu.removeItem(object)
             }
         }
     }

@@ -33,11 +33,14 @@ Item {
         }
     }
 
-    function openWindow(windowId) {
+    // `startEmpty` skips the window's first workspace: it is about to receive
+    // one moved from another window.
+    function openWindow(windowId, startEmpty) {
         if (!windowId)
             windowId = WindowStateStore.generateWindowId();
         manager.createdWindow = windowTemplate.createObject(manager, {
-            windowId: windowId
+            windowId: windowId,
+            startEmpty: startEmpty === true
         });
         const w = manager.createdWindow;
         manager.windows = manager.windows.concat([w]);
@@ -45,6 +48,23 @@ Item {
         manager.persistCollection();
         w.showSaved();
         return w;
+    }
+
+    // Moves `workspace` from `source` to `target` (a new window when null) at
+    // `index` (the end when negative). Its shells keep running; a source left
+    // empty closes.
+    function moveWorkspace(workspace, source: TerminalWindow, target: TerminalWindow, index: int) {
+        const newWindow = target === null;
+        if (newWindow)
+            target = manager.openWindow("", true);
+        const position = index < 0 ? target.terminalManager.workspaces.length : index;
+        if (!source.terminalManager.moveWorkspaceTo(workspace, target.terminalManager, position)) {
+            if (newWindow)
+                target.close();
+            return;
+        }
+        target.raise();
+        target.requestActivate();
     }
 
     function noteActiveWindow(w: TerminalWindow) {

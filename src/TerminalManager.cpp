@@ -138,7 +138,11 @@ TerminalManager::~TerminalManager()
 
 void TerminalManager::setWindow(QObject *window)
 {
+    if (m_window == window) {
+        return;
+    }
     m_window = window;
+    emit windowChanged();
 }
 
 bool TerminalManager::eventFilter(QObject *watched, QEvent *event)
