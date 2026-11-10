@@ -279,6 +279,8 @@ int Terminal::decModeState(int mode) const
         return 2;
     case 1000:
         return state((m_mouseModes & 0x01u) != 0);
+    case 1001:
+        return state((m_mouseModes & 0x08u) != 0);
     case 1002:
         return state((m_mouseModes & 0x02u) != 0);
     case 1003:
@@ -610,11 +612,13 @@ QString Terminal::linkTarget(unsigned short id) const
 namespace
 {
 // xterm mouse button code: button (or 3 = none / release in legacy
-// encodings, 64/65 = wheel), +32 for motion, +4/8/16 for Shift/Meta/Control.
+// encodings; 64/65 wheel up/down, 66/67 wheel left/right), +32 for motion,
+// +4/8/16 for Shift/Meta/Control. Events: 0 press, 1 release, 2 motion,
+// 3/4 wheel up/down, 5/6 wheel left/right.
 int mouseButtonCode(int button, int event, unsigned int modifiers)
 {
-    const bool wheel = event == 3 || event == 4;
-    int code = wheel ? (event == 3 ? 64 : 65) : ((button < 0) ? 3 : button);
+    const bool wheel = event >= 3 && event <= 6;
+    int code = wheel ? 64 + (event - 3) : ((button < 0) ? 3 : button);
     code |= event == 2 ? 32 : 0;
     code |= (modifiers & 1u) != 0 ? 4 : 0;
     code |= (modifiers & 2u) != 0 ? 8 : 0;
@@ -637,8 +641,15 @@ QByteArray legacyMouseReport(int code, int x, int y, bool utf8)
 }
 } // namespace
 
-QByteArray Terminal::mouseReport(int button, int row, int col, int event, unsigned int modifiers) const
+QByteArray Terminal::mouseReport(int button, int row, int col, int event, unsigned int modifiers)
 {
+    // ?1001 highlight tracking: once the application started a highlight
+    // (CSI func;x;y;first;last T), the release reports CSI t x y.
+    if ((m_mouseModes & 0x08u) != 0 && event == 1 && (m_extraFlags & HighlightStarted) != 0) {
+        setExtraFlag(HighlightStarted, false);
+        const auto coordinate = [](int value) { return static_cast<char>(std::clamp(value + 1, 1, 223) + 32); };
+        return QByteArray("\x1b[t") + coordinate(col) + coordinate(row);
+    }
     const bool anyMotion = (m_mouseModes & 0x04u) != 0;
     const bool buttonMotion = (m_mouseModes & 0x02u) != 0;
     const bool motion = event == 2;

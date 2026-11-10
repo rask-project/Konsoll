@@ -527,6 +527,11 @@ void TerminalBackend::mouseWheel(bool up, int row, int col, int modifiers)
     sendMouseReport(up ? 64 : 65, row, col, up ? 3 : 4, modifiers);
 }
 
+void TerminalBackend::mouseWheelHorizontal(bool left, int row, int col, int modifiers)
+{
+    sendMouseReport(left ? 66 : 67, row, col, left ? 5 : 6, modifiers);
+}
+
 QVariantMap TerminalBackend::linkAt(int row, int col) const
 {
     if (!m_terminal || row < 0 || row >= m_rows || col < 0 || col >= m_cols) {

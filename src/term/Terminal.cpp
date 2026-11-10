@@ -711,7 +711,13 @@ void Terminal::handleCsi(char final)
         m_screen.scrollUp(paramAt(p, 0, 1));
         break;
     case 'T':
-        m_screen.scrollDown(paramAt(p, 0, 1));
+        if (p.size() >= 5) {
+            // Highlight tracking (?1001): the application starts (func != 0)
+            // or aborts a highlight; the release then reports its end.
+            setExtraFlag(HighlightStarted, (m_mouseModes & 0x08u) != 0 && p[0] != 0);
+        } else {
+            m_screen.scrollDown(paramAt(p, 0, 1)); // SD
+        }
         break;
     case 'r':
         // DECSTBM always sets the scroll region; omitted parameters restore
@@ -1254,6 +1260,10 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
         case 1000:
             m_mouseModes = set ? static_cast<unsigned char>(m_mouseModes | 0x01u)
                                : static_cast<unsigned char>(m_mouseModes & ~0x01u);
+            break;
+        case 1001: // highlight tracking: reports presses like 1000
+            m_mouseModes = set ? static_cast<unsigned char>(m_mouseModes | 0x08u)
+                               : static_cast<unsigned char>(m_mouseModes & ~0x08u);
             break;
         case 1002:
             m_mouseModes = set ? static_cast<unsigned char>(m_mouseModes | 0x02u)

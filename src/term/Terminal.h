@@ -136,7 +136,7 @@ public:
     // xterm modifyOtherKeys level (0-2) and whether keys use CSI code ; mods u.
     int modifyOtherKeys() const { return static_cast<int>((m_extraFlags & OtherKeysMask) >> OtherKeysShift); }
     bool otherKeysCsiU() const { return (m_extraFlags & OtherKeysCsiU) != 0; }
-    QByteArray mouseReport(int button, int row, int col, int event, unsigned int modifiers) const;
+    QByteArray mouseReport(int button, int row, int col, int event, unsigned int modifiers);
 
 
 private:
@@ -177,6 +177,7 @@ private:
     static constexpr std::uint64_t OtherKeysMask = std::uint64_t{3} << OtherKeysShift;
     static constexpr std::uint64_t OtherKeysCsiU = std::uint64_t{1} << 31;         // XTFMTKEYS formatOtherKeys 1
     static constexpr std::uint64_t MetaSendsEscape = std::uint64_t{1} << 32;       // ?1036 / ?1039
+    static constexpr std::uint64_t HighlightStarted = std::uint64_t{1} << 33;      // ?1001 highlight in progress
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.

@@ -676,6 +676,28 @@ void modifyOtherKeys(int &failures)
                   "modifyOtherKeys 2: every Ctrl / Alt key, CSI u format");
 }
 
+// Horizontal wheel buttons and highlight tracking (?1001).
+void mouseExtras(int &failures)
+{
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b[?1000h\x1b[?1006h");
+        selfTestCheck(failures, term.mouseReport(66, 0, 0, 5, 0) == "\x1b[<66;1;1M" && term.mouseReport(67, 1, 2, 6, 0) == "\x1b[<67;3;2M",
+                      "mouse: horizontal wheel is buttons 6 / 7 (66 / 67)");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b[?1001h");
+        const QByteArray press = term.mouseReport(0, 1, 2, 0, 0);
+        term.write("\x1b[1;3;2;1;4T");
+        const QByteArray release = term.mouseReport(0, 1, 4, 1, 0);
+        const bool scrolled = feed("a\x1b[T").screen().cellAt(1, 0).ch == 'a';
+        selfTestCheck(failures, press == "\x1b[M #\"" && release == QByteArray("\x1b[t%\"") && scrolled &&
+                                    replies("\x1b[?1001h\x1b[?1001$p") == "\x1b[?1001;1$y",
+                      "mouse: ?1001 highlight tracking, CSI T with one parameter is still SD");
+    }
+}
+
 // Option as Meta (setting, ?1036 / ?1039).
 void optionAsMeta(int &failures)
 {
@@ -769,6 +791,7 @@ void runParserSelfTest(int &failures)
     modifyOtherKeys(failures);
     graphemeClusters(failures);
     optionAsMeta(failures);
+    mouseExtras(failures);
     fixtureRegressions(failures);
 }
 

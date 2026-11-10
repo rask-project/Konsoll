@@ -87,6 +87,8 @@ public:
     Q_INVOKABLE void mouseRelease(int button, int row, int col, int modifiers);
     Q_INVOKABLE void mouseMove(int button, int row, int col, int modifiers);
     Q_INVOKABLE void mouseWheel(bool up, int row, int col, int modifiers);
+    // Horizontal wheel / trackpad scroll: xterm buttons 6 (left) and 7 (right).
+    Q_INVOKABLE void mouseWheelHorizontal(bool left, int row, int col, int modifiers);
     // Wheel without mouse tracking: scroll the history, or send cursor keys
     // in the alternate screen (?1007).
     Q_INVOKABLE void wheelScroll(int lines);

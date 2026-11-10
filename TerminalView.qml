@@ -26,6 +26,7 @@ Item {
     property bool active: false
     property string transferError: ""
     property real scrollAccumulator: 0
+    property real horizontalAccumulator: 0
     property bool _syncingScrollBar: false
 
     onSystemBackgroundChanged: applySystemColors()
@@ -237,6 +238,22 @@ Item {
             // generally report angle deltas. Prefer pixels when available.
             const pixelDelta = event.pixelDelta.y;
             const delta = pixelDelta !== 0 ? pixelDelta / view.cellHeight : event.angleDelta.y / 40;
+            // Horizontal scroll reaches mouse-tracking applications as xterm
+            // buttons 6 / 7, one report per cell of movement.
+            const deltaX = event.pixelDelta.x !== 0 ? event.pixelDelta.x / view.cellWidth : event.angleDelta.x / 40;
+            if (deltaX !== 0 && view.session && view.session.mouseTracking && Math.abs(deltaX) > Math.abs(delta)) {
+                view.horizontalAccumulator += deltaX;
+                const steps = Math.trunc(view.horizontalAccumulator);
+                if (steps !== 0) {
+                    const p = selectionArea.mapFromItem(view, event.x, event.y);
+                    const cell = selectionArea.cellAt(p.x, p.y);
+                    for (let i = 0; i < Math.abs(steps); ++i)
+                        view.session.mouseWheelHorizontal(steps > 0, cell[1], cell[0], event.modifiers);
+                    view.horizontalAccumulator -= steps;
+                }
+                event.accepted = true;
+                return;
+            }
             if (delta !== 0 && view.session) {
                 if (view.session.mouseTracking) {
                     const p = selectionArea.mapFromItem(view, event.x, event.y);
