@@ -411,8 +411,8 @@ void vttestFindings(int &failures)
     selfTestCheck(failures, replies("\x1b[0x\x1b[1x") == "\x1b[2;1;1;128;128;1;0x\x1b[3;1;1;128;128;1;0x", "reply: DECREQTPARM");
     selfTestCheck(failures, rowText(feed("+\x1b[1b\x1b[10b\r\n \x1b[2b+"), 0) == QStringLiteral("++") &&
                                 rowText(feed("+\x1b[1b\x1b[10b\r\n \x1b[2b+"), 1) == QStringLiteral("+") &&
-                                rowText(feed("x\x1b[H\x1b[3b"), 0) == QStringLiteral("x"),
-                  "csi: REP needs a graphic character right before it, and repeats once");
+                                rowText(feed("ab\x1b[1;31m\x1b[2b"), 0) == QStringLiteral("abbb"),
+                  "csi: REP repeats the last character (across SGR), and only once");
     selfTestCheck(failures, rowText(feed("abcdef\x1b[2 @"), 0) == QStringLiteral("cdef") &&
                                 rowText(feed("abcdef\x1b[2 A"), 0) == QStringLiteral("abcdef") &&
                                 feed("abcdef\x1b[2 A").screen().cellAt(0, 2).ch == 'a',

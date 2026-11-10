@@ -15,11 +15,23 @@ void WindowTranslucency::setWindow(QObject *window)
     if (m_window == window) {
         return;
     }
+    if (m_window != nullptr) {
+        disconnect(m_window, nullptr, this, nullptr);
+    }
     m_window = window;
     emit windowChanged();
     // The window handle may not exist yet at binding time; defer to the next
     // event-loop turn, by which point winId() has forced the native window.
     QTimer::singleShot(0, this, [this]() { apply(); });
+    // Closing a window drops its NSWindow; showing it again creates a new
+    // one without the translucency, hidden title and toolbar. Re-apply then.
+    if (auto *const qwindow = qobject_cast<QWindow *>(window)) {
+        connect(qwindow, &QWindow::visibleChanged, this, [this](bool visible) {
+            if (visible) {
+                QTimer::singleShot(0, this, [this]() { apply(); });
+            }
+        });
+    }
 }
 
 void WindowTranslucency::setColor(uint color)

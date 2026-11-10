@@ -57,12 +57,16 @@ Window {
     // (no zoom), and a fixed size, like a native settings window.
     flags: Qt.Window | Qt.CustomizeWindowHint | Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint | Qt.ExpandedClientAreaHint | Qt.NoTitleBarBackgroundHint
 
-    width: 720
-    height: 480
-    minimumWidth: width
-    maximumWidth: width
-    minimumHeight: height
-    maximumHeight: height
+    // Fixed size; the limits use constants (binding them to width/height
+    // loops when the platform adjusts the size).
+    readonly property int fixedWidth: 720
+    readonly property int fixedHeight: 480
+    width: fixedWidth
+    height: fixedHeight
+    minimumWidth: fixedWidth
+    maximumWidth: fixedWidth
+    minimumHeight: fixedHeight
+    maximumHeight: fixedHeight
 
     // The sidebar shows the native blur through the window; only the content
     // pane paints an opaque background.

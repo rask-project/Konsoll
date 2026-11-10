@@ -155,11 +155,6 @@ void Terminal::processGroundByte(unsigned char c)
 // CSI sequence still takes effect (as on a real VT).
 void Terminal::executeControl(unsigned char c)
 {
-    // REP repeats a graphic character only when it directly precedes it (an
-    // ESC starts a sequence, which handleCsi judges).
-    if (c != kEsc) {
-        m_lastGraphic = 0;
-    }
     switch (c) {
     case kEsc:
         enterEscape();
@@ -567,12 +562,6 @@ int Terminal::paramAt(const std::vector<int> &p, int i, int def) // NOLINT: i/de
 
 void Terminal::handleCsi(char final)
 {
-    // REP repeats a graphic character only when it directly precedes it; any
-    // other sequence in between makes it a no-op (vttest 11.7.2).
-    const unsigned int lastGraphic = std::exchange(m_lastGraphic, 0);
-    if (final == 'b' && m_csiPrefix == 0 && m_csiIntermediates.isEmpty()) {
-        m_lastGraphic = lastGraphic;
-    }
     // Dispatch on prefix + intermediates + final: CSI ? 1049 s (XTSAVE),
     // CSI ? 2026 $ p (DECRQM) and CSI > 4 ; 2 m (modifyOtherKeys) only share
     // their final byte with CSI s, CSI p and SGR.
