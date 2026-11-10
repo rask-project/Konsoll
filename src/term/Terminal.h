@@ -28,7 +28,8 @@ struct TerminalRequest {
         ClipboardRead, // OSC 52 ; selection ; ?   (data = selection)
         TitleReport,   // XTWINOPS 21 (a = 0) / 20 icon label (a = 1)
         WindowOp,      // XTWINOPS 1-10: a = operation, b / c = its parameters
-        Notification   // OSC 9 / OSC 777 notify: data = title (may be empty), body = text
+        Notification,  // OSC 9 / OSC 777 notify: data = title (may be empty), body = text
+        ColumnMode     // DECCOLM with ?40: a = the new column count (80 / 132)
     };
     QByteArray data;
     QByteArray body;
@@ -67,6 +68,8 @@ public:
     QString remoteHost() const { return m_remoteHost; }
     // OSC 633 ; E command line (VS Code shell integration).
     QString commandLine() const { return m_commandLine; }
+    // DECUDK: the string defined for Shift+F`number` (1-20), or empty.
+    QByteArray userDefinedKey(int number) const;
     // OSC 22: the pointer shape the program asked for (empty = default).
     QByteArray pointerShape() const { return m_pointerShapes.isEmpty() ? QByteArray{} : m_pointerShapes.back(); }
     bool pointerShapeDirty() const { return (m_extraFlags & PointerShapeDirty) != 0; }
@@ -196,6 +199,10 @@ private:
     static constexpr std::uint64_t MetaSendsEscape = std::uint64_t{1} << 32;       // ?1036 / ?1039
     static constexpr std::uint64_t HighlightStarted = std::uint64_t{1} << 33;      // ?1001 highlight in progress
     static constexpr std::uint64_t PointerShapeDirty = std::uint64_t{1} << 34;     // OSC 22 changed the pointer
+    static constexpr std::uint64_t Allow132Columns = std::uint64_t{1} << 35;       // ?40: DECCOLM may resize
+    static constexpr std::uint64_t Columns132 = std::uint64_t{1} << 36;            // ?3 DECCOLM set
+    static constexpr std::uint64_t EightBitControls = std::uint64_t{1} << 37;      // S8C1T: C1 replies
+    static constexpr std::uint64_t UdkLocked = std::uint64_t{1} << 38;             // DECUDK locked
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.
@@ -291,7 +298,9 @@ private:
     unsigned int isoProtection() const;
 
     // Query replies (TerminalReports.cpp).
-    void reply(const QByteArray &bytes) { m_responses += bytes; }
+    void reply(const QByteArray &bytes);
+    void setColumnMode(bool wide);
+    void handleUserDefinedKeys(const QByteArray &body);
     void handleDeviceAttributes(char prefix, int param);
     void handleDeviceStatus(int query, bool privateQuery);
     void handleWindowOps(const std::vector<int> &params);
@@ -342,6 +351,8 @@ private:
     QHash<QByteArray, QByteArray> m_userVars;
     // XTWINOPS 22/23 title stack.
     std::vector<QString> m_titleStack;
+    // DECUDK strings for F1-F20 (index 0 = F1), sent on Shift+Fn.
+    std::array<QByteArray, 20> m_userKeys;
     std::vector<TerminalRequest> m_requests;
     // OSC 8 targets; a cell's `link` is an index + 1. Keyed for reuse by
     // the OSC 8 id parameter and URI.

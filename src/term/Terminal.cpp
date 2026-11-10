@@ -404,7 +404,13 @@ void Terminal::processStringByte(unsigned char c)
         return;
     }
     // Other C0 controls are ignored inside strings. 8-bit bytes are UTF-8
-    // text (a title such as "œ" contains 0x9c), never an 8-bit ST.
+    // text (a title such as "œ" contains 0x9c); only the UTF-8 encoded C1
+    // ST (U+009C, C2 9C) ends the string.
+    if (c == 0x9c && m_stringBody.endsWith('\xc2')) {
+        m_stringBody.chop(1);
+        finishString();
+        return;
+    }
     if (c >= 0x20 && m_stringKind != StringKind::Ignore && m_stringBody.size() < kMaxStringLength) {
         m_stringBody.append(static_cast<char>(c));
     }
@@ -446,8 +452,11 @@ void Terminal::putCodePoint(unsigned int codePoint)
     // the next row). Fold the mark into the previous character when NFC has a
     // precomposed form (e + U+0301 -> é, as in macOS NFD file names);
     // otherwise drop it.
-    // C1 controls (U+0080..U+009F) have no glyph either; drop them.
+    // C1 controls (U+0080..U+009F, UTF-8 encoded as xterm does in UTF-8
+    // mode) act as ESC + (code - 0x40): CSI, OSC, DCS, IND, NEL, RI, ...
     if (codePoint >= 0x80 && codePoint <= 0x9f) {
+        enterEscape();
+        processEscapeByte(static_cast<unsigned char>(codePoint - 0x40));
         return;
     }
 
@@ -473,6 +482,85 @@ bool Terminal::followsImagePlaceholder() const
 {
     const std::optional<unsigned int> previous = m_screen.previousChar();
     return previous && cellCodePoints(*previous).front() == kImagePlaceholder;
+}
+
+// S8C1T: replies use C1 controls (UTF-8 encoded) instead of ESC Fe.
+void Terminal::reply(const QByteArray &bytes)
+{
+    if ((m_extraFlags & EightBitControls) == 0) {
+        m_responses += bytes;
+        return;
+    }
+    qsizetype i = 0;
+    while (i < bytes.size()) {
+        const char next = i + 1 < bytes.size() ? bytes.at(i + 1) : '\0';
+        if (bytes.at(i) == '\x1b' && next >= 0x40 && next <= 0x5f) {
+            m_responses += QString(QChar(static_cast<char16_t>(next + 0x40))).toUtf8();
+            i += 2;
+        } else {
+            m_responses += bytes.at(i);
+            ++i;
+        }
+    }
+}
+
+// DECCOLM: with ?40 the screen becomes 80 / 132 columns (and the window is
+// asked to fit); without it the width stays. Either way the switch clears
+// the screen, resets the margins and homes the cursor, as xterm does; ?95
+// (DECNCSM) keeps the content.
+void Terminal::setColumnMode(bool wide)
+{
+    if ((m_extraFlags & Allow132Columns) != 0) {
+        setExtraFlag(Columns132, wide);
+        const int columns = wide ? 132 : 80;
+        if (columns != m_screen.cols()) {
+            resize(m_screen.rows(), columns);
+        }
+        m_requests.push_back(TerminalRequest{
+            .data = {}, .body = {}, .kind = TerminalRequest::ColumnMode, .a = columns, .b = 0, .c = 0});
+    }
+    if ((m_extraFlags & NoClearOnColumnChange) == 0) {
+        m_screen.eraseInDisplay(2);
+    }
+    m_screen.resetScrollRegion();
+    m_screen.moveCursor(0, 0);
+}
+
+namespace
+{
+// DECUDK key selectors (VT220 numbering) for F1-F20.
+constexpr std::array<int, 20> kUdkSelectors{11, 12, 13, 14, 15, 17, 18, 19, 20, 21,
+                                            23, 24, 25, 26, 28, 29, 31, 32, 33, 34};
+} // namespace
+
+QByteArray Terminal::userDefinedKey(int number) const
+{
+    return number >= 1 && number <= 20 ? m_userKeys[static_cast<std::size_t>(number - 1)] : QByteArray{};
+}
+
+// DECUDK: DCS Pc ; Pl | key/hex ; key/hex ... ST. Pc 0 clears every key
+// first; Pl 0 (default) locks the keys against later definitions.
+void Terminal::handleUserDefinedKeys(const QByteArray &body)
+{
+    if ((m_extraFlags & UdkLocked) != 0) {
+        return;
+    }
+    const qsizetype bar = body.indexOf('|');
+    const QList<QByteArray> params = body.left(bar).split(';');
+    if (params.value(0).toInt() == 0 && !params.value(0).isEmpty()) {
+        m_userKeys = {};
+    }
+    std::ranges::for_each(body.mid(bar + 1).split(';'), [this](const QByteArray &definition) {
+        const qsizetype slash = definition.indexOf('/');
+        const auto *const found = std::ranges::find(kUdkSelectors, definition.left(slash).toInt());
+        if (slash > 0 && found != kUdkSelectors.end()) {
+            m_userKeys[static_cast<std::size_t>(found - kUdkSelectors.begin())] =
+                QByteArray::fromHex(definition.mid(slash + 1)).left(256);
+        }
+    });
+    if (params.value(1).toInt() == 0) {
+        setExtraFlag(UdkLocked, true);
+    }
 }
 
 // Appends `codePoint` to the cluster in the previous cell (mode 2027),
@@ -997,7 +1085,11 @@ void Terminal::handleEscIntermediate(const QByteArray &intermediates, char final
     if (slot >= 0) {
         m_charsets[static_cast<std::size_t>(slot)] = charset;
     }
-    // ESC % G (UTF-8), ESC SP F (7-bit controls), ...: nothing to do.
+    // S7C1T / S8C1T: replies in 7-bit (ESC Fe) or 8-bit (C1) controls.
+    if (intermediates == " " && (final == 'F' || final == 'G')) {
+        setExtraFlag(EightBitControls, final == 'G');
+    }
+    // ESC % G (UTF-8), ...: nothing to do.
 }
 
 // ED/EL/ECH skip ISO-protected cells unless ERM (erasure mode) is set.
@@ -1128,10 +1220,12 @@ void Terminal::handleDcs(const QByteArray &body)
         handleDecrqss(body.mid(2)); // DECRQSS
         return;
     }
-    // Sixel: DCS P1 ; P2 ; P3 q data ST.
+    // Sixel: DCS P1 ; P2 ; P3 q data ST. DECUDK: DCS Pc ; Pl | ... ST.
     const auto final = std::ranges::find_if(body, [](char c) { return (c < '0' || c > '9') && c != ';'; });
     if (final != body.end() && *final == 'q') {
         handleSixel(body);
+    } else if (final != body.end() && *final == '|') {
+        handleUserDefinedKeys(body);
     }
     // tmux passthrough and other DCS strings are consumed unused.
 }
@@ -1225,14 +1319,10 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
             setExtraFlag(Vt52Mode, !set); // DECANM reset: VT52 mode
             break;
         case 3:
-            // DECCOLM: the width stays (the window decides it), but the
-            // mode switch still clears the screen, resets the margins and
-            // homes the cursor, as xterm does; ?95 (DECNCSM) keeps content.
-            if ((m_extraFlags & NoClearOnColumnChange) == 0) {
-                m_screen.eraseInDisplay(2);
-            }
-            m_screen.resetScrollRegion();
-            m_screen.moveCursor(0, 0);
+            setColumnMode(set);
+            break;
+        case 40:
+            setExtraFlag(Allow132Columns, set);
             break;
         case 5:
             setExtraFlag(ReverseVideo, set); // DECSCNM

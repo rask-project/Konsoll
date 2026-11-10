@@ -684,6 +684,43 @@ void modifyOtherKeys(int &failures)
                   "modifyOtherKeys 2: every Ctrl / Alt key, CSI u format");
 }
 
+// DECCOLM 132 columns, C1 controls / S8C1T and DECUDK.
+void vtNiche(int &failures)
+{
+    {
+        Terminal term(4, 80, QStringLiteral("selftest"));
+        term.write("x\x1b[?3h");
+        const bool ignored = term.screen().cols() == 80 && term.takeRequests().empty();
+        term.write("\x1b[?40h\x1b[?3h\x1b[?3$p");
+        const std::vector<TerminalRequest> requests = term.takeRequests();
+        selfTestCheck(failures, ignored && term.screen().cols() == 132 && requests.size() == 1 &&
+                                    requests[0].kind == TerminalRequest::ColumnMode && requests[0].a == 132 &&
+                                    term.takeResponses() == "\x1b[?3;1$y",
+                      "deccolm: 132 columns only with ?40, reported by DECRQM");
+        term.write("\x1b[?3l");
+        selfTestCheck(failures, term.screen().cols() == 80, "deccolm: back to 80 columns");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        // UTF-8 encoded C1: CSI 2 C, then OSC 0 ; t ST.
+        term.write("\xc2\x9b" "2Cx\xc2\x9d" "0;t\xc2\x9c");
+        const bool parsed = term.screen().cellAt(0, 2).ch == 'x' && term.title() == QStringLiteral("t");
+        term.write("\x1b G\x1b[c");
+        const QByteArray eight = term.takeResponses();
+        term.write("\x1b F\x1b[c");
+        selfTestCheck(failures, parsed && eight.startsWith("\xc2\x9b?64") && term.takeResponses().startsWith("\x1b[?64"),
+                      "c1: UTF-8 encoded C1 controls parse; S8C1T / S7C1T switch the replies");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1bP0;1|17/6869;34/41\x1b\\");
+        const bool defined = term.userDefinedKey(6) == "hi" && term.userDefinedKey(20) == "A";
+        term.write("\x1bP1;0|17/4141\x1b\\\x1bP1|17/4242\x1b\\");
+        selfTestCheck(failures, defined && term.userDefinedKey(6) == "AA" && term.userDefinedKey(1).isEmpty(),
+                      "decudk: define F6 / F20, lock after Pl 0");
+    }
+}
+
 // OSC 22 pointer shapes and OSC 633 (VS Code shell integration).
 void pointerAndVsCode(int &failures)
 {
@@ -942,6 +979,7 @@ void runParserSelfTest(int &failures)
     itermProtocol(failures);
     kittyAnimationAndPlaceholders(failures);
     pointerAndVsCode(failures);
+    vtNiche(failures);
     fixtureRegressions(failures);
 }
 

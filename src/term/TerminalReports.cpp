@@ -250,8 +250,10 @@ int Terminal::decModeState(int mode) const
         return flag(ApplicationCursorKeys);
     case 2: // DECANM: ANSI
         return flag(Vt52Mode) == 1 ? 2 : 1;
-    case 3: // DECCOLM: 80 columns
-        return 2;
+    case 3: // DECCOLM
+        return flag(Columns132);
+    case 40:
+        return flag(Allow132Columns);
     case 5:
         return flag(ReverseVideo);
     case 42:

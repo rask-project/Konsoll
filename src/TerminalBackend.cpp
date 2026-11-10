@@ -200,6 +200,12 @@ void TerminalBackend::handleRequests()
                 emit windowOperationRequested(request.a, request.b, request.c);
             }
             break;
+        case TerminalRequest::ColumnMode:
+            // DECCOLM already resized the screen: grow / shrink the window by
+            // the cell delta (QML still sees the old column count), then sync.
+            emit windowOperationRequested(8, 0, request.a);
+            resize(request.a, m_rows);
+            break;
         case TerminalRequest::Notification:
             if (settings.value(QStringLiteral("General/allowNotifications"), true).toBool()) {
                 const QString title = QString::fromUtf8(request.data);
@@ -531,6 +537,12 @@ QByteArray TerminalBackend::keyOutputBytes(int key, const QString &text, unsigne
                                (m_terminal->modifyOtherKeys() == 2 ? KeyMode::OtherKeys2 : 0u) |
                                (m_terminal->otherKeysCsiU() ? KeyMode::OtherKeysCsiU : 0u) |
                                (optionAsMeta() ? KeyMode::OptionMeta : 0u);
+    // DECUDK: Shift+F1-F20 send the strings the program defined.
+    if (mods == KeyMod::Shift && key >= Qt::Key_F1 && key <= Qt::Key_F20 && eventType == KeyEventType::Press) {
+        if (QByteArray defined = m_terminal->userDefinedKey(key - Qt::Key_F1 + 1); !defined.isEmpty()) {
+            return defined;
+        }
+    }
     return encodeKey(key, text, mods, modes, m_terminal->kittyKeyboardFlags(), eventType,
                      usLayoutKey(NativeKeyTracker::lastVirtualKey()));
 }

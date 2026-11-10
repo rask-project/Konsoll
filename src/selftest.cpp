@@ -119,10 +119,11 @@ int runSelfTest()
     }
 
     // 0d. Control characters never land in a cell: a stray C0 byte or C1 code
-    // point rendered as a missing-glyph box over the text.
+    // point rendered as a missing-glyph box over the text. (C1 controls with a
+    // meaning, such as U+009B CSI, act as ESC Fe; U+0080 has none.)
     {
         Terminal term(4, 10, QStringLiteral("selftest"));
-        term.write(QByteArray("a\x0e\x0f\x01\x7f" "b\xc2\x9b" "c"));
+        term.write(QByteArray("a\x0e\x0f\x01\x7f" "b\xc2\x80" "c"));
         const Screen &screen = term.screen();
         check(failures,
               screen.cellAt(0, 0).ch == 'a' && screen.cellAt(0, 1).ch == 'b' && screen.cellAt(0, 2).ch == 'c' &&
