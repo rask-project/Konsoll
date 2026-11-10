@@ -244,12 +244,21 @@ TerminalBackend *TerminalManager::createSession()
 {
     auto session = std::make_unique<TerminalBackend>();
     auto *sessionPtr = session.get();
-    connect(sessionPtr, &TerminalBackend::processExited, this, [this, sessionPtr](int) {
-        QTimer::singleShot(0, this, [this, sessionPtr]() { closeSession(sessionPtr); });
-    });
-    const auto scheduleClose = [this, sessionPtr]() {
-        QTimer::singleShot(0, this, [this, sessionPtr]() { closeSession(sessionPtr); });
+    connectSession(sessionPtr);
+    m_sessions.push_back(std::move(session));
+    return sessionPtr;
+}
+
+void TerminalManager::connectSession(TerminalBackend *sessionPtr)
+{
+    // The close is queued to whichever window owns the session by then: its
+    // workspace may move to another window in between.
+    const auto scheduleClose = [sessionPtr]() {
+        QTimer::singleShot(0, QCoreApplication::instance(), [sessionPtr]() {
+            WindowRegistry::instance().closeSession(sessionPtr);
+        });
     };
+    connect(sessionPtr, &TerminalBackend::processExited, this, [scheduleClose](int) { scheduleClose(); });
     connect(sessionPtr, &TerminalBackend::startFailed, this, [scheduleClose](const QString &) { scheduleClose(); });
     connect(sessionPtr, &TerminalBackend::workerThreadStopped, this, scheduleClose);
     connect(sessionPtr, &TerminalBackend::commandFinished, this, [this, sessionPtr]() {
@@ -268,8 +277,87 @@ TerminalBackend *TerminalManager::createSession()
     };
     connect(sessionPtr, &TerminalBackend::titleChanged, this, notifyWorkspaceTitle);
     connect(sessionPtr, &TerminalBackend::currentDirectoryChanged, this, notifyWorkspaceTitle);
-    m_sessions.push_back(std::move(session));
-    return sessionPtr;
+}
+
+bool TerminalManager::moveWorkspaceTo(QObject *workspaceObject, QObject *targetObject, int index)
+{
+    auto *target = qobject_cast<TerminalManager *>(targetObject);
+    auto *workspace = qobject_cast<TerminalWorkspaceModel *>(workspaceObject);
+    if (target == nullptr || workspace == nullptr) {
+        return false;
+    }
+    if (target == this) {
+        const auto it = std::ranges::find_if(m_workspaces, [workspace](const auto &item) {
+            return item.get() == workspace;
+        });
+        if (it == m_workspaces.end()) {
+            return false;
+        }
+        const int count = static_cast<int>(m_workspaces.size());
+        moveWorkspace(static_cast<int>(std::distance(m_workspaces.begin(), it)), std::clamp(index, 0, count - 1));
+        return true;
+    }
+    auto detached = detachWorkspace(workspace);
+    if (!detached) {
+        return false;
+    }
+    target->adoptWorkspace(std::move(*detached), index);
+    if (m_workspaces.empty()) {
+        emit windowShouldClose();
+    }
+    return true;
+}
+
+std::optional<TerminalManager::DetachedWorkspace> TerminalManager::detachWorkspace(TerminalWorkspaceModel *workspace)
+{
+    const auto it =
+        std::ranges::find_if(m_workspaces, [workspace](const auto &candidate) { return candidate.get() == workspace; });
+    if (it == m_workspaces.end()) {
+        return std::nullopt;
+    }
+
+    DetachedWorkspace detached;
+    detached.workspace = std::move(*it);
+    m_workspaces.erase(it);
+
+    // The sessions in the workspace's tree move with it, still running.
+    auto *root = detached.workspace->root().get();
+    const auto moved = std::ranges::stable_partition(m_sessions, [this, root](const auto &session) {
+        return findLeaf(root, session.get()) == nullptr;
+    });
+    std::ranges::move(moved, std::back_inserter(detached.sessions));
+    m_sessions.erase(moved.begin(), moved.end());
+
+    bool wasActive = false;
+    std::ranges::for_each(detached.sessions, [this, &wasActive](const auto &session) {
+        disconnect(session.get(), nullptr, this, nullptr);
+        std::erase(m_activationHistory, session.get());
+        wasActive = wasActive || session.get() == m_activeSession;
+    });
+    m_activationHistoryCursor = 0;
+
+    if (wasActive) {
+        setActiveSession(nextActiveSession(nullptr), false);
+    }
+    emit workspacesChanged();
+    emit activeWorkspaceChanged();
+    return detached;
+}
+
+void TerminalManager::adoptWorkspace(DetachedWorkspace detached, int index)
+{
+    std::ranges::for_each(detached.sessions, [this](auto &session) {
+        connectSession(session.get());
+        m_sessions.push_back(std::move(session));
+    });
+    auto *workspace = detached.workspace.get();
+    const auto position = std::clamp(static_cast<std::ptrdiff_t>(index), std::ptrdiff_t{0},
+                                     static_cast<std::ptrdiff_t>(m_workspaces.size()));
+    m_workspaces.insert(m_workspaces.begin() + position, std::move(detached.workspace));
+    emit workspacesChanged();
+    emit activeWorkspaceChanged();
+    workspace->setAlerting(false);
+    setActiveSession(firstValidSessionIn(workspace), true);
 }
 
 void TerminalManager::splitActive(int orientation)
@@ -399,6 +487,11 @@ bool TerminalManager::anySessionHasActiveProcess() const
 int TerminalManager::sessionCount() const
 {
     return static_cast<int>(m_sessions.size());
+}
+
+bool TerminalManager::hasSession(const QObject *session) const
+{
+    return std::ranges::any_of(m_sessions, [session](const auto &candidate) { return candidate.get() == session; });
 }
 
 void TerminalManager::closeSession(QObject *sessionObject)

@@ -2,6 +2,8 @@
 
 #include <vector>
 
+class QObject;
+
 namespace konsoll
 {
 
@@ -23,6 +25,10 @@ public:
     int totalSessionCount() const;
     bool anySessionHasActiveProcess() const;
     bool anySessionHasRunningCommand() const;
+    // Closes `session` in whichever window owns it now: a workspace may move
+    // to another window between an exit and its queued close. `session` may
+    // dangle; it is only compared by address.
+    void closeSession(QObject *session) const;
 
 private:
     WindowRegistry() = default;

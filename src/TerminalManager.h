@@ -12,6 +12,7 @@
 
 #include <deque>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace konsoll
@@ -121,7 +122,13 @@ public:
     Q_INVOKABLE bool anySessionHasRunningCommand() const;
     Q_INVOKABLE bool anySessionHasActiveProcess() const;
     Q_INVOKABLE int sessionCount() const;
+    // Compares by address only, so `session` may dangle.
+    bool hasSession(const QObject *session) const;
     Q_INVOKABLE void moveWorkspace(int fromIndex, int toIndex);
+    // Hands `workspace` and its running sessions to the manager of another
+    // window, inserted at `index`; the shells keep running. A source window
+    // left without workspaces emits windowShouldClose.
+    Q_INVOKABLE bool moveWorkspaceTo(QObject *workspace, QObject *target, int index);
     Q_INVOKABLE void closeSession(QObject *session);
     Q_INVOKABLE void activateSession(QObject *session);
     Q_INVOKABLE void setActiveWorkspace(int index);
@@ -142,7 +149,15 @@ signals:
     void windowShouldClose();
 
 private:
+    struct DetachedWorkspace {
+        std::unique_ptr<TerminalWorkspaceModel> workspace;
+        std::vector<std::unique_ptr<TerminalBackend>> sessions;
+    };
+
     TerminalBackend *createSession();
+    void connectSession(TerminalBackend *session);
+    std::optional<DetachedWorkspace> detachWorkspace(TerminalWorkspaceModel *workspace);
+    void adoptWorkspace(DetachedWorkspace detached, int index);
     void createWorkspace(const QString &customTitle);
     TerminalLayoutNode *findLeaf(TerminalLayoutNode *node, TerminalBackend *session) const;
     TerminalBackend *firstSession(TerminalLayoutNode *node) const;

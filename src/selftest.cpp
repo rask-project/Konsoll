@@ -254,6 +254,58 @@ int runSelfTest()
         check(failures, elapsedMs < 3000, "fast close/reopen: close bounded");
     }
 
+    // 5b. Moving a workspace to another window keeps its shells running.
+    {
+        TerminalManager other(nullptr);
+        other.start();
+        bool sourceEmptied = false;
+        bool otherEmptied = false;
+        QObject::connect(&other, &TerminalManager::windowShouldClose, [&otherEmptied]() { otherEmptied = true; });
+        QObject::connect(&manager, &TerminalManager::windowShouldClose, [&sourceEmptied]() { sourceEmptied = true; });
+
+        manager.addWorkspace();
+        auto *left = activeSession(manager);
+        manager.splitActive(static_cast<int>(Qt::Horizontal));
+        auto *right = activeSession(manager);
+        QObject *moving = manager.workspaces().last().value<QObject *>();
+        const int sourceBefore = manager.sessionCount();
+        const auto workspacesBefore = manager.workspaces().size();
+        check(failures, waitFor("move: shell output", [right]() { return !right->bufferText().isEmpty(); }, 15000),
+              "move workspace: split shell started");
+
+        check(failures, manager.moveWorkspaceTo(moving, &other, 0), "move workspace: accepted");
+        check(failures,
+              manager.sessionCount() == sourceBefore - 2 && manager.workspaces().size() == workspacesBefore - 1 &&
+                  !manager.hasSession(left) && !manager.hasSession(right),
+              "move workspace: source gives up the workspace and both panes");
+        check(failures,
+              other.sessionCount() == 3 && other.workspaces().size() == 2 &&
+                  other.workspaces().first().value<QObject *>() == moving && other.activeSession() == right &&
+                  other.activeWorkspaceIndex() == 0,
+              "move workspace: target adopts it at the index, active pane kept");
+        check(failures, manager.activeSession() != nullptr && manager.activeSession() != left &&
+                            manager.activeSession() != right && !sourceEmptied,
+              "move workspace: source activates another session");
+
+        right->writeText("echo MOVED_ALIVE\n");
+        check(failures, waitFor("move: alive", [right]() { return right->bufferText().contains("MOVED_ALIVE"); }, 10000),
+              "move workspace: moved shell still running");
+        left->writeText("exit\n");
+        check(failures, waitFor("move: exit closes in target", [&other]() { return other.sessionCount() == 2; }, 15000),
+              "move workspace: exit closes the pane in the new window");
+
+        QObject *original = other.workspaces().last().value<QObject *>();
+        check(failures, other.moveWorkspaceTo(moving, &other, 1) && other.workspaces().last().value<QObject *>() == moving,
+              "move workspace: same window reorders");
+        const int sourceCount = manager.sessionCount();
+        other.moveWorkspaceTo(original, &manager, 99);
+        other.moveWorkspaceTo(moving, &manager, 99);
+        check(failures, otherEmptied && other.sessionCount() == 0 && manager.sessionCount() == sourceCount + 2,
+              "move workspace: last workspace out closes the window");
+        manager.closeSession(right);
+        manager.closeWorkspace(original);
+    }
+
     // 6. App shutdown while a shell is running: no orphaned process group.
     manager.addWorkspace();
     auto *s = activeSession(manager);

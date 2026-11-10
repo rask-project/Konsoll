@@ -49,4 +49,14 @@ bool WindowRegistry::anySessionHasRunningCommand() const
     });
 }
 
+void WindowRegistry::closeSession(QObject *session) const
+{
+    const auto owner = std::ranges::find_if(m_managers, [session](const TerminalManager *manager) {
+        return manager->hasSession(session);
+    });
+    if (owner != m_managers.end()) {
+        (*owner)->closeSession(session);
+    }
+}
+
 } // namespace konsoll
