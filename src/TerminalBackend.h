@@ -221,7 +221,7 @@ private:
     void startNextTransfer();
     void clearTextSelectionAndHighlight();
     void sendMouseReport(int button, int row, int col, int event, int modifiers);
-    QByteArray keyOutputBytes(int key, const QString &text, bool control, bool option, bool shift) const;
+    QByteArray keyOutputBytes(int key, const QString &text, unsigned int mods, bool keypad) const;
     QVariantMap linkFromMatch(const QRegularExpressionMatch &match, int col) const;
     // Route PTY I/O to the session worker via a queued call (never touch the
     // master descriptor from this thread).

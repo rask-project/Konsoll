@@ -1,5 +1,7 @@
 #include "TerminalBackend.h"
 
+#include "KeyEncoder.h"
+
 #include <QClipboard>
 #include <QColor>
 #include <QDesktopServices>
@@ -125,90 +127,6 @@ QRgb readableForeground(QRgb foreground, QRgb background)
     return qRgb(toSrgb(qRed(foreground)), toSrgb(qGreen(foreground)), toSrgb(qBlue(foreground)));
 }
 
-// Encode a Ctrl+<key> press into the control byte the shell expects, or an
-// empty byte array if the key has no Ctrl meaning.
-QByteArray ctrlKeyByte(const QString &text, bool shift)
-{
-    if (text.isEmpty()) {
-        return {};
-    }
-    const QChar c = text.at(0);
-    if (c.unicode() < 0x20) { // 0x20: below are ASCII control chars; pass through raw
-        return QByteArray(1, static_cast<char>(c.unicode()));
-    }
-    if (shift) {
-        const QChar u = c.toUpper();
-        if (u >= 'A' && u <= 'Z') {
-            return QByteArray(1, static_cast<char>((u.unicode() - 'A' + 1) & 0x1fu));
-        }
-    } else {
-        const QChar l = c.toLower();
-        if (l >= 'a' && l <= 'z') {
-            return QByteArray(1, static_cast<char>((l.unicode() - 'a' + 1) & 0x1fu));
-        }
-    }
-    return {};
-}
-
-// Map a plain (unmodified) special key to its byte sequence, or an empty
-// byte array if the key has no special meaning.
-QByteArray specialKeyByte(int key, bool applicationCursorKeys)
-{
-    switch (key) {
-    case static_cast<int>(Qt::Key_Return):
-    case static_cast<int>(Qt::Key_Enter):
-        return QByteArray(1, static_cast<char>(0x0d));
-    case static_cast<int>(Qt::Key_Backspace):
-        return QByteArray(1, static_cast<char>(0x7f));
-    case static_cast<int>(Qt::Key_Tab):
-        return QByteArray(1, static_cast<char>(0x09));
-    case static_cast<int>(Qt::Key_Escape):
-        return QByteArray(1, static_cast<char>(0x1b));
-    case static_cast<int>(Qt::Key_Up):
-        return applicationCursorKeys ? QByteArray("\x1bOA") : QByteArray("\x1b[A");
-    case static_cast<int>(Qt::Key_Down):
-        return applicationCursorKeys ? QByteArray("\x1bOB") : QByteArray("\x1b[B");
-    case static_cast<int>(Qt::Key_Right):
-        return applicationCursorKeys ? QByteArray("\x1bOC") : QByteArray("\x1b[C");
-    case static_cast<int>(Qt::Key_Left):
-        return applicationCursorKeys ? QByteArray("\x1bOD") : QByteArray("\x1b[D");
-    case static_cast<int>(Qt::Key_Home):
-        return "\x1bOH";
-    case static_cast<int>(Qt::Key_End):
-        return "\x1bOF";
-    case static_cast<int>(Qt::Key_Delete):
-        return "\x1b[3~";
-    case static_cast<int>(Qt::Key_PageUp):
-        return "\x1b[5~";
-    case static_cast<int>(Qt::Key_PageDown):
-        return "\x1b[6~";
-    default:
-        return {};
-    }
-}
-
-// Map an Option-modified key to its byte sequence (word movement and
-// deletion for the shell line editor), or an empty byte array if the key
-// has no Option meaning.
-QByteArray optionKeyByte(int key)
-{
-    switch (key) {
-    case static_cast<int>(Qt::Key_Period):
-        // Readline and zle use Meta-. for inserting the previous command's
-        // last argument (and cycling through older history entries).
-        return "\033.";
-    case static_cast<int>(Qt::Key_Left):
-        return "\033b";
-    case static_cast<int>(Qt::Key_Right):
-        return "\033f";
-    case static_cast<int>(Qt::Key_Backspace):
-        return "\033\177";
-    case static_cast<int>(Qt::Key_Delete):
-        return "\033D";
-    default:
-        return {};
-    }
-}
 } // namespace
 
 TerminalBackend::TerminalBackend(QObject *parent) : QObject(parent)
@@ -516,46 +434,24 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
         return;
     }
 
-    const QByteArray out = keyOutputBytes(key, text, control, option, shift);
+    const bool keypad = (mods & static_cast<unsigned int>(Qt::KeypadModifier)) != 0;
+    const unsigned int keyMods =
+        (shift ? KeyMod::Shift : 0u) | (option ? KeyMod::Alt : 0u) | (control ? KeyMod::Control : 0u);
+    const QByteArray out = keyOutputBytes(key, text, keyMods, keypad);
     if (!out.isEmpty() && m_worker) {
         writeToPty(out);
     }
 }
 
-QByteArray
-TerminalBackend::keyOutputBytes(int key, const QString &text, bool control, bool option, bool shift) const
+QByteArray TerminalBackend::keyOutputBytes(int key, const QString &text, unsigned int mods, bool keypad) const
 {
-    if (shift && !control && (key == static_cast<int>(Qt::Key_Return) || key == static_cast<int>(Qt::Key_Enter))) {
-        // Codex and other terminal TUIs commonly bind LF (Ctrl+J) to insert
-        // a draft newline. TUIs using Kitty keyboard mode need the distinct
-        // modified Enter event instead.
-        return m_terminal && m_terminal->kittyKeyboardEnabled() ? QByteArray("\x1b[13;2u") : QByteArray("\n");
+    if (!m_terminal) {
+        return {};
     }
-    if (control) {
-        // Physical Ctrl+letter: send the control byte (e.g. Ctrl+C -> 0x03).
-        // The event text may be empty for a Ctrl-modified key, so derive the
-        // letter from the key code if needed.
-        QString ctrlText = text;
-        if (ctrlText.isEmpty() && key >= static_cast<int>(Qt::Key_A) && key <= static_cast<int>(Qt::Key_Z)) {
-            ctrlText = QChar(static_cast<char>('a' + (key - static_cast<int>(Qt::Key_A))));
-        }
-        return ctrlKeyByte(ctrlText, shift);
-    }
-    QByteArray out = specialKeyByte(key, m_terminal && m_terminal->applicationCursorKeys());
-    if (option) {
-        // Option-modified keys: word-by-word movement and deletion,
-        // handled by the shell line editor (zsh/bash: \eb/\ef ->
-        // word-left/right, \e\177 -> backward-kill-word, \eD ->
-        // forward-kill-word).
-        const QByteArray opt = optionKeyByte(key);
-        if (!opt.isEmpty()) {
-            out = opt;
-        }
-    }
-    if (out.isEmpty() && !text.isEmpty()) {
-        out = text.toUtf8();
-    }
-    return out;
+    const unsigned int modes = (m_terminal->applicationCursorKeys() ? KeyMode::ApplicationCursor : 0u) |
+                               (m_terminal->applicationKeypad() ? KeyMode::ApplicationKeypad : 0u) |
+                               (keypad ? KeyMode::FromKeypad : 0u);
+    return encodeKey(key, text, mods, modes, m_terminal->kittyKeyboardFlags());
 }
 
 void TerminalBackend::writeText(const QString &text)

@@ -1,5 +1,6 @@
 #include "selftest.h"
 
+#include "KeyEncoder.h"
 #include "term/Terminal.h"
 
 #include <QByteArray>
@@ -295,6 +296,46 @@ void cursorStyle(int &failures)
                   "focus: ?1004 focus reporting mode");
 }
 
+// Stage 4c: key encoding.
+void keyEncoding(int &failures)
+{
+    const auto key = [](int k, const QString &text = {}, unsigned int mods = 0, unsigned int modes = 0,
+                        unsigned int kitty = 0) { return encodeKey(k, text, mods, modes, kitty); };
+    selfTestCheck(failures, key(Qt::Key_F1) == "\x1bOP" && key(Qt::Key_F5) == "\x1b[15~" && key(Qt::Key_F12) == "\x1b[24~" &&
+                                key(Qt::Key_Insert) == "\x1b[2~",
+                  "keys: F1 / F5 / F12 / Insert");
+    selfTestCheck(failures, key(Qt::Key_Up, {}, KeyMod::Control) == "\x1b[1;5A" &&
+                                key(Qt::Key_Delete, {}, KeyMod::Shift) == "\x1b[3;2~" &&
+                                key(Qt::Key_F3, {}, KeyMod::Alt | KeyMod::Shift) == "\x1b[1;4R",
+                  "keys: modifier parameters on cursor and function keys");
+    selfTestCheck(failures, key(Qt::Key_Home) == "\x1b[H" && key(Qt::Key_Home, {}, 0, KeyMode::ApplicationCursor) == "\x1bOH" &&
+                                key(Qt::Key_Left, {}, 0, KeyMode::ApplicationCursor) == "\x1bOD",
+                  "keys: Home and arrows in normal and application cursor mode");
+    selfTestCheck(failures, key(Qt::Key_Tab, {}, KeyMod::Shift) == "\x1b[Z" && key(Qt::Key_Backtab, {}, KeyMod::Shift) == "\x1b[Z",
+                  "keys: Shift+Tab is CBT");
+    selfTestCheck(failures, key(Qt::Key_Space, {}, KeyMod::Control) == QByteArray(1, '\0') &&
+                                key(Qt::Key_BracketRight, {}, KeyMod::Control) == "\x1d" &&
+                                key(Qt::Key_Slash, {}, KeyMod::Control) == "\x1f" &&
+                                key(Qt::Key_C, {}, KeyMod::Control) == "\x03" &&
+                                key(Qt::Key_C, {}, KeyMod::Control | KeyMod::Alt) == "\x1b\x03",
+                  "keys: Ctrl letters and punctuation aliases, Ctrl+Alt prefixes ESC");
+    selfTestCheck(failures, key(Qt::Key_Left, {}, KeyMod::Alt) == "\x1b" "b" &&
+                                key(Qt::Key_E, QStringLiteral(u"é"), KeyMod::Alt) == "\xc3\xa9",
+                  "keys: Option word movement, Option composition keeps its text");
+    selfTestCheck(failures, key(Qt::Key_5, QStringLiteral("5"), 0, KeyMode::FromKeypad | KeyMode::ApplicationKeypad) == "\x1bOu" &&
+                                key(Qt::Key_5, QStringLiteral("5"), 0, KeyMode::FromKeypad) == "5",
+                  "keys: application keypad");
+    selfTestCheck(failures, key(Qt::Key_Escape, {}, 0, 0, 1) == "\x1b[27u" && key(Qt::Key_C, {}, KeyMod::Control, 0, 1) == "\x1b[99;5u" &&
+                                key(Qt::Key_Return, {}, KeyMod::Shift, 0, 1) == "\x1b[13;2u" &&
+                                key(Qt::Key_Return, {}, 0, 0, 1) == "\r" && key(Qt::Key_A, QStringLiteral("a"), 0, 0, 1) == "a" &&
+                                key(Qt::Key_Up, {}, 0, 0, 1) == "\x1b[A" &&
+                                key(Qt::Key_X, QStringLiteral("x"), KeyMod::Alt, 0, 1) == "\x1b[120;3u" &&
+                                key(Qt::Key_2, QStringLiteral(u"\u2122"), KeyMod::Alt, 0, 1) == "\xe2\x84\xa2",
+                  "keys: kitty disambiguate (flag 1)");
+    selfTestCheck(failures, key(Qt::Key_Return, {}, KeyMod::Shift) == "\n" && key(Qt::Key_Backspace) == "\x7f",
+                  "keys: legacy Shift+Enter newline and Backspace");
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
@@ -305,6 +346,7 @@ void runParserSelfTest(int &failures)
     screenModes(failures);
     queryReplies(failures);
     cursorStyle(failures);
+    keyEncoding(failures);
 }
 
 } // namespace konsoll

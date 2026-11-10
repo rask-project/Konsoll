@@ -81,6 +81,8 @@ qt_add_qml_module(konsoll
         src/AboutDialog.mm
         src/AppQuitGuard.h
         src/AppQuitGuard.mm
+        src/KeyEncoder.cpp
+        src/KeyEncoder.h
         src/NativeDialogs.h
         src/NativeDialogs.mm
         src/TerminalBackend.cpp

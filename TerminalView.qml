@@ -114,7 +114,7 @@ Item {
                 view.session.setFocused(terminalFocused);
         }
 
-        readonly property var specialKeys: [Qt.Key_Return, Qt.Key_Enter, Qt.Key_Backspace, Qt.Key_Tab, Qt.Key_Escape, Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right, Qt.Key_Home, Qt.Key_End, Qt.Key_Delete, Qt.Key_PageUp, Qt.Key_PageDown]
+        readonly property var specialKeys: [Qt.Key_Return, Qt.Key_Enter, Qt.Key_Backspace, Qt.Key_Tab, Qt.Key_Backtab, Qt.Key_Escape, Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right, Qt.Key_Home, Qt.Key_End, Qt.Key_Insert, Qt.Key_Delete, Qt.Key_PageUp, Qt.Key_PageDown, Qt.Key_F1, Qt.Key_F2, Qt.Key_F3, Qt.Key_F4, Qt.Key_F5, Qt.Key_F6, Qt.Key_F7, Qt.Key_F8, Qt.Key_F9, Qt.Key_F10, Qt.Key_F11, Qt.Key_F12, Qt.Key_F13, Qt.Key_F14, Qt.Key_F15, Qt.Key_F16, Qt.Key_F17, Qt.Key_F18, Qt.Key_F19, Qt.Key_F20]
 
         Keys.onPressed: event => {
             let linkModifiers = event.modifiers;
@@ -131,7 +131,10 @@ Item {
             const hasOption = (event.modifiers & Qt.AltModifier) !== 0;
             const hasPhysicalControl = (event.modifiers & Qt.MetaModifier) !== 0;
             const isSpecialKey = specialKeys.includes(event.key);
-            if (hasCommand || hasOption || hasPhysicalControl || isSpecialKey) {
+            // Numeric keypad keys skip text composition: the backend sends
+            // SS3 codes in application keypad mode, their text otherwise.
+            const isKeypadKey = (event.modifiers & Qt.KeypadModifier) !== 0;
+            if (hasCommand || hasOption || hasPhysicalControl || isSpecialKey || isKeypadKey) {
                 if (hasCommand && event.key === Qt.Key_F) {
                     searchBar.openSearch();
                     event.accepted = true;
