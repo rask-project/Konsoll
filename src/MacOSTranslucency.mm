@@ -22,6 +22,20 @@ NSWindow *windowFromId(WId winId)
 }
 } // namespace
 
+// Hosts the native glass views with a top-left origin like the Qt content
+// view, so a glass frame stays pinned to the top while the window resizes:
+// with the default bottom-left origin a vertical resize shifts it, and its
+// QML scene rect (and so the next sync) does not change.
+@interface KonsollFlippedView : NSView
+@end
+
+@implementation KonsollFlippedView
+- (BOOL)isFlipped
+{
+    return YES;
+}
+@end
+
 @interface KonsollInputForwardingView : NSView
 @property(nonatomic, assign) NSWindow *targetWindow;
 @property(nonatomic, assign) NSView *targetView;
@@ -233,7 +247,7 @@ NSView *glassHostContentView(NSWindow *nsWindow, bool create) API_AVAILABLE(maco
     NSRect const bounds = [parentView bounds];
     host = [[[NSGlassEffectContainerView alloc] initWithFrame:bounds] autorelease];
     [host setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-    NSView *const hostContent = [[[NSView alloc] initWithFrame:bounds] autorelease];
+    NSView *const hostContent = [[[KonsollFlippedView alloc] initWithFrame:bounds] autorelease];
     [hostContent setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     [host setContentView:hostContent];
     objc_setAssociatedObject(nsWindow, &glassHostAssociationKey, host, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
