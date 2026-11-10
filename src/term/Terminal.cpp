@@ -9,6 +9,7 @@
 #include <QUrl>
 
 #include <algorithm>
+#include <iterator>
 #include <array>
 #include <optional>
 #include <ranges>
@@ -1103,9 +1104,13 @@ void Terminal::fullReset()
     m_kittyDepth = 0;
     m_cursorStyle = 0;
     m_titleStack.clear();
+    if (!m_pointerShapes.isEmpty()) {
+        m_pointerShapes.clear();
+        m_extraFlags |= PointerShapeDirty;
+    }
     // Keep only notifications the backend has not consumed yet.
     m_extraFlags &= RemoteHostDirty | TitleDirty | CurrentDirectoryDirty | ClipboardTextDirty | CommandFinishedPending |
-                    DarkColorScheme;
+                    DarkColorScheme | PointerShapeDirty;
     m_extraFlags |= AlternateScroll | ColorsDirty;
     m_paletteOverrides = {};
     m_fgOverride = 0;
@@ -1526,6 +1531,14 @@ void Terminal::handleOsc(const QByteArray &body)
         handleOscCommandMark(body);
         return;
     }
+    if (body.startsWith("633;")) {
+        handleOscVsCode(body.mid(4));
+        return;
+    }
+    if (body.startsWith("22;")) {
+        handleOscPointerShape(body.mid(3));
+        return;
+    }
     if (body.startsWith("8;")) {
         handleOscHyperlink(body);
         return;
@@ -1684,6 +1697,121 @@ void Terminal::handleOscClipboard(const QByteArray &body)
             setExtraFlag(ClipboardTextDirty, true);
         }
     }
+}
+
+// OSC 633 (VS Code shell integration): A-D are the OSC 133 marks, E ; line
+// the command line (\xAB escapes, \\ for '\\'), P ; Cwd=path the directory.
+void Terminal::handleOscVsCode(const QByteArray &body)
+{
+    if (body.isEmpty()) {
+        return;
+    }
+    const char kind = body.at(0);
+    if (kind >= 'A' && kind <= 'D') {
+        handleOscCommandMark("133;" + body);
+    } else if (kind == 'E' && body.startsWith("E;")) {
+        QByteArray line = body.mid(2);
+        line = line.left(line.indexOf(';')); // drop the nonce
+        QByteArray decoded;
+        qsizetype i = 0;
+        while (i < line.size()) {
+            if (line.at(i) == '\\' && i + 3 < line.size() && line.at(i + 1) == 'x') {
+                decoded += QByteArray::fromHex(line.mid(i + 2, 2));
+                i += 4;
+            } else if (line.at(i) == '\\' && i + 1 < line.size() && line.at(i + 1) == '\\') {
+                decoded += '\\';
+                i += 2;
+            } else {
+                decoded += line.at(i);
+                ++i;
+            }
+        }
+        m_commandLine = QString::fromUtf8(decoded).left(4096);
+    } else if (body.startsWith("P;Cwd=")) {
+        const QString path = QString::fromUtf8(body.mid(6));
+        if (path.startsWith(QLatin1Char('/')) && path != m_currentDirectory) {
+            m_currentDirectory = path;
+            setExtraFlag(CurrentDirectoryDirty, true);
+        }
+    }
+}
+
+int pointerCursorShape(const QByteArray &name)
+{
+    using Entry = std::pair<std::string_view, Qt::CursorShape>;
+    // CSS names (kitty's OSC 22) and their X cursor-font aliases.
+    static constexpr std::array kShapes{
+        Entry{"default", Qt::ArrowCursor},       Entry{"left_ptr", Qt::ArrowCursor},
+        Entry{"text", Qt::IBeamCursor},          Entry{"xterm", Qt::IBeamCursor},
+        Entry{"vertical-text", Qt::IBeamCursor}, Entry{"pointer", Qt::PointingHandCursor},
+        Entry{"hand2", Qt::PointingHandCursor},  Entry{"hand1", Qt::PointingHandCursor},
+        Entry{"help", Qt::WhatsThisCursor},      Entry{"question_arrow", Qt::WhatsThisCursor},
+        Entry{"wait", Qt::WaitCursor},           Entry{"watch", Qt::WaitCursor},
+        Entry{"progress", Qt::BusyCursor},       Entry{"crosshair", Qt::CrossCursor},
+        Entry{"cell", Qt::CrossCursor},          Entry{"tcross", Qt::CrossCursor},
+        Entry{"move", Qt::SizeAllCursor},        Entry{"fleur", Qt::SizeAllCursor},
+        Entry{"all-scroll", Qt::SizeAllCursor},  Entry{"not-allowed", Qt::ForbiddenCursor},
+        Entry{"no-drop", Qt::ForbiddenCursor},   Entry{"grab", Qt::OpenHandCursor},
+        Entry{"grabbing", Qt::ClosedHandCursor}, Entry{"copy", Qt::DragCopyCursor},
+        Entry{"alias", Qt::DragLinkCursor},      Entry{"ew-resize", Qt::SizeHorCursor},
+        Entry{"col-resize", Qt::SplitHCursor},   Entry{"e-resize", Qt::SizeHorCursor},
+        Entry{"w-resize", Qt::SizeHorCursor},    Entry{"sb_h_double_arrow", Qt::SizeHorCursor},
+        Entry{"ns-resize", Qt::SizeVerCursor},   Entry{"row-resize", Qt::SplitVCursor},
+        Entry{"n-resize", Qt::SizeVerCursor},    Entry{"s-resize", Qt::SizeVerCursor},
+        Entry{"sb_v_double_arrow", Qt::SizeVerCursor}, Entry{"nesw-resize", Qt::SizeBDiagCursor},
+        Entry{"ne-resize", Qt::SizeBDiagCursor}, Entry{"sw-resize", Qt::SizeBDiagCursor},
+        Entry{"nwse-resize", Qt::SizeFDiagCursor}, Entry{"nw-resize", Qt::SizeFDiagCursor},
+        Entry{"se-resize", Qt::SizeFDiagCursor},
+    };
+    const std::string_view wanted(name.constData(), static_cast<std::size_t>(name.size()));
+    const auto *const found = std::ranges::find(kShapes, wanted, &Entry::first);
+    return found == kShapes.end() ? -1 : static_cast<int>(found->second);
+}
+
+// The OSC 22 reply to ?name,...: 1 / 0 per name, __current__ = the shown one.
+QByteArray Terminal::pointerShapeQuery(const QByteArray &names) const
+{
+    QList<QByteArray> answers;
+    std::ranges::transform(names.split(','), std::back_inserter(answers), [this](const QByteArray &name) {
+        if (name == "__current__") {
+            return pointerShape().isEmpty() ? QByteArray("0") : pointerShape();
+        }
+        if (name == "__default__" || name == "__grabbed__") {
+            return QByteArray("default");
+        }
+        return QByteArray(pointerCursorShape(name) >= 0 ? "1" : "0");
+    });
+    return "\x1b]22;" + answers.join(',') + "\x1b\\";
+}
+
+// OSC 22 (xterm / kitty): name sets the pointer (empty / default resets),
+// >name,... pushes, < pops, ?name,... asks which are supported.
+void Terminal::handleOscPointerShape(const QByteArray &body)
+{
+    constexpr qsizetype kMaxDepth = 16;
+    if (body.startsWith('?')) {
+        reply(pointerShapeQuery(body.mid(1)));
+        return;
+    }
+    if (body.startsWith('>')) {
+        std::ranges::for_each(body.mid(1).split(','), [this](const QByteArray &name) {
+            if (!name.isEmpty() && m_pointerShapes.size() < kMaxDepth) {
+                m_pointerShapes.push_back(name);
+            }
+        });
+    } else if (body.startsWith('<')) {
+        if (m_pointerShapes.isEmpty()) {
+            return;
+        }
+        m_pointerShapes.pop_back();
+    } else if (body.isEmpty() || body == "default") {
+        m_pointerShapes.clear();
+    } else if (m_pointerShapes.isEmpty()) {
+        m_pointerShapes.push_back(body);
+    } else {
+        m_pointerShapes.back() = body;
+    }
+    setExtraFlag(PointerShapeDirty, true);
 }
 
 void Terminal::handleOscCurrentDirectory(const QByteArray &body)

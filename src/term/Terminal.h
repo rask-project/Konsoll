@@ -15,6 +15,10 @@
 namespace konsoll
 {
 
+// The Qt::CursorShape for an OSC 22 pointer name (CSS or X cursor font), or
+// -1 when unknown.
+int pointerCursorShape(const QByteArray &name);
+
 // ANSI/VT100/xterm parser that drives a Screen. Consumes raw PTY bytes and
 // maintains the SGR style state, OSC title and DA-reply bookkeeping.
 // A request the terminal cannot answer itself: it needs the clipboard, the
@@ -61,6 +65,12 @@ public:
     void clearTitleDirty() { setExtraFlag(TitleDirty, false); }
     QString currentDirectory() const { return m_currentDirectory; }
     QString remoteHost() const { return m_remoteHost; }
+    // OSC 633 ; E command line (VS Code shell integration).
+    QString commandLine() const { return m_commandLine; }
+    // OSC 22: the pointer shape the program asked for (empty = default).
+    QByteArray pointerShape() const { return m_pointerShapes.isEmpty() ? QByteArray{} : m_pointerShapes.back(); }
+    bool pointerShapeDirty() const { return (m_extraFlags & PointerShapeDirty) != 0; }
+    void clearPointerShapeDirty() { setExtraFlag(PointerShapeDirty, false); }
     bool remoteHostDirty() const { return (m_extraFlags & RemoteHostDirty) != 0; }
     void clearRemoteHostDirty() { setExtraFlag(RemoteHostDirty, false); }
     bool currentDirectoryDirty() const { return (m_extraFlags & CurrentDirectoryDirty) != 0; }
@@ -185,6 +195,7 @@ private:
     static constexpr std::uint64_t OtherKeysCsiU = std::uint64_t{1} << 31;         // XTFMTKEYS formatOtherKeys 1
     static constexpr std::uint64_t MetaSendsEscape = std::uint64_t{1} << 32;       // ?1036 / ?1039
     static constexpr std::uint64_t HighlightStarted = std::uint64_t{1} << 33;      // ?1001 highlight in progress
+    static constexpr std::uint64_t PointerShapeDirty = std::uint64_t{1} << 34;     // OSC 22 changed the pointer
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.
@@ -258,6 +269,9 @@ private:
     void handleOscClipboard(const QByteArray &body);
     void handleOscCurrentDirectory(const QByteArray &body);
     void handleOscCommandMark(const QByteArray &body);
+    void handleOscVsCode(const QByteArray &body);
+    void handleOscPointerShape(const QByteArray &body);
+    QByteArray pointerShapeQuery(const QByteArray &names) const;
     void handleOscTitle(const QByteArray &body);
     void handleCommandMark(char mark);
     void handleEsc(char c);
@@ -338,6 +352,10 @@ private:
     QString m_title;
     QString m_currentDirectory;
     QString m_remoteHost;
+    // OSC 633 ; E: the command line of the running command.
+    QString m_commandLine;
+    // OSC 22 pointer shape stack (CSS / X cursor names); the top is shown.
+    QList<QByteArray> m_pointerShapes;
     QString m_remoteHostToken;
     QString m_clipboardText;
     // SGR style (and OSC 8 link) applied to subsequent characters; `ch` unused.

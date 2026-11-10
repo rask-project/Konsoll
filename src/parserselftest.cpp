@@ -684,6 +684,33 @@ void modifyOtherKeys(int &failures)
                   "modifyOtherKeys 2: every Ctrl / Alt key, CSI u format");
 }
 
+// OSC 22 pointer shapes and OSC 633 (VS Code shell integration).
+void pointerAndVsCode(int &failures)
+{
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b]22;pointer\x07");
+        const bool set = term.pointerShape() == "pointer" && term.pointerShapeDirty() &&
+                         pointerCursorShape("pointer") == Qt::PointingHandCursor && pointerCursorShape("bogus") == -1;
+        term.write("\x1b]22;>crosshair\x07");
+        const bool pushed = term.pointerShape() == "crosshair";
+        term.write("\x1b]22;<\x07\x1b]22;?pointer,bogus,__current__\x07");
+        selfTestCheck(failures, set && pushed && term.pointerShape() == "pointer" &&
+                                    term.takeResponses() == "\x1b]22;1,0,pointer\x1b\\",
+                      "osc 22: set, push, pop and query the pointer shape");
+        term.write("\x1b" "c");
+        selfTestCheck(failures, term.pointerShape().isEmpty(), "osc 22: RIS restores the default pointer");
+    }
+    {
+        Terminal term(4, 20, QStringLiteral("selftest"));
+        term.write("\x1b]633;P;Cwd=/usr/local\x07\x1b]633;A\x07$ \x1b]633;B\x07ls\x1b]633;E;ls\\x3b -l\\\\x;nonce\x07"
+                   "\x1b]633;C\x07\r\nout\r\n\x1b]633;D;0\x07");
+        selfTestCheck(failures, term.currentDirectory() == QStringLiteral("/usr/local") &&
+                                    term.commandLine() == QStringLiteral("ls; -l\\x") && term.commandFinished(),
+                      "osc 633: Cwd, command line escapes and the A-D marks");
+    }
+}
+
 // Kitty graphics: animation frames and Unicode placeholders.
 void kittyAnimationAndPlaceholders(int &failures)
 {
@@ -914,6 +941,7 @@ void runParserSelfTest(int &failures)
     notifications(failures);
     itermProtocol(failures);
     kittyAnimationAndPlaceholders(failures);
+    pointerAndVsCode(failures);
     fixtureRegressions(failures);
 }
 

@@ -60,6 +60,8 @@ class TerminalBackend : public QObject
     Q_PROPERTY(int keyboardFlags READ keyboardFlags NOTIFY keyboardFlagsChanged)
     Q_PROPERTY(bool mouseMotionTracking READ mouseMotionTracking NOTIFY mouseTrackingChanged)
     Q_PROPERTY(bool commandRunning READ commandRunning NOTIFY commandRunningChanged)
+    // OSC 22: the Qt::CursorShape the program asked for, or -1 (default).
+    Q_PROPERTY(int pointerShape READ pointerShape NOTIFY pointerShapeChanged)
     Q_PROPERTY(unsigned int backgroundColor READ backgroundColor NOTIFY colorSchemeChanged)
     Q_PROPERTY(unsigned int foregroundColor READ foregroundColor NOTIFY colorSchemeChanged)
 
@@ -171,6 +173,7 @@ public:
     Q_INVOKABLE bool cursorVisible() const;
     // DECSCUSR shape (0 block, 1 underline, 2 bar) and blinking.
     int cursorShape() const;
+    int pointerShape() const;
     bool cursorBlinking() const;
     // Images placed on the visible rows: `target` in cell units (fractions
     // for pixel offsets and natural sizes), `source` in image pixels.
@@ -232,6 +235,7 @@ signals:
     void commandRunningChanged();
     void quitRequested();
     void commandFinished();
+    void pointerShapeChanged();
     void transferFailed(const QString &message);
 
 private:

@@ -347,6 +347,10 @@ void TerminalBackend::onData(const QByteArray &data)
         emit remoteHostChanged();
         m_terminal->clearRemoteHostDirty();
     }
+    if (m_terminal->pointerShapeDirty()) {
+        m_terminal->clearPointerShapeDirty();
+        emit pointerShapeChanged();
+    }
 
     if (m_terminal->clearPending()) {
         // The screen was erased (e.g. Ctrl+L / clear); a selection over the
@@ -1886,6 +1890,12 @@ int TerminalBackend::visibleRowSize(int row) const
 int TerminalBackend::keyboardFlags() const
 {
     return m_terminal ? static_cast<int>(m_terminal->kittyKeyboardFlags()) : 0;
+}
+
+int TerminalBackend::pointerShape() const
+{
+    const QByteArray name = m_terminal ? m_terminal->pointerShape() : QByteArray{};
+    return name.isEmpty() ? -1 : pointerCursorShape(name);
 }
 
 int TerminalBackend::cursorShape() const
