@@ -37,10 +37,12 @@ public:
     const Cell &cellAt(int row, int col) const;
 
     // Write a code point at the cursor (deferred wrap, advances cursor).
-    void putChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned char flags);
+    // `pen` carries the SGR style (colors, flags, attrs, underline color,
+    // hyperlink); its `ch` is ignored.
+    void putChar(unsigned int ch, const Cell &pen);
     // Write a two-cell character (lead + spacer); wraps first when only the
     // last column is left, as xterm does.
-    void putWideChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned char flags);
+    void putWideChar(unsigned int ch, const Cell &pen);
     // The code point last written on the cursor row (the cell left of the
     // cursor, or the cursor cell while a wrap is pending); nullopt at column 0.
     // Lets the parser fold a zero-width mark into the character it follows.

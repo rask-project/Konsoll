@@ -71,11 +71,62 @@ void parserStateMachine(int &failures)
                   "parser: long parameter lists are consumed");
 }
 
+// Stage 2: SGR with colon sub-parameters and every rendered attribute.
+void sgrAttributes(int &failures)
+{
+    const auto cell = [](const QByteArray &bytes) { return feed(bytes + "x").screen().cellAt(0, 0); };
+    const auto flag = [](const Cell &c, unsigned int f) { return (c.flags & f) != 0u; };
+    const auto attr = [](const Cell &c, unsigned int a) { return (c.attrs & a) != 0u; };
+
+    {
+        const Cell c = cell("\x1b[4:3m");
+        selfTestCheck(failures, flag(c, CellFlag::Underline) && underlineStyle(c) == UnderlineStyle::Curly &&
+                                    !attr(c, CellAttr::Italic),
+                      "sgr: 4:3 is a curly underline, not underline + italic");
+    }
+    {
+        const Cell c = cell("\x1b[1;4m\x1b[4:0m");
+        selfTestCheck(failures, flag(c, CellFlag::Bold) && !flag(c, CellFlag::Underline),
+                      "sgr: 4:0 removes the underline and keeps other attributes");
+    }
+    selfTestCheck(failures, underlineStyle(cell("\x1b[21m")) == UnderlineStyle::Double &&
+                                underlineStyle(cell("\x1b[4:4m")) == UnderlineStyle::Dotted &&
+                                underlineStyle(cell("\x1b[4:5m")) == UnderlineStyle::Dashed,
+                  "sgr: double (21, 4:2), dotted (4:4) and dashed (4:5) underlines");
+    {
+        const Cell c = cell("\x1b[1m\x1b[58;2;255;0;0m");
+        selfTestCheck(failures, c.ul == 0x80ff0000u && flag(c, CellFlag::Bold) && !flag(c, CellFlag::Dim),
+                      "sgr: 58;2;r;g;b sets the underline color without dim or reset");
+    }
+    selfTestCheck(failures, cell("\x1b[58:5:9m").ul == 10u && cell("\x1b[58:5:9m\x1b[59m").ul == 0u,
+                  "sgr: 58:5:n indexed underline color, 59 resets it");
+    selfTestCheck(failures, cell("\x1b[38:2::1:2:3m").fg == 0x80010203u && cell("\x1b[38:2:1:2:3m").fg == 0x80010203u &&
+                                cell("\x1b[48:5:200m").bg == 201u,
+                  "sgr: colon forms 38:2::r:g:b, 38:2:r:g:b and 48:5:n");
+    selfTestCheck(failures, cell("\x1b[38;5;1;1m").fg == 2u && flag(cell("\x1b[38;5;1;1m"), CellFlag::Bold),
+                  "sgr: parameters after a semicolon color still apply");
+    selfTestCheck(failures, attr(cell("\x1b[3m"), CellAttr::Italic) && !attr(cell("\x1b[3;23m"), CellAttr::Italic),
+                  "sgr: italic on (3) / off (23)");
+    selfTestCheck(failures, flag(cell("\x1b[8m"), CellFlag::Invisible) && !flag(cell("\x1b[8;28m"), CellFlag::Invisible),
+                  "sgr: hidden on (8) / off (28)");
+    selfTestCheck(failures, attr(cell("\x1b[5m"), CellAttr::Blink) && !attr(cell("\x1b[5;25m"), CellAttr::Blink),
+                  "sgr: blink on (5) / off (25)");
+    selfTestCheck(failures, attr(cell("\x1b[53m"), CellAttr::Overline) && !attr(cell("\x1b[53;55m"), CellAttr::Overline),
+                  "sgr: overline on (53) / off (55)");
+    {
+        const Cell c = cell("\x1b[1;3;4:3;58:5:1;31m\x1b[;1m");
+        selfTestCheck(failures, flag(c, CellFlag::Bold) && !attr(c, CellAttr::Italic) && !flag(c, CellFlag::Underline) &&
+                                    c.ul == 0u && c.fg == 0u,
+                      "sgr: an empty first parameter is SGR 0");
+    }
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
 {
     parserStateMachine(failures);
+    sgrAttributes(failures);
 }
 
 } // namespace konsoll

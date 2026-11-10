@@ -65,12 +65,12 @@ public:
 
     bool mouseTracking() const { return m_mouseModes != 0; }
     bool mouseMotionTracking() const { return (m_mouseModes & 0x06u) != 0; }
-    bool sgrMouse() const { return m_sgrMouse; }
+    bool sgrMouse() const { return (m_extraFlags & SgrMouse) != 0; }
     bool kittyKeyboardEnabled() const { return (m_extraFlags & KittyKeyboardEnabled) != 0; }
     bool bracketedPasteEnabled() const { return (m_extraFlags & BracketedPasteEnabled) != 0; }
-    bool applicationCursorKeys() const { return m_applicationCursorKeys; }
-    bool keyboardProtocolQueryPending() const { return m_keyboardProtocolQueryPending; }
-    void clearKeyboardProtocolQueryPending() { m_keyboardProtocolQueryPending = false; }
+    bool applicationCursorKeys() const { return (m_extraFlags & ApplicationCursorKeys) != 0; }
+    bool keyboardProtocolQueryPending() const { return (m_extraFlags & KeyboardProtocolQueryPending) != 0; }
+    void clearKeyboardProtocolQueryPending() { setExtraFlag(KeyboardProtocolQueryPending, false); }
     bool synchronizedUpdates() const { return (m_extraFlags & SynchronizedUpdates) != 0; }
     QByteArray mouseReport(int button, int row, int col, int event, unsigned int modifiers) const;
 
@@ -80,10 +80,17 @@ public:
     static QByteArray colorQueryResponse(unsigned char query);
 
 private:
+    // CSI parameters split on ';' into groups and on ':' into sub-parameters
+    // (SGR 4:3, 38:2::r:g:b). An omitted value is -1.
+    using ParamGroups = std::vector<std::vector<int>>;
+
     static constexpr unsigned char RemoteHostDirty = 0x01;
     static constexpr unsigned char BracketedPasteEnabled = 0x02;
     static constexpr unsigned char SynchronizedUpdates = 0x04;
     static constexpr unsigned char KittyKeyboardEnabled = 0x08;
+    static constexpr unsigned char SgrMouse = 0x10;
+    static constexpr unsigned char ApplicationCursorKeys = 0x20;
+    static constexpr unsigned char KeyboardProtocolQueryPending = 0x40;
 
     // DEC/ECMA-48 parser states (after Paul Williams' VT500 state machine).
     // Every sequence is consumed whole, so an unsupported one never leaks its
@@ -130,7 +137,7 @@ private:
     static bool isZeroWidth(unsigned int codePoint);
     void handleCsi(char final);
     void handleDec(bool set, const std::vector<int> &params);
-    void handleSgr(const std::vector<int> &params);
+    void handleSgr(const ParamGroups &groups);
     void handleOsc(const QByteArray &body);
     void handleOscRemoteHost(const QByteArray &body);
     void handleOscClipboard(const QByteArray &body);
@@ -143,7 +150,14 @@ private:
     void cursorMove(int dRow, int dCol);
     void setExtraFlag(unsigned char flag, bool on);
 
+    static ParamGroups parseParamGroups(const QByteArray &body);
+    // The first value of each group, omitted -> 0 (the "default" marker).
     static std::vector<int> parseParams(const QByteArray &body);
+    std::size_t applySgr(const ParamGroups &groups, std::size_t index);
+    void applyBasicSgr(int code);
+    void setUnderline(int style);
+    void resetPen();
+    static std::size_t applyExtendedColor(const ParamGroups &groups, std::size_t index, unsigned int &color);
     static int paramAt(const std::vector<int> &p, int i, int def);
 
     Screen m_screen;
@@ -159,16 +173,14 @@ private:
     QString m_remoteHost;
     QString m_remoteHostToken;
     QString m_clipboardText;
-    unsigned int m_fg = 0;
-    unsigned int m_bg = 0;
+    // SGR style (and OSC 8 link) applied to subsequent characters; `ch` unused.
+    Cell m_pen;
     unsigned int m_utf8CodePoint = 0;
     unsigned int m_utf8Minimum = 0;
     int m_commandStartLine = -1;
     State m_state = State::Ground;
     StringKind m_stringKind = StringKind::Ignore;
 
-    // SGR style state applied to subsequent characters.
-    unsigned char m_flags = CellFlag::None;
     unsigned char m_utf8Remaining = 0;
     char m_csiPrefix = 0;
     char m_escIntermediate = 0;
@@ -183,9 +195,6 @@ private:
     unsigned char m_colorQuery = 0;
     unsigned char m_extraFlags = 0;
     unsigned char m_mouseModes = 0;
-    bool m_sgrMouse = false;
-    bool m_applicationCursorKeys = false;
-    bool m_keyboardProtocolQueryPending = false;
 };
 
 } // namespace konsoll

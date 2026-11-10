@@ -22,6 +22,29 @@ inline constexpr unsigned int Wide = 1u << 6;
 inline constexpr unsigned int WideSpacer = 1u << 7;
 }
 
+// Second byte of per-cell style: SGR attributes beyond CellFlag, plus the
+// underline style (CellFlag::Underline says whether the cell is underlined;
+// these bits say how). Same plain-constant pattern as CellFlag.
+namespace CellAttr
+{
+inline constexpr unsigned int None = 0;
+inline constexpr unsigned int Italic = 1u << 0;
+inline constexpr unsigned int Blink = 1u << 1;
+inline constexpr unsigned int Overline = 1u << 2;
+inline constexpr unsigned int UnderlineShift = 3u;
+inline constexpr unsigned int UnderlineMask = 7u << UnderlineShift;
+}
+
+// SGR 4:n underline styles, stored in CellAttr::UnderlineMask.
+namespace UnderlineStyle
+{
+inline constexpr unsigned int Single = 0;
+inline constexpr unsigned int Double = 1;
+inline constexpr unsigned int Curly = 2;
+inline constexpr unsigned int Dotted = 3;
+inline constexpr unsigned int Dashed = 4;
+}
+
 // Encoded color value stored per cell:
 //   0                       -> default (resolved at render time)
 //   1..256                  -> 256-color palette index
@@ -29,15 +52,25 @@ inline constexpr unsigned int WideSpacer = 1u << 7;
 // `ch` holds the full Unicode code point (not a UTF-16 code unit) so a
 // supplementary-plane character (e.g. a Nerd Font icon, U+F0xxx) occupies
 // exactly one cell; it is encoded as a surrogate-pair QString at render
-// time. Members ordered heaviest-first (4-byte colors/glyph, then 1-byte
-// flags) so the compiler inserts the least padding.
+// time. `ul` is the SGR 58 underline color (encoded like fg; 0 = the text
+// color) and `link` an OSC 8 hyperlink id (0 = none). Members ordered
+// heaviest-first (4-byte colors/glyph, the 2-byte link, then 1-byte style
+// bytes): 20 bytes, no padding.
 struct Cell {
     unsigned int fg = 0;
     unsigned int bg = 0;
     unsigned int ch = 0x20;
+    unsigned int ul = 0;
+    unsigned short link = 0;
     unsigned char flags = CellFlag::None;
+    unsigned char attrs = CellAttr::None;
 
     friend bool operator==(const Cell &, const Cell &) = default;
 };
+
+inline unsigned int underlineStyle(const Cell &cell)
+{
+    return (cell.attrs & CellAttr::UnderlineMask) >> CellAttr::UnderlineShift;
+}
 
 } // namespace konsoll

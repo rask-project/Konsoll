@@ -29,6 +29,8 @@ constexpr float kSelectionAlpha = 0.82F;
 constexpr float kHighlightFillAlpha = 0.0175F;
 constexpr float kHighlightStrokeAlpha = 0.65F;
 constexpr unsigned int kDecorationFlags = CellFlag::Underline | CellFlag::Strike;
+constexpr unsigned int kDecorationAttrs = CellAttr::Overline | CellAttr::UnderlineMask;
+constexpr int kBlinkIntervalMs = 600;
 
 QRgb withAlpha(const QColor &color, float alpha)
 {
@@ -45,10 +47,22 @@ bool isInvisible(const Cell &cell)
     return (cell.flags & CellFlag::Invisible) != 0u;
 }
 
-// Cells that can share one text layout: same color, weight and visibility.
+bool isItalic(const Cell &cell)
+{
+    return (cell.attrs & CellAttr::Italic) != 0u;
+}
+
+bool isBlinking(const Cell &cell)
+{
+    return (cell.attrs & CellAttr::Blink) != 0u;
+}
+
+// Cells that can share one text layout: same color, face, visibility and
+// blinking.
 bool sameTextStyle(const Cell &a, const Cell &b)
 {
-    return a.fg == b.fg && isBold(a) == isBold(b) && isInvisible(a) == isInvisible(b);
+    return a.fg == b.fg && isBold(a) == isBold(b) && isItalic(a) == isItalic(b) && isInvisible(a) == isInvisible(b) &&
+           isBlinking(a) == isBlinking(b);
 }
 
 bool sameBackground(const Cell &a, const Cell &b)
@@ -58,7 +72,8 @@ bool sameBackground(const Cell &a, const Cell &b)
 
 bool sameDecoration(const Cell &a, const Cell &b)
 {
-    return a.fg == b.fg && (a.flags & kDecorationFlags) == (b.flags & kDecorationFlags);
+    return a.fg == b.fg && a.ul == b.ul && (a.flags & kDecorationFlags) == (b.flags & kDecorationFlags) &&
+           (a.attrs & kDecorationAttrs) == (b.attrs & kDecorationAttrs);
 }
 
 bool isWidePart(const Cell &cell)
@@ -88,6 +103,8 @@ TerminalRenderer::TerminalRenderer(QQuickItem *parent)
     : QQuickItem(parent)
 {
     setFlag(ItemHasContents, true);
+    m_blinkTimer.setInterval(kBlinkIntervalMs);
+    connect(&m_blinkTimer, &QTimer::timeout, this, &TerminalRenderer::toggleBlink);
     rebuildFonts();
 }
 
@@ -203,6 +220,17 @@ void TerminalRenderer::rebuildFonts()
     const qreal boldAdvance = QFontMetricsF(m_boldFont).horizontalAdvance(QLatin1Char('M'));
     m_boldFont.setLetterSpacing(QFont::AbsoluteSpacing, cellWidth - boldAdvance);
 
+    // Italic faces (or synthesized obliques) get the same grid correction.
+    m_italicFont = m_font;
+    m_italicFont.setItalic(true);
+    m_italicFont.setLetterSpacing(QFont::AbsoluteSpacing,
+                                  cellWidth - QFontMetricsF(m_italicFont).horizontalAdvance(QLatin1Char('M')));
+    m_boldItalicFont = m_boldFont;
+    m_boldItalicFont.setItalic(true);
+    m_boldItalicFont.setLetterSpacing(QFont::AbsoluteSpacing, 0.0);
+    m_boldItalicFont.setLetterSpacing(QFont::AbsoluteSpacing,
+                                      cellWidth - QFontMetricsF(m_boldItalicFont).horizontalAdvance(QLatin1Char('M')));
+
     m_textOffsetY = static_cast<float>(std::floor((cellHeight - ascentDescent) / 2.0));
     m_rawFont = QRawFont::fromFont(m_font);
     m_coverage.clear();
@@ -249,6 +277,27 @@ void TerminalRenderer::refresh()
 
     std::vector<Cell> scratch;
     std::ranges::for_each(std::views::iota(0, s.gridRows()), [&](int row) { pullRow(row, scratch); });
+
+    m_blinkRows = static_cast<int>(
+        std::ranges::count_if(m_rows, [](const Row &r) { return std::ranges::any_of(r.cells, isBlinking); }));
+    if (m_blinkRows > 0 && !m_blinkTimer.isActive()) {
+        m_blinkTimer.start();
+    } else if (m_blinkRows == 0 && m_blinkTimer.isActive()) {
+        m_blinkTimer.stop();
+        m_blinkPhase = 1;
+    }
+    update();
+}
+
+void TerminalRenderer::toggleBlink()
+{
+    m_blinkPhase = 1 - m_blinkPhase;
+    // Only rows holding blinking cells need their text rebuilt.
+    std::ranges::for_each(std::views::iota(std::size_t{0}, m_rows.size()), [this](std::size_t row) {
+        if (std::ranges::any_of(m_rows[row].cells, isBlinking)) {
+            m_dirty[row] = 1;
+        }
+    });
     update();
 }
 
@@ -394,7 +443,6 @@ void TerminalRenderer::appendHighlightFrame(std::vector<ColorRect> &rects) const
 void TerminalRenderer::appendOverlayRects(std::vector<ColorRect> &rects) const
 {
     const auto cellHeight = static_cast<float>(m_cellHeight);
-    const auto underlineY = cellHeight - 1.0F;
     const auto strikeY = std::floor(cellHeight / 2.0F);
 
     std::ranges::for_each(std::views::iota(0, static_cast<int>(m_rows.size())), [&](int row) {
@@ -407,10 +455,13 @@ void TerminalRenderer::appendOverlayRects(std::vector<ColorRect> &rects) const
             const auto y = static_cast<float>(r.y());
             const auto w = static_cast<float>(r.width());
             if ((cell.flags & CellFlag::Underline) != 0u) {
-                rects.push_back({.x = x, .y = y + underlineY, .w = w, .h = 1.0F, .color = cell.fg});
+                appendUnderline(rects, cell, r);
             }
             if ((cell.flags & CellFlag::Strike) != 0u) {
                 rects.push_back({.x = x, .y = y + strikeY, .w = w, .h = 1.0F, .color = cell.fg});
+            }
+            if ((cell.attrs & CellAttr::Overline) != 0u) {
+                rects.push_back({.x = x, .y = y, .w = w, .h = 1.0F, .color = cell.fg});
             }
             col += count;
         }
@@ -423,6 +474,45 @@ void TerminalRenderer::appendOverlayRects(std::vector<ColorRect> &rects) const
                          .w = static_cast<float>(r.width()),
                          .h = 1.0F,
                          .color = withAlpha(m_accent, 1.0F)});
+    }
+}
+
+// SGR 4:n underline in the SGR 58 color (resolved into `cell.ul`), drawn
+// along the bottom of the cell span: single, double, curly (a 2 px stepped
+// wave), dotted or dashed.
+void TerminalRenderer::appendUnderline(std::vector<ColorRect> &rects, const Cell &cell, const QRectF &span) const
+{
+    const auto x = static_cast<float>(span.x());
+    const auto w = static_cast<float>(span.width());
+    const auto bottom = static_cast<float>(span.y() + m_cellHeight) - 1.0F;
+    const QRgb color = cell.ul;
+    const auto segments = [&](float step, float length, const auto &yAt) {
+        const int count = static_cast<int>(std::ceil(w / step));
+        std::ranges::for_each(std::views::iota(0, count), [&](int i) {
+            const float sx = x + (static_cast<float>(i) * step);
+            rects.push_back({.x = sx, .y = yAt(i), .w = std::min(length, x + w - sx), .h = 1.0F, .color = color});
+        });
+    };
+
+    switch (underlineStyle(cell)) {
+    case UnderlineStyle::Double:
+        rects.push_back({.x = x, .y = bottom, .w = w, .h = 1.0F, .color = color});
+        rects.push_back({.x = x, .y = bottom - 2.0F, .w = w, .h = 1.0F, .color = color});
+        break;
+    case UnderlineStyle::Curly: {
+        constexpr std::array<float, 4> kWave{0.0F, 1.0F, 2.0F, 1.0F};
+        segments(2.0F, 2.0F, [&](int i) { return bottom - kWave[static_cast<std::size_t>(i) % kWave.size()]; });
+        break;
+    }
+    case UnderlineStyle::Dotted:
+        segments(2.0F, 1.0F, [bottom](int) { return bottom; });
+        break;
+    case UnderlineStyle::Dashed:
+        segments(6.0F, 4.0F, [bottom](int) { return bottom; });
+        break;
+    default:
+        rects.push_back({.x = x, .y = bottom, .w = w, .h = 1.0F, .color = color});
+        break;
     }
 }
 
@@ -481,6 +571,14 @@ void TerminalRenderer::syncTextRows(QSGNode &container)
     }
 }
 
+const QFont &TerminalRenderer::fontFor(const Cell &cell) const
+{
+    if (isItalic(cell)) {
+        return isBold(cell) ? m_boldItalicFont : m_italicFont;
+    }
+    return isBold(cell) ? m_boldFont : m_font;
+}
+
 bool TerminalRenderer::primaryFontCovers(const Cell &cell)
 {
     if (isWidePart(cell)) {
@@ -518,7 +616,7 @@ void TerminalRenderer::buildRowText(QSGTextNode &node, int row)
 
 void TerminalRenderer::addTextRun(QSGTextNode &node, std::span<const Cell> run, qreal x, qreal top) const
 {
-    if (isInvisible(run.front()) || std::ranges::all_of(run, isBlank)) {
+    if (isInvisible(run.front()) || (isBlinking(run.front()) && m_blinkPhase == 0) || std::ranges::all_of(run, isBlank)) {
         return;
     }
 
@@ -530,7 +628,7 @@ void TerminalRenderer::addTextRun(QSGTextNode &node, std::span<const Cell> run, 
     QTextOption option;
     option.setWrapMode(QTextOption::NoWrap);
     QTextLayout layout(QString::fromUcs4(codePoints.data(), static_cast<qsizetype>(codePoints.size())),
-                       isBold(run.front()) ? m_boldFont : m_font);
+                       fontFor(run.front()));
     layout.setTextOption(option);
     layout.beginLayout();
     QTextLine line = layout.createLine();

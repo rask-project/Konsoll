@@ -1588,7 +1588,17 @@ Cell TerminalBackend::resolvedCell(const Cell &cell) const
         std::swap(fg, bg);
     }
     fg = readableForeground(static_cast<QRgb>(fg), static_cast<QRgb>(bg));
-    return Cell{.fg = fg, .bg = bg, .ch = cell.ch, .flags = cell.flags};
+    if ((cell.flags & CellFlag::Dim) != 0) {
+        // SGR 2 (faint): halfway to the background, as in iTerm2 and VTE.
+        const auto mix = [](int a, int b) { return (a + b) / 2; };
+        fg = qRgb(mix(qRed(fg), qRed(bg)), mix(qGreen(fg), qGreen(bg)), mix(qBlue(fg), qBlue(bg)));
+    }
+    Cell resolved = cell;
+    resolved.fg = fg;
+    resolved.bg = bg;
+    // SGR 58 underline color; 0 follows the (resolved) text color.
+    resolved.ul = cell.ul == 0 ? fg : resolveColor(cell.ul, fg);
+    return resolved;
 }
 
 void TerminalBackend::visibleRowCells(int row, std::vector<Cell> &out) const

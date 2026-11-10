@@ -54,9 +54,7 @@ std::vector<Line> resizeGrid(const std::vector<Line> &old, int rows, int cols)
 
 bool isBlankLine(const Line &line)
 {
-    return std::ranges::all_of(line, [](const Cell &cell) {
-        return cell.ch == ' ' && cell.fg == 0u && cell.bg == 0u && cell.flags == CellFlag::None;
-    });
+    return std::ranges::all_of(line, [](const Cell &cell) { return cell == blankCell(); });
 }
 
 // Add hard-break flags for newly allocated rows without dropping existing
@@ -240,8 +238,7 @@ void Screen::breakWideAt(int col)
     }
 }
 
-void Screen::putChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned char flags) // NOLINT: fg/bg are
-                                                                                             // inherently swappable
+void Screen::putChar(unsigned int ch, const Cell &pen)
 {
     if (m_pendingWrap) {
         m_cursorCol = 0;
@@ -250,10 +247,8 @@ void Screen::putChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned
     }
     breakWideAt(m_cursorCol);
     Cell &c = grid()[m_cursorRow][m_cursorCol];
+    c = pen;
     c.ch = ch;
-    c.fg = fg;
-    c.bg = bg;
-    c.flags = flags;
     if (m_cursorCol + 1 >= m_cols) {
         m_pendingWrap = true;
     } else {
@@ -261,11 +256,10 @@ void Screen::putChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned
     }
 }
 
-void Screen::putWideChar(unsigned int ch, unsigned int fg, unsigned int bg, unsigned char flags) // NOLINT: fg/bg
-                                                                                                 // are swappable
+void Screen::putWideChar(unsigned int ch, const Cell &pen)
 {
     if (m_cols < 2) {
-        putChar(ch, fg, bg, flags);
+        putChar(ch, pen);
         return;
     }
     if (m_pendingWrap) {
@@ -276,15 +270,21 @@ void Screen::putWideChar(unsigned int ch, unsigned int fg, unsigned int bg, unsi
     if (m_cursorCol + 1 >= m_cols) {
         // Only the last column is left: pad it and wrap, as xterm does.
         breakWideAt(m_cursorCol);
-        grid()[m_cursorRow][m_cursorCol] = Cell{.fg = 0, .bg = bg, .ch = ' ', .flags = CellFlag::WideSpacer};
+        grid()[m_cursorRow][m_cursorCol] = Cell{.fg = 0, .bg = pen.bg, .ch = ' ', .flags = CellFlag::WideSpacer};
         m_cursorCol = 0;
         lineFeedImpl(true);
     }
     breakWideAt(m_cursorCol);
     breakWideAt(m_cursorCol + 1);
     Line &line = grid()[m_cursorRow];
-    line[m_cursorCol] = Cell{.fg = fg, .bg = bg, .ch = ch, .flags = withFlag(flags, CellFlag::Wide)};
-    line[m_cursorCol + 1] = Cell{.fg = fg, .bg = bg, .ch = ' ', .flags = withFlag(flags, CellFlag::WideSpacer)};
+    Cell lead = pen;
+    lead.ch = ch;
+    lead.flags = withFlag(pen.flags, CellFlag::Wide);
+    Cell spacer = pen;
+    spacer.ch = ' ';
+    spacer.flags = withFlag(pen.flags, CellFlag::WideSpacer);
+    line[m_cursorCol] = lead;
+    line[m_cursorCol + 1] = spacer;
     if (m_cursorCol + 2 >= m_cols) {
         m_cursorCol = m_cols - 1;
         m_pendingWrap = true;

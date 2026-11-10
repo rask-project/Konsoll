@@ -90,7 +90,7 @@ QByteArray Terminal::mouseReport(int button, int row, int col, int event, unsign
 
     const int x = std::clamp(col + 1, 1, m_screen.cols());
     const int y = std::clamp(row + 1, 1, m_screen.rows());
-    if (m_sgrMouse) {
+    if (sgrMouse()) {
         QByteArray report =
             "\x1b[<" + QByteArray::number(code) + ";" + QByteArray::number(x) + ";" + QByteArray::number(y);
         report.append(release ? 'm' : 'M');
@@ -190,7 +190,7 @@ void Terminal::processGroundByte(unsigned char c)
     if (c < 0x20 || c == 0x7f) {
         executeControl(c);
     } else if (c < 0x80) {
-        m_screen.putChar(c, m_fg, m_bg, m_flags);
+        m_screen.putChar(c, m_pen);
     } else if (c >= 0xc2 && c <= 0xdf) {
         m_utf8CodePoint = c & 0x1fu;
         m_utf8Minimum = 0x80;
@@ -417,9 +417,9 @@ void Terminal::putCodePoint(unsigned int codePoint)
     // one cell holding the full code point; the renderer encodes them as a
     // surrogate-pair string. East Asian wide characters and emoji take two.
     if (isWideChar(codePoint)) {
-        m_screen.putWideChar(codePoint, m_fg, m_bg, m_flags);
+        m_screen.putWideChar(codePoint, m_pen);
     } else {
-        m_screen.putChar(codePoint, m_fg, m_bg, m_flags);
+        m_screen.putChar(codePoint, m_pen);
     }
 }
 
@@ -456,28 +456,33 @@ void Terminal::combineWithPrevious(unsigned int mark)
     }
 }
 
+Terminal::ParamGroups Terminal::parseParamGroups(const QByteArray &body)
+{
+    // Values saturate instead of overflowing on absurd digit runs.
+    constexpr int kMaxParam = 99999;
+    ParamGroups groups(1);
+    int value = -1;
+    std::ranges::for_each(body, [&](char c) {
+        if (c >= '0' && c <= '9') {
+            value = std::min((std::max(value, 0) * 10) + (c - '0'), kMaxParam);
+            return;
+        }
+        groups.back().push_back(value);
+        value = -1;
+        if (c == ';') {
+            groups.emplace_back();
+        }
+        // ':' starts the next sub-parameter of the same group.
+    });
+    groups.back().push_back(value);
+    return groups;
+}
+
 std::vector<int> Terminal::parseParams(const QByteArray &body)
 {
-    std::vector<int> out;
-    int cur = 0;
-    bool has = false;
-    for (const char c : body) {
-        if (c >= '0' && c <= '9') {
-            cur = (cur * 10) + (c - '0');
-            has = true;
-        } else if (c == ';' || c == ':') {
-            // In colon-form SGR, an empty color-space field is optional
-            // (for example 38:2::r:g:b), so omit empty colon fields. Keep
-            // empty semicolon fields as zero-valued default parameters.
-            if (has || c == ';') {
-                out.push_back(has ? cur : 0);
-            }
-            cur = 0;
-            has = false;
-        }
-        // Other intermediate bytes are ignored here.
-    }
-    out.push_back(has ? cur : 0);
+    const ParamGroups groups = parseParamGroups(body);
+    std::vector<int> out(groups.size());
+    std::ranges::transform(groups, out.begin(), [](const std::vector<int> &group) { return std::max(group.front(), 0); });
     return out;
 }
 
@@ -542,8 +547,8 @@ void Terminal::handleCsi(char final)
         m_screen.eraseInLine(paramAt(p, 0, 0));
         break;
     case 'm':
-        handleSgr(p);
-        m_screen.setEraseBackground(m_bg);
+        handleSgr(parseParamGroups(m_csiParams));
+        m_screen.setEraseBackground(m_pen.bg);
         break;
     case 'X':
         m_screen.eraseChars(paramAt(p, 0, 1));
@@ -595,7 +600,7 @@ void Terminal::handlePrivateCsi(char final)
     case 'u':
         // Kitty keyboard protocol query: CSI ? u. Report support for
         // disambiguated key presses, including Shift+Enter.
-        m_keyboardProtocolQueryPending = true;
+        setExtraFlag(KeyboardProtocolQueryPending, true);
         break;
     case 'J':
         // DECSED: no protected cells, so it is a plain erase.
@@ -642,7 +647,7 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
     for (const int mode : params) {
         switch (mode) {
         case 1:
-            m_applicationCursorKeys = set;
+            setExtraFlag(ApplicationCursorKeys, set);
             break;
         case 25:
             m_screen.showCursor(set);
@@ -668,7 +673,7 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
                                : static_cast<unsigned char>(m_mouseModes & ~0x04u);
             break;
         case 1006:
-            m_sgrMouse = set;
+            setExtraFlag(SgrMouse, set);
             break;
         case 2004:
             setExtraFlag(BracketedPasteEnabled, set);
@@ -683,100 +688,180 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
     }
 }
 
-void Terminal::handleSgr(const std::vector<int> &p) // NOLINT: SGR dispatch is inherently branching
+namespace
 {
-    if (p.empty()) {
-        m_fg = 0;
-        m_bg = 0;
-        m_flags = CellFlag::None;
+// SGR codes that only turn CellFlag / CellAttr bits on or off.
+struct SgrToggle {
+    int code;
+    unsigned int flagsOn;
+    unsigned int flagsOff;
+    unsigned int attrsOn;
+    unsigned int attrsOff;
+};
+
+constexpr std::array kSgrToggles{
+    SgrToggle{.code = 1, .flagsOn = CellFlag::Bold, .flagsOff = 0, .attrsOn = 0, .attrsOff = 0},
+    SgrToggle{.code = 2, .flagsOn = CellFlag::Dim, .flagsOff = 0, .attrsOn = 0, .attrsOff = 0},
+    SgrToggle{.code = 3, .flagsOn = 0, .flagsOff = 0, .attrsOn = CellAttr::Italic, .attrsOff = 0},
+    SgrToggle{.code = 5, .flagsOn = 0, .flagsOff = 0, .attrsOn = CellAttr::Blink, .attrsOff = 0},
+    SgrToggle{.code = 6, .flagsOn = 0, .flagsOff = 0, .attrsOn = CellAttr::Blink, .attrsOff = 0},
+    SgrToggle{.code = 7, .flagsOn = CellFlag::Reverse, .flagsOff = 0, .attrsOn = 0, .attrsOff = 0},
+    SgrToggle{.code = 8, .flagsOn = CellFlag::Invisible, .flagsOff = 0, .attrsOn = 0, .attrsOff = 0},
+    SgrToggle{.code = 9, .flagsOn = CellFlag::Strike, .flagsOff = 0, .attrsOn = 0, .attrsOff = 0},
+    SgrToggle{.code = 22, .flagsOn = 0, .flagsOff = CellFlag::Bold | CellFlag::Dim, .attrsOn = 0, .attrsOff = 0},
+    SgrToggle{.code = 23, .flagsOn = 0, .flagsOff = 0, .attrsOn = 0, .attrsOff = CellAttr::Italic},
+    SgrToggle{.code = 25, .flagsOn = 0, .flagsOff = 0, .attrsOn = 0, .attrsOff = CellAttr::Blink},
+    SgrToggle{.code = 27, .flagsOn = 0, .flagsOff = CellFlag::Reverse, .attrsOn = 0, .attrsOff = 0},
+    SgrToggle{.code = 28, .flagsOn = 0, .flagsOff = CellFlag::Invisible, .attrsOn = 0, .attrsOff = 0},
+    SgrToggle{.code = 29, .flagsOn = 0, .flagsOff = CellFlag::Strike, .attrsOn = 0, .attrsOff = 0},
+    SgrToggle{.code = 53, .flagsOn = 0, .flagsOff = 0, .attrsOn = CellAttr::Overline, .attrsOff = 0},
+    SgrToggle{.code = 55, .flagsOn = 0, .flagsOff = 0, .attrsOn = 0, .attrsOff = CellAttr::Overline},
+};
+
+unsigned int indexedColor(int index)
+{
+    return static_cast<unsigned int>(std::clamp(index, 0, 255) + 1); // 256 palette -> 1..256
+}
+
+unsigned int rgbColor(int r, int g, int b)
+{
+    const auto channel = [](int v) { return static_cast<unsigned int>(std::clamp(v, 0, 255)); };
+    return 0x80000000u | (channel(r) << 16) | (channel(g) << 8) | channel(b);
+}
+
+// The basic 8/16 colors: 30-37/90-97 foreground, 40-47/100-107 background.
+// Returns false for any other code.
+bool applyBasicColor(int code, Cell &pen)
+{
+    if (code >= 30 && code <= 37) {
+        pen.fg = static_cast<unsigned int>(code - 30 + 1);
+    } else if (code >= 40 && code <= 47) {
+        pen.bg = static_cast<unsigned int>(code - 40 + 1);
+    } else if (code >= 90 && code <= 97) {
+        pen.fg = static_cast<unsigned int>(code - 90 + 9);
+    } else if (code >= 100 && code <= 107) {
+        pen.bg = static_cast<unsigned int>(code - 100 + 9);
+    } else {
+        return false;
+    }
+    return true;
+}
+} // namespace
+
+void Terminal::handleSgr(const ParamGroups &groups)
+{
+    std::size_t index = 0;
+    while (index < groups.size()) {
+        index += applySgr(groups, index);
+    }
+}
+
+// Applies the SGR group at `index` and returns how many groups it consumed
+// (the semicolon forms 38;5;n and 38;2;r;g;b span several).
+std::size_t Terminal::applySgr(const ParamGroups &groups, std::size_t index)
+{
+    const std::vector<int> &group = groups[index];
+    const int code = std::max(group.front(), 0);
+    switch (code) {
+    case 0:
+        resetPen();
+        break;
+    case 4:
+        // 4 alone is a single underline; 4:0 turns it off, 4:1..4:5 pick a style.
+        setUnderline(group.size() > 1 ? std::max(group[1], 0) : 1);
+        break;
+    case 21:
+        setUnderline(2); // double underline (ECMA-48), as in kitty and VTE.
+        break;
+    case 24:
+        setUnderline(0);
+        break;
+    case 38:
+        return applyExtendedColor(groups, index, m_pen.fg);
+    case 48:
+        return applyExtendedColor(groups, index, m_pen.bg);
+    case 58:
+        return applyExtendedColor(groups, index, m_pen.ul);
+    case 39:
+        m_pen.fg = 0;
+        break;
+    case 49:
+        m_pen.bg = 0;
+        break;
+    case 59:
+        m_pen.ul = 0;
+        break;
+    default:
+        applyBasicSgr(code);
+        break;
+    }
+    return 1;
+}
+
+void Terminal::applyBasicSgr(int code)
+{
+    if (applyBasicColor(code, m_pen)) {
         return;
     }
-
-    for (std::size_t i = 0; i < p.size(); ++i) {
-        const int n = p[i];
-        switch (n) {
-        case 0:
-            m_fg = 0;
-            m_bg = 0;
-            m_flags = CellFlag::None;
-            break;
-        case 1:
-            m_flags |= CellFlag::Bold;
-            break;
-        case 2:
-            m_flags |= CellFlag::Dim;
-            break;
-        case 4:
-            m_flags |= CellFlag::Underline;
-            break;
-        case 7:
-            m_flags |= CellFlag::Reverse;
-            break;
-        case 9:
-            m_flags |= CellFlag::Strike;
-            break;
-        case 22:
-            m_flags &= ~(CellFlag::Bold | CellFlag::Dim);
-            break;
-        case 23:
-            m_flags &= ~CellFlag::Strike;
-            break;
-        case 24:
-            m_flags &= ~CellFlag::Underline;
-            break;
-        case 27:
-            m_flags &= ~CellFlag::Reverse;
-            break;
-        case 29:
-            m_flags &= ~CellFlag::Strike;
-            break;
-        case 39:
-            m_fg = 0;
-            break;
-        case 49:
-            m_bg = 0;
-            break;
-        case 38: {
-            if (i + 1 < p.size() && p[i + 1] == 5 && i + 2 < p.size()) {
-                m_fg = static_cast<unsigned int>(p[i + 2] + 1); // 256 palette -> 1..256
-                i += 2;
-            } else if (i + 1 < p.size() && p[i + 1] == 2 && i + 4 < p.size()) {
-                const int r = std::clamp(p[i + 2], 0, 255);
-                const int g = std::clamp(p[i + 3], 0, 255);
-                const int b = std::clamp(p[i + 4], 0, 255);
-                m_fg = 0x80000000u | (static_cast<unsigned int>(r) << 16) | (static_cast<unsigned int>(g) << 8) |
-                       static_cast<unsigned int>(b);
-                i += 4;
-            }
-            break;
-        }
-        case 48: {
-            if (i + 1 < p.size() && p[i + 1] == 5 && i + 2 < p.size()) {
-                m_bg = p[i + 2] + 1;
-                i += 2;
-            } else if (i + 1 < p.size() && p[i + 1] == 2 && i + 4 < p.size()) {
-                const int r = std::clamp(p[i + 2], 0, 255);
-                const int g = std::clamp(p[i + 3], 0, 255);
-                const int b = std::clamp(p[i + 4], 0, 255);
-                m_bg = 0x80000000u | (static_cast<unsigned int>(r) << 16) | (static_cast<unsigned int>(g) << 8) |
-                       static_cast<unsigned int>(b);
-                i += 4;
-            }
-            break;
-        }
-        default:
-            if (n >= 30 && n <= 37) {
-                m_fg = n - 30 + 1;
-            } else if (n >= 40 && n <= 47) {
-                m_bg = n - 40 + 1;
-            } else if (n >= 90 && n <= 97) {
-                m_fg = n - 90 + 9;
-            } else if (n >= 100 && n <= 107) {
-                m_bg = n - 100 + 9;
-            }
-            break;
-        }
+    const auto *const toggle = std::ranges::find(kSgrToggles, code, &SgrToggle::code);
+    if (toggle == kSgrToggles.end()) {
+        return; // fonts, framed/encircled, ideograms: not rendered.
     }
+    m_pen.flags = static_cast<unsigned char>((m_pen.flags | toggle->flagsOn) & ~toggle->flagsOff);
+    m_pen.attrs = static_cast<unsigned char>((m_pen.attrs | toggle->attrsOn) & ~toggle->attrsOff);
+}
+
+// `style` is the SGR 4:n sub-parameter: 0 none, 1 single, 2 double, 3 curly,
+// 4 dotted, 5 dashed.
+void Terminal::setUnderline(int style)
+{
+    m_pen.attrs = static_cast<unsigned char>(m_pen.attrs & ~CellAttr::UnderlineMask);
+    if (style <= 0 || style > 5) {
+        m_pen.flags = static_cast<unsigned char>(m_pen.flags & ~CellFlag::Underline);
+        return;
+    }
+    m_pen.flags = static_cast<unsigned char>(m_pen.flags | CellFlag::Underline);
+    const auto bits = static_cast<unsigned int>(style - 1) << CellAttr::UnderlineShift;
+    m_pen.attrs = static_cast<unsigned char>(m_pen.attrs | bits);
+}
+
+void Terminal::resetPen()
+{
+    // SGR 0 resets the style; the OSC 8 hyperlink is not part of it.
+    const unsigned short link = m_pen.link;
+    m_pen = Cell{};
+    m_pen.link = link;
+}
+
+// 38/48/58 extended colors, in the colon form (38:5:n, 38:2:r:g:b,
+// 38:2:colorspace:r:g:b) or the semicolon form (38;5;n, 38;2;r;g;b).
+// Returns the number of groups consumed.
+std::size_t Terminal::applyExtendedColor(const ParamGroups &groups, std::size_t index, unsigned int &color)
+{
+    const std::vector<int> &group = groups[index];
+    if (group.size() > 1) {
+        if (group[1] == 5 && group.size() > 2) {
+            color = indexedColor(group[2]);
+        } else if (group[1] == 2 && group.size() >= 5) {
+            const std::size_t first = group.size() >= 6 ? 3 : 2; // skip the colorspace id
+            color = rgbColor(group[first], group[first + 1], group[first + 2]);
+        }
+        return 1;
+    }
+    const auto at = [&groups, index](std::size_t offset) {
+        return index + offset < groups.size() ? groups[index + offset].front() : -1;
+    };
+    if (at(1) == 5) {
+        if (at(2) >= 0) {
+            color = indexedColor(at(2));
+        }
+        return 3;
+    }
+    if (at(1) == 2) {
+        color = rgbColor(at(2), at(3), at(4));
+        return 5;
+    }
+    return 1;
 }
 
 void Terminal::handleOsc(const QByteArray &body)
@@ -940,11 +1025,9 @@ void Terminal::handleEsc(char c)
     case 'c':
         m_screen.fullReset();
         clearCommandBlocks();
-        m_fg = 0;
-        m_bg = 0;
+        m_pen = Cell{};
         m_screen.setEraseBackground(0);
-        m_flags = CellFlag::None;
-        m_applicationCursorKeys = false;
+        setExtraFlag(ApplicationCursorKeys, false);
         break;
     default:
         break;

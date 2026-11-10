@@ -8,6 +8,7 @@
 #include <QPointer>
 #include <QQuickItem>
 #include <QRawFont>
+#include <QTimer>
 #include <QtQml>
 
 #include <span>
@@ -110,6 +111,9 @@ private:
     void buildRowText(QSGTextNode &node, int row);
     void addTextRun(QSGTextNode &node, std::span<const Cell> run, qreal x, qreal top) const;
     bool primaryFontCovers(const Cell &cell);
+    const QFont &fontFor(const Cell &cell) const;
+    void toggleBlink();
+    void appendUnderline(std::vector<ColorRect> &rects, const Cell &cell, const QRectF &span) const;
     QRectF cellSpan(int row, int col, int count) const;
 
     static void uploadRects(QSGGeometryNode &node, const std::vector<ColorRect> &rects);
@@ -121,8 +125,11 @@ private:
     QFont m_baseFont;
     QFont m_font;
     QFont m_boldFont;
+    QFont m_italicFont;
+    QFont m_boldItalicFont;
     std::unordered_map<char32_t, bool> m_coverage; // code point -> in m_font
     QRawFont m_rawFont; // primary family only, for coverage checks
+    QTimer m_blinkTimer; // runs only while blinking cells are on screen
     qreal m_cellWidth{8.0};
     qreal m_cellHeight{16.0};
     QColor m_accent{0x0a, 0x84, 0xff};
@@ -137,6 +144,8 @@ private:
     int m_hoverEnd{-1};
     QRgb m_defaultBg{0xff141414};
     QRgb m_defaultFg{0xffe0e0e0};
+    int m_blinkRows{0};  // rows holding SGR 5/6 blinking cells
+    int m_blinkPhase{1}; // 1 = blinking text shown, 0 = hidden
 };
 
 } // namespace konsoll
