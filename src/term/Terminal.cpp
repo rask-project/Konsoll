@@ -1523,6 +1523,10 @@ void Terminal::handleOsc(const QByteArray &body)
         handleOscHyperlink(body);
         return;
     }
+    if (body.startsWith("9;") || body.startsWith("777;")) {
+        handleOscNotification(body);
+        return;
+    }
     if (body.startsWith("4;")) {
         handleOscPalette(body.mid(2));
         return;
@@ -1536,6 +1540,41 @@ void Terminal::handleOsc(const QByteArray &body)
     }
     handleOscTitle(body);
     // Other OSCs (icon name, notifications, ...) are ignored.
+}
+
+// OSC 9 ; text (iTerm2) and OSC 777 ; notify ; title ; body (rxvt) ask for a
+// desktop notification. OSC 9 ; N ; ... with a number is ConEmu's family
+// (progress, sleep, ...), not a notification.
+void Terminal::handleOscNotification(const QByteArray &body)
+{
+    constexpr qsizetype kMaxText = 4096;
+    QByteArray title;
+    QByteArray text;
+    if (body.startsWith("777;")) {
+        const QList<QByteArray> fields = body.split(';');
+        if (fields.size() < 3 || fields[1] != "notify") {
+            return;
+        }
+        title = fields[2];
+        text = fields.size() > 3 ? body.mid(body.indexOf(';', body.indexOf(';', 4) + 1) + 1) : QByteArray{};
+    } else {
+        text = body.mid(2);
+        const qsizetype separator = text.indexOf(';');
+        bool numeric = false;
+        text.left(separator).toInt(&numeric);
+        if (separator > 0 && numeric) {
+            return; // ConEmu OSC 9 ; N ; ...
+        }
+    }
+    if (text.isEmpty() && title.isEmpty()) {
+        return;
+    }
+    m_requests.push_back(TerminalRequest{.data = title.left(kMaxText),
+                                         .body = text.left(kMaxText),
+                                         .kind = TerminalRequest::Notification,
+                                         .a = 0,
+                                         .b = 0,
+                                         .c = 0});
 }
 
 void Terminal::handleOscRemoteHost(const QByteArray &body)
@@ -1565,6 +1604,7 @@ void Terminal::handleOscClipboard(const QByteArray &body)
     if (body.mid(separator + 1) == "?") {
         // Reading the clipboard is up to the user (see TerminalBackend).
         m_requests.push_back(TerminalRequest{.data = selection.isEmpty() ? QByteArray("c") : selection,
+                                             .body = {},
                                              .kind = TerminalRequest::ClipboardRead,
                                              .a = 0,
                                              .b = 0,

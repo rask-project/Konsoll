@@ -208,7 +208,7 @@ void Terminal::handleWindowOps(const std::vector<int> &params)
         break;
     case 20: // report icon label
     case 21: // report title
-        m_requests.push_back(TerminalRequest{.data = {}, .kind = TerminalRequest::TitleReport, .a = paramAt(params, 0, 0) == 20 ? 1 : 0, .b = 0, .c = 0});
+        m_requests.push_back(TerminalRequest{.data = {}, .body = {}, .kind = TerminalRequest::TitleReport, .a = paramAt(params, 0, 0) == 20 ? 1 : 0, .b = 0, .c = 0});
         break;
     case 1:  // de-iconify
     case 2:  // iconify
@@ -221,6 +221,7 @@ void Terminal::handleWindowOps(const std::vector<int> &params)
     case 10: // full screen: 0 leave, 1 enter, 2 toggle
         // Window manipulation needs the window and the user's permission.
         m_requests.push_back(TerminalRequest{.data = {},
+                                             .body = {},
                                              .kind = TerminalRequest::WindowOp,
                                              .a = paramAt(params, 0, 0),
                                              .b = params.size() > 1 ? params[1] : 0,

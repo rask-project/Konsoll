@@ -2,6 +2,7 @@
 
 #include "KeyEncoder.h"
 #include "NativeDialogs.h"
+#include "Notifications.h"
 #include "term/Grapheme.h"
 #include "term/Palette.h"
 
@@ -193,6 +194,12 @@ void TerminalBackend::handleRequests()
         case TerminalRequest::WindowOp:
             if (settings.value(QStringLiteral("General/allowWindowOps"), false).toBool()) {
                 emit windowOperationRequested(request.a, request.b, request.c);
+            }
+            break;
+        case TerminalRequest::Notification:
+            if (settings.value(QStringLiteral("General/allowNotifications"), true).toBool()) {
+                const QString title = QString::fromUtf8(request.data);
+                postNotification(title.isEmpty() ? m_title : title, QString::fromUtf8(request.body));
             }
             break;
         default:

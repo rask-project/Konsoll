@@ -368,6 +368,16 @@ Window {
                         }
 
                         FormRow {
+                            label: qsTr("Show notifications")
+                            detail: qsTr("Desktop notifications (OSC 9 / OSC 777)")
+
+                            Switch {
+                                checked: control.preferences.allowNotifications
+                                onToggled: control.preferences.allowNotifications = checked
+                            }
+                        }
+
+                        FormRow {
                             label: qsTr("Move and resize the window")
                             detail: qsTr("Window operations (CSI t)")
 

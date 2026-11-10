@@ -85,6 +85,8 @@ qt_add_qml_module(konsoll
         src/KeyEncoder.h
         src/NativeDialogs.h
         src/NativeDialogs.mm
+        src/Notifications.h
+        src/Notifications.mm
         src/TerminalBackend.cpp
         src/TerminalBackend.h
         src/TerminalManager.cpp
@@ -173,6 +175,7 @@ target_compile_definitions(konsoll PRIVATE
 target_link_libraries(konsoll
     PRIVATE Qt6::Quick Qt6::CanvasPainter Qt6::QuickControls2 Qt6::QuickDialogs2 Qt6::Svg
     "-framework QuartzCore"
+    "-framework UserNotifications"
     z
 )
 

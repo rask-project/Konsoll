@@ -676,6 +676,18 @@ void modifyOtherKeys(int &failures)
                   "modifyOtherKeys 2: every Ctrl / Alt key, CSI u format");
 }
 
+// OSC 9 / OSC 777 desktop notifications.
+void notifications(int &failures)
+{
+    Terminal term(4, 10, QStringLiteral("selftest"));
+    term.write("\x1b]9;Build done\x07\x1b]9;4;1;50\x07\x1b]777;notify;Tests;3 passed; 0 failed\x1b\\\x1b]777;other;x\x07");
+    const std::vector<TerminalRequest> requests = term.takeRequests();
+    selfTestCheck(failures, requests.size() == 2 && requests[0].kind == TerminalRequest::Notification &&
+                                requests[0].data.isEmpty() && requests[0].body == "Build done" && requests[1].data == "Tests" &&
+                                requests[1].body == "3 passed; 0 failed",
+                  "notify: OSC 9 text and OSC 777 notify; ConEmu OSC 9;4 progress is not a notification");
+}
+
 // Reflow keeps images and double-size lines with their text.
 void reflowAnchors(int &failures)
 {
@@ -822,6 +834,7 @@ void runParserSelfTest(int &failures)
     mouseExtras(failures);
     reverseWraparound(failures);
     reflowAnchors(failures);
+    notifications(failures);
     fixtureRegressions(failures);
 }
 

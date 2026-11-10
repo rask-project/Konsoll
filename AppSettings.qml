@@ -14,6 +14,7 @@ Settings {
     property int clipboardRead: 1 // OSC 52 read: 0 never, 1 ask, 2 always
     property bool allowTitleReport: false // XTWINOPS 20/21
     property bool allowWindowOps: false   // XTWINOPS move/resize/iconify
+    property bool allowNotifications: true // OSC 9 / OSC 777 desktop notifications
 
     // Settings > Keyboard.
     property bool optionAsMeta: false // Option sends ESC + key instead of composing

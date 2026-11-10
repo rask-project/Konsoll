@@ -23,9 +23,11 @@ struct TerminalRequest {
     enum Kind : std::uint8_t {
         ClipboardRead, // OSC 52 ; selection ; ?   (data = selection)
         TitleReport,   // XTWINOPS 21 (a = 0) / 20 icon label (a = 1)
-        WindowOp       // XTWINOPS 1-10: a = operation, b / c = its parameters
+        WindowOp,      // XTWINOPS 1-10: a = operation, b / c = its parameters
+        Notification   // OSC 9 / OSC 777 notify: data = title (may be empty), body = text
     };
     QByteArray data;
+    QByteArray body;
     int kind{ClipboardRead};
     int a{0};
     int b{0};
@@ -284,6 +286,7 @@ private:
     void handleOscPalette(const QByteArray &body);
     void handleOscPaletteReset(const QByteArray &indices);
     void handleOscHyperlink(const QByteArray &body);
+    void handleOscNotification(const QByteArray &body);
     unsigned int dynamicColor(int code) const;
     void setDynamicColor(int code, unsigned int color);
     void reportInBandSize();
