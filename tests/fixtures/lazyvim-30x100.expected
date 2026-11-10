@@ -59,4 +59,4 @@
 | NORMAL   main    README.md                                           6  23%  41:17   14:09 |
  cccccccccccccccccccccBBBBBBBBBBccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 --cursor 24,74 alt=1 visible=1
---responses \e[?69;2$y\e[?2026;2$y\e[?2027;0$y\e[?2031;2$y\e[?2048;2$y\eP1$r0;4:3m\e\x5c\e[?0u\e[?64;4;6;21;22;28c\e]11;rgb:1414/1414/1414\e\x5c\e[0n\e]11;rgb:1414/1414/1414\e\x5c\e[0n\e[?64;4;6;21;22;28c\e[48;30;100;480;800t\eP1+r4d73=1b5d35323b25703125733b257032257307\e\x5c
+--responses \e[?69;2$y\e[?2026;2$y\e[?2027;2$y\e[?2031;2$y\e[?2048;2$y\eP1$r0;4:3m\e\x5c\e[?0u\e[?64;4;6;21;22;28c\e]11;rgb:1414/1414/1414\e\x5c\e[0n\e]11;rgb:1414/1414/1414\e\x5c\e[0n\e[?64;4;6;21;22;28c\e[48;30;100;480;800t\eP1+r4d73=1b5d35323b25703125733b257032257307\e\x5c

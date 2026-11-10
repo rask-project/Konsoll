@@ -2,6 +2,7 @@
 
 #include "KeyEncoder.h"
 #include "screendump.h"
+#include "term/Grapheme.h"
 #include "term/Terminal.h"
 
 #include <QBuffer>
@@ -675,6 +676,36 @@ void modifyOtherKeys(int &failures)
                   "modifyOtherKeys 2: every Ctrl / Alt key, CSI u format");
 }
 
+// Grapheme clusters (mode 2027).
+void graphemeClusters(int &failures)
+{
+    const QByteArray family = "\xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x91\xa7";
+    {
+        const Terminal term = feed("\x1b[?2027h" + family + "x");
+        const Cell &cell = term.screen().cellAt(0, 0);
+        selfTestCheck(failures, cell.ch >= kClusterBase && (cell.flags & CellFlag::Wide) != 0u &&
+                                    cellText(cell.ch) == QString::fromUtf8(family) && term.screen().cellAt(0, 2).ch == 'x',
+                      "grapheme: a ZWJ family is one wide cell");
+    }
+    selfTestCheck(failures, feed(family + "x").screen().cursorCol() == 7,
+                  "grapheme: without mode 2027 a ZWJ sequence keeps the per-code-point widths");
+    selfTestCheck(failures, feed("\x1b[?2027h\xf0\x9f\x87\xa7\xf0\x9f\x87\xb7\xf0\x9f\x87\xa7\xf0\x9f\x87\xb7").screen().cursorCol() == 4,
+                  "grapheme: regional indicators pair into flags");
+    selfTestCheck(failures, feed("\x1b[?2027h\xf0\x9f\x91\x8d\xf0\x9f\x8f\xbd" "x").screen().cursorCol() == 3 &&
+                                feed("\x1b[?2027h\xe2\x9d\xa4\xef\xb8\x8f" "x").screen().cursorCol() == 3,
+                  "grapheme: emoji modifier and VS16 clusters are wide");
+    {
+        const Terminal term = feed("\x1b[?2027he\xcc\xa3\xcc\x81x");
+        // e + dot below composes to U+1EB9; the acute stays in the cluster.
+        selfTestCheck(failures, cellCodePoints(term.screen().cellAt(0, 0).ch) == std::u32string(U"\u1EB9\u0301") &&
+                                    term.screen().cellAt(0, 1).ch == 'x',
+                      "grapheme: a letter keeps several combining marks in one cell");
+    }
+    selfTestCheck(failures, replies("\x1b[?2027$p\x1b[?2027h\x1b[?2027$p") == "\x1b[?2027;2$y\x1b[?2027;1$y" &&
+                                feed("\x1b[?2027h\xf0\x9f\x87\xa7\xf0\x9f\x87\xb7\x1b[2b").screen().cursorCol() == 6,
+                  "grapheme: DECRQM ?2027 and REP of a cluster");
+}
+
 // tests/fixtures: recorded program output replayed against its expected
 // screen (see tools/regress.py).
 void fixtureRegressions(int &failures)
@@ -715,6 +746,7 @@ void runParserSelfTest(int &failures)
     marginsAndRectangles(failures);
     lineSizes(failures);
     modifyOtherKeys(failures);
+    graphemeClusters(failures);
     fixtureRegressions(failures);
 }
 

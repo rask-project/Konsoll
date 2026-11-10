@@ -107,6 +107,8 @@ qt_add_qml_module(konsoll
         src/term/Charsets.h
         src/term/CharWidth.cpp
         src/term/CharWidth.h
+        src/term/Grapheme.cpp
+        src/term/Grapheme.h
         src/term/Graphics.cpp
         src/term/Graphics.h
         src/term/Palette.cpp

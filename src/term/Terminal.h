@@ -258,6 +258,7 @@ private:
     void softReset();
     void fullReset();
     void printCodePoint(unsigned int codePoint);
+    bool extendPreviousCluster(unsigned int codePoint);
     unsigned int mapCharset(unsigned char c);
     void repeatLastCharacter(int count);
     void handleAnsiMode(bool set, const std::vector<int> &params);

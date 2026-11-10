@@ -295,6 +295,8 @@ int Terminal::decModeState(int mode) const
         return flag(BracketedPasteEnabled);
     case 2026:
         return flag(SynchronizedUpdates);
+    case 2027:
+        return state(m_screen.graphemeClustering());
     case 2031:
         return flag(ColorSchemeReports);
     case 2048:

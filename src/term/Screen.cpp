@@ -261,6 +261,17 @@ void Screen::setAutoWrap(bool on)
     }
 }
 
+void Screen::setGraphemeClustering(bool on)
+{
+    m_modes = on ? withFlag(m_modes, GraphemeMode) : withoutFlag(m_modes, GraphemeMode);
+}
+
+bool Screen::previousCharIsWide() const
+{
+    const int col = previousCharCol();
+    return col >= 0 && hasFlag(grid()[m_cursorRow][col], CellFlag::Wide);
+}
+
 void Screen::setInsertMode(bool on)
 {
     m_modes = on ? withFlag(m_modes, InsertMode) : withoutFlag(m_modes, InsertMode);

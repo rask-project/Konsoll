@@ -54,6 +54,9 @@ public:
     void setAutoWrap(bool on);
     bool insertMode() const { return (m_modes & InsertMode) != 0; }
     void setInsertMode(bool on);
+    // Mode 2027: grapheme clusters take one (or two) cells.
+    bool graphemeClustering() const { return (m_modes & GraphemeMode) != 0; }
+    void setGraphemeClustering(bool on);
     // DECLRMM (?69) and DECSLRM: left/right margins (0-based inclusive).
     bool leftRightMarginMode() const { return (m_modes & LeftRightMarginMode) != 0; }
     void setLeftRightMarginMode(bool on);
@@ -103,6 +106,7 @@ public:
     // Turn the previously written narrow character into a wide one (emoji
     // presentation selector U+FE0F) when there is room on the row.
     void widenPreviousChar();
+    bool previousCharIsWide() const;
 
     // Line discipline.
     void lineFeed();
@@ -204,6 +208,7 @@ private:
     static constexpr unsigned char AutoWrapMode = 0x02;
     static constexpr unsigned char InsertMode = 0x04;
     static constexpr unsigned char LeftRightMarginMode = 0x08;
+    static constexpr unsigned char GraphemeMode = 0x10;
     static constexpr int SavedPendingWrap = 0x01;
     static constexpr int SavedOriginMode = 0x02;
 

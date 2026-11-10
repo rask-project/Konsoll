@@ -1,5 +1,6 @@
 #include "screendump.h"
 
+#include "term/Grapheme.h"
 #include "term/Terminal.h"
 
 #include <QByteArray>
@@ -74,8 +75,7 @@ QByteArray dumpTerminal(Terminal &term, bool attrs)
             if ((cell.flags & CellFlag::WideSpacer) != 0u) {
                 return;
             }
-            const auto cp = static_cast<char32_t>(cell.ch);
-            text += QString::fromUcs4(&cp, 1);
+            text += cellText(cell.ch);
             marks += styleMark(cell);
         });
         out += "|" + text.toUtf8() + "|";

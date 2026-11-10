@@ -1,5 +1,7 @@
 #include "TerminalRenderer.h"
 
+#include "term/Grapheme.h"
+
 #include <QFontMetricsF>
 #include <QQuickWindow>
 #include <QSGGeometry>
@@ -701,6 +703,9 @@ bool TerminalRenderer::primaryFontCovers(const Cell &cell)
     if (cell.ch < 0x80u) {
         return true; // ASCII: present in any monospace font
     }
+    if (cell.ch >= kClusterBase) {
+        return false; // a grapheme cluster is laid out on its own
+    }
     const auto [entry, inserted] = m_coverage.try_emplace(static_cast<char32_t>(cell.ch), false);
     if (inserted) {
         entry->second = m_rawFont.supportsCharacter(cell.ch);
@@ -759,8 +764,9 @@ void TerminalRenderer::addTextRun(QSGTextNode &node, std::span<const Cell> run, 
 
     std::u32string codePoints;
     codePoints.reserve(run.size());
-    std::ranges::transform(run, std::back_inserter(codePoints),
-                           [](const Cell &cell) { return isBlank(cell) ? U' ' : static_cast<char32_t>(cell.ch); });
+    std::ranges::for_each(run, [&codePoints](const Cell &cell) {
+        codePoints += isBlank(cell) ? std::u32string(1, U' ') : cellCodePoints(cell.ch); // clusters expand
+    });
 
     QTextOption option;
     option.setWrapMode(QTextOption::NoWrap);

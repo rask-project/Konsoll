@@ -2,6 +2,7 @@
 
 #include "KeyEncoder.h"
 #include "NativeDialogs.h"
+#include "term/Grapheme.h"
 #include "term/Palette.h"
 
 #include <QClipboard>
@@ -63,8 +64,7 @@ void appendCellText(QString &text, const Cell &cell)
     if ((cell.flags & CellFlag::WideSpacer) != 0u) {
         return;
     }
-    const char32_t cp = static_cast<char32_t>(cell.ch);
-    text.append(QString::fromUcs4(&cp, 1));
+    text.append(cellText(cell.ch)); // a code point or a grapheme cluster
 }
 
 QRgb readableForeground(QRgb foreground, QRgb background)
@@ -540,7 +540,9 @@ QVariantMap TerminalBackend::linkAt(int row, int col) const
     const Line &cells = screen.lineAt(visibleStart() + row);
     QString line;
     std::ranges::for_each(std::views::iota(0, static_cast<int>(cells.size())), [&cells, &line](int index) {
-        const char32_t codePoint = static_cast<char32_t>(cells.at(static_cast<std::size_t>(index)).ch);
+        // A cluster becomes one placeholder so text positions stay cell columns.
+        const unsigned int ch = cells.at(static_cast<std::size_t>(index)).ch;
+        const auto codePoint = static_cast<char32_t>(ch >= kClusterBase ? 0xFFFCu : ch);
         line.append(QString::fromUcs4(&codePoint, 1));
     });
 
@@ -815,8 +817,7 @@ int TerminalBackend::search(const QString &query, bool regex)
         text.reserve(static_cast<qsizetype>(line.size()));
         for (int cellIndex = 0; cellIndex < static_cast<int>(line.size()); ++cellIndex) {
             const Cell &cell = line.at(static_cast<std::size_t>(cellIndex));
-            const char32_t cp = static_cast<char32_t>(cell.ch);
-            const QString glyph = QString::fromUcs4(&cp, 1);
+            const QString glyph = cellText(cell.ch);
             for (qsizetype unit = 0; unit < glyph.size(); ++unit) {
                 offsetToCell.append(cellIndex);
             }
@@ -1633,9 +1634,8 @@ QVariantList TerminalBackend::snapshot() const
         std::ranges::for_each(cells, [&rowsOut](const Cell &cell) {
             // Encode the code point as a QString (surrogate pair when
             // supplementary) so the QML renderer draws one glyph per cell.
-            const char32_t cp = static_cast<char32_t>(cell.ch);
             QVariantMap m;
-            m["ch"] = QString::fromUcs4(&cp, 1);
+            m["ch"] = cellText(cell.ch);
             m["fg"] = static_cast<int>(cell.fg);
             m["bg"] = static_cast<int>(cell.bg);
             m["flags"] = static_cast<int>(cell.flags);

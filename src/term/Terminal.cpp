@@ -2,6 +2,7 @@
 
 #include "CharWidth.h"
 #include "Charsets.h"
+#include "Grapheme.h"
 
 #include <QChar>
 #include <QList>
@@ -446,6 +447,11 @@ void Terminal::putCodePoint(unsigned int codePoint)
         return;
     }
 
+    // Mode 2027: the code point may continue the previous cell's cluster.
+    if (m_screen.graphemeClustering() && extendPreviousCluster(codePoint)) {
+        return;
+    }
+
     if (isZeroWidth(codePoint)) {
         combineWithPrevious(codePoint);
         return;
@@ -458,9 +464,36 @@ void Terminal::putCodePoint(unsigned int codePoint)
 // Font icons, U+F0xxx) occupy one cell holding the full code point; the
 // renderer encodes them as a surrogate-pair string. East Asian wide
 // characters and emoji take two.
+// Appends `codePoint` to the cluster in the previous cell (mode 2027),
+// widening the cell when the cluster gains emoji presentation.
+bool Terminal::extendPreviousCluster(unsigned int codePoint)
+{
+    const std::optional<unsigned int> previous = m_screen.previousChar();
+    if (!previous) {
+        return false;
+    }
+    std::u32string cluster = cellCodePoints(*previous);
+    if (!extendsCluster(cluster, static_cast<char32_t>(codePoint))) {
+        return false;
+    }
+    cluster.push_back(static_cast<char32_t>(codePoint));
+    // A letter with a mark that has a precomposed form stays one code point.
+    const QList<uint> composed =
+        QString::fromUcs4(cluster.data(), static_cast<qsizetype>(cluster.size())).normalized(QString::NormalizationForm_C).toUcs4();
+    const int width = graphemeWidth(cluster);
+    const bool wasWide = m_screen.previousCharIsWide();
+    const unsigned int cell = composed.size() == 1 ? composed.front() : internCluster(cluster, width);
+    m_screen.replacePreviousChar(cell);
+    if (width == 2 && !wasWide) {
+        m_screen.widenPreviousChar();
+    }
+    m_lastGraphic = cell;
+    return true;
+}
+
 void Terminal::printCodePoint(unsigned int codePoint)
 {
-    if (isWideChar(codePoint)) {
+    if (clusterWidth(codePoint) == 2 || (codePoint < kClusterBase && isWideChar(codePoint))) {
         m_screen.putWideChar(codePoint, m_pen);
     } else {
         m_screen.putChar(codePoint, m_pen);
@@ -512,7 +545,7 @@ void Terminal::combineWithPrevious(unsigned int mark)
         return;
     }
     const std::optional<unsigned int> base = m_screen.previousChar();
-    if (!base) {
+    if (!base || *base >= kClusterBase) {
         return;
     }
     const std::array<char32_t, 2> pair{static_cast<char32_t>(*base), static_cast<char32_t>(mark)};
@@ -1241,6 +1274,9 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
             break;
         case 1016:
             setExtraFlag(SgrPixelMouse, set);
+            break;
+        case 2027:
+            m_screen.setGraphemeClustering(set);
             break;
         case 2031:
             setExtraFlag(ColorSchemeReports, set);
