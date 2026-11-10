@@ -676,6 +676,23 @@ void modifyOtherKeys(int &failures)
                   "modifyOtherKeys 2: every Ctrl / Alt key, CSI u format");
 }
 
+// Reflow keeps images and double-size lines with their text.
+void reflowAnchors(int &failures)
+{
+    const QByteArray rgba("\xff\x00\x00\xff\xff\x00\x00\xff\xff\x00\x00\xff\xff\x00\x00\xff", 16);
+    Terminal term(6, 10, QStringLiteral("selftest"));
+    // A line that wraps (15 cells at width 10), then an image below it.
+    term.write("abcdefghijklmno\r\n\x1b_Ga=T,f=32,s=2,v=2;" + rgba.toBase64() + "\x1b\\\r\n\x1b#6wide");
+    const long long before = term.graphics().placements().front().anchor - term.screen().rowAnchor(0);
+    const bool wideBefore = term.screen().lineSize(term.screen().scrollbackSize() + 3) == Screen::DoubleWidthLine;
+    term.resize(6, 20); // the first line now fits in one row: everything below moves up one
+    const long long after = term.graphics().placements().front().anchor - term.screen().rowAnchor(0);
+    const int wideRow = term.screen().scrollbackSize() + 2;
+    selfTestCheck(failures, before == 2 && after == 1 && wideBefore &&
+                                term.screen().lineSize(wideRow) == Screen::DoubleWidthLine,
+                  "reflow: images and double-size lines follow their text across a resize");
+}
+
 // Reverse wraparound (?45 / ?1045).
 void reverseWraparound(int &failures)
 {
@@ -804,6 +821,7 @@ void runParserSelfTest(int &failures)
     optionAsMeta(failures);
     mouseExtras(failures);
     reverseWraparound(failures);
+    reflowAnchors(failures);
     fixtureRegressions(failures);
 }
 

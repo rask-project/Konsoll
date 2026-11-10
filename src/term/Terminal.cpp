@@ -33,6 +33,9 @@ void Terminal::write(const QByteArray &data)
 void Terminal::resize(int rows, int cols)
 {
     m_screen.resize(rows, cols);
+    // Images follow their text when the main screen re-wraps.
+    const Screen::ReflowMap reflow = m_screen.takeReflowMap();
+    m_graphics.remapAnchors(reflow.base, reflow.anchors);
     clearCommandBlocks();
     if ((m_extraFlags & InBandResize) != 0) {
         reportInBandSize();
@@ -1055,6 +1058,8 @@ void Terminal::setAltScreenMode(int mode, bool set)
     // go with that screen.
     m_graphics.clearAlternate();
     m_screen.leaveAltScreen(mode == 1049);
+    const Screen::ReflowMap reflow = m_screen.takeReflowMap();
+    m_graphics.remapAnchors(reflow.base, reflow.anchors);
     if (mode == 1049) {
         restoreCursorState(false);
     }

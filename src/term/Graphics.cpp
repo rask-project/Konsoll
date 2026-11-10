@@ -481,6 +481,26 @@ void GraphicsStore::erasePlacements(int alternate, long long first, long long la
     }
 }
 
+void GraphicsStore::remapAnchors(long long base, const std::vector<long long> &anchors)
+{
+    if (anchors.empty()) {
+        return;
+    }
+    const auto last = static_cast<long long>(anchors.size()) - 1;
+    std::ranges::for_each(m_placements, [&](GraphicsPlacement &placement) {
+        if (placement.alternate != 0) {
+            return;
+        }
+        const long long index = placement.anchor - base;
+        if (index >= 0 && index <= last) {
+            placement.anchor = anchors[static_cast<std::size_t>(index)];
+        } else if (index > last) {
+            placement.anchor = anchors.back() + (index - last);
+        }
+    });
+    touch();
+}
+
 void GraphicsStore::clearAlternate()
 {
     const auto before = m_placements.size();

@@ -71,6 +71,9 @@ public:
     // (alternate = 0) or alternate screen.
     void erasePlacements(int alternate, long long first, long long last);
     void clearAlternate();
+    // After a reflow: main-screen placements anchored at base + i move to
+    // anchors[i]; ones past the end keep their distance from the last line.
+    void remapAnchors(long long base, const std::vector<long long> &anchors);
     void clear();
 
     const std::vector<GraphicsPlacement> &placements() const { return m_placements; }

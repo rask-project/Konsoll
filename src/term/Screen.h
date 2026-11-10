@@ -7,6 +7,7 @@
 #include <deque>
 #include <optional>
 #include <ranges>
+#include <utility>
 #include <vector>
 
 namespace konsoll
@@ -202,6 +203,16 @@ public:
     int lineSize(int index) const;
     void setLineSize(int size); // the cursor row
 
+    // How the last reflow moved the main screen's lines: entry i is the new
+    // absolute anchor (see lineAnchor) of the line that had anchor base + i.
+    // Images use it to follow their text across a resize; empty when no
+    // reflow happened since the last call.
+    struct ReflowMap {
+        long long base{0};
+        std::vector<long long> anchors;
+    };
+    ReflowMap takeReflowMap() { return std::exchange(m_reflowMap, ReflowMap{}); }
+
     // Full reset (ESC c): leaves the alternate screen and resets every mode.
     void fullReset();
     // Soft reset (DECSTR): modes, margins and the saved cursor; keeps content.
@@ -266,9 +277,12 @@ private:
         size_t &cursorLogical, size_t &cursorLogicalCol) const;
     ReflowedScreen rewrapLogicalLines(
         const std::vector<std::vector<Cell>> &logical, size_t cursorLogical, size_t cursorLogicalCol,
-        size_t &cursorNewPhys, size_t &cursorNewCol) const;
+        size_t &cursorNewPhys, size_t &cursorNewCol, std::vector<size_t> &logicalStarts) const;
+    void remapAfterReflow(const std::vector<Line> &phys, const std::vector<bool> &wrapped,
+                          const std::vector<size_t> &logicalStarts, size_t keepFrom);
     void wrapLogicalLine(const std::vector<Cell> &log, ReflowedScreen &out, std::vector<size_t> &chunkStarts) const;
-    void redistribute(const ReflowedScreen &rewrapped, size_t cursorNewPhys, size_t cursorNewCol);
+    void redistribute(const ReflowedScreen &rewrapped, size_t cursorNewPhys, size_t cursorNewCol, size_t &keepFrom,
+                      size_t &screenStart);
     std::vector<Line> &grid() { return m_inAlt ? m_alt : m_main; }
     const std::vector<Line> &grid() const { return m_inAlt ? m_alt : m_main; }
 
@@ -290,6 +304,7 @@ private:
     // alternate screen is shown.
     std::vector<unsigned char> m_lineSizes;
     std::vector<unsigned char> m_mainSavedLineSizes;
+    ReflowMap m_reflowMap;
     long long m_droppedLines = 0; // history lines removed from the top so far
     long long m_altScrolled = 0;  // alternate-screen scroll-ups so far
     int m_rows;
