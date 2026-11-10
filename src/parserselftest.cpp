@@ -121,12 +121,95 @@ void sgrAttributes(int &failures)
     }
 }
 
+bool cursorAt(const Terminal &term, int row, int col)
+{
+    return term.screen().cursorRow() == row && term.screen().cursorCol() == col;
+}
+
+// Stage 3: cursor movement, REP, tabs, saved cursor.
+void cursorSequences(int &failures)
+{
+    selfTestCheck(failures, cursorAt(feed("ab\x1b[2E"), 2, 0) && cursorAt(feed("\x1b[3;5H\x1b[F"), 1, 0),
+                  "csi: CNL (E) / CPL (F) move lines and return");
+    selfTestCheck(failures, cursorAt(feed("\x1b[5`"), 0, 4) && cursorAt(feed("ab\x1b[2a"), 0, 4) &&
+                                cursorAt(feed("\x1b[2e"), 2, 0),
+                  "csi: HPA (`), HPR (a), VPR (e)");
+    selfTestCheck(failures, rowText(feed("-\x1b[4b"), 0) == QStringLiteral("-----"), "csi: REP (b) repeats the last character");
+    selfTestCheck(failures, rowText(feed("abcdefgh\r\x1b[2C \x1b[5b"), 0) == QStringLiteral("ab"),
+                  "csi: REP of spaces erases the rest of a prompt line");
+    selfTestCheck(failures, cursorAt(feed("\x1b[2I", 4, 20), 0, 16) && cursorAt(feed("\x1b[18G\x1b[Z", 4, 20), 0, 16),
+                  "csi: CHT (I) / CBT (Z) use tab stops");
+    selfTestCheck(failures, cursorAt(feed("\x1b[3g\x1b[5G\x1bH\r\t", 4, 20), 0, 4),
+                  "csi: TBC clears tab stops, HTS sets one");
+    selfTestCheck(failures, rowText(feed("ab\x1b[s\x1b[3;1Hz\x1b[ux"), 0) == QStringLiteral("abx"),
+                  "csi: SCOSC (s) / SCORC (u) save and restore the cursor");
+    {
+        const Terminal term = feed("\x1b[1m\x1b" "7\x1b[0m\x1b" "8x");
+        selfTestCheck(failures, (term.screen().cellAt(0, 0).flags & CellFlag::Bold) != 0u,
+                      "esc: DECSC / DECRC save and restore the pen");
+    }
+    selfTestCheck(failures, cursorAt(feed("\x1b[2;4r\x1b[3;1H\x1b[10A"), 1, 0) &&
+                                cursorAt(feed("\x1b[2;3r\x1b[2;1H\x1b[10B"), 2, 0),
+                  "csi: CUU / CUD stop at the scroll margins");
+    selfTestCheck(failures, cursorAt(feed("\x1b[3;1Hx\x1b[2;3r"), 0, 0), "csi: DECSTBM homes the cursor");
+    selfTestCheck(failures, cursorAt(feed("abc\x1b[L"), 0, 0) && cursorAt(feed("abc\x1b[M"), 0, 0),
+                  "csi: IL / DL return to the left margin");
+}
+
+// Stage 3: modes, screens, character sets.
+void screenModes(int &failures)
+{
+    {
+        const Terminal term = feed("hello\x1b[?1049h\x1b[2;2Hvim\x1b[?1049l");
+        selfTestCheck(failures, !term.screen().inAltScreen() && cursorAt(term, 0, 5) && rowText(term, 0) == QStringLiteral("hello"),
+                      "mode 1049: leaving restores the main screen cursor");
+    }
+    {
+        Terminal term = feed("1\r\n2\r\n3\r\n4\r\n", 2, 10);
+        const int before = term.screen().scrollbackSize();
+        term.write("\x1b[?1049hx\x1b[?1049l");
+        selfTestCheck(failures, before > 0 && term.screen().scrollbackSize() == before,
+                      "mode 1049: the alternate screen keeps the main scrollback");
+    }
+    {
+        const Terminal term = feed("top\x1b[1;2r\x1b[4;1Hx\n");
+        selfTestCheck(failures, cursorAt(term, 3, 1) && rowText(term, 0) == QStringLiteral("top"),
+                      "lf: below the scroll region the cursor does not scroll it");
+    }
+    selfTestCheck(failures, rowText(feed("abcdefghij\x1b[1;8H\x1b[20@"), 0) == QStringLiteral("abcdefg") &&
+                                rowText(feed("abcdefghij\x1b[1;3H\x1b[20P"), 0) == QStringLiteral("ab"),
+                  "csi: ICH / DCH with a count past the right margin");
+    selfTestCheck(failures, rowText(feed("\x1b(0qx\x1b(Bq"), 0) == QStringLiteral(u"─│q") &&
+                                rowText(feed("\x1b)0\x0eq\x0fq"), 0) == QStringLiteral(u"─q"),
+                  "charset: DEC special graphics via G0 and via G1 + SO/SI");
+    selfTestCheck(failures, cursorAt(feed("\x1b[2;3r\x1b[?6h\x1b[1;1Hx"), 1, 1), "mode 6: origin mode addresses the region");
+    {
+        const Terminal term = feed("\x1b[?7labcdefghijXY");
+        selfTestCheck(failures, rowText(term, 0) == QStringLiteral("abcdefghiY") && rowText(term, 1).isEmpty(),
+                      "mode 7: without autowrap the last column is overwritten");
+    }
+    selfTestCheck(failures, rowText(feed("abc\r\x1b[4hX"), 0) == QStringLiteral("Xabc"), "mode 4: insert mode (IRM)");
+    selfTestCheck(failures, rowText(feed("\x1b#8"), 3) == QStringLiteral("EEEEEEEEEE"), "esc: DECALN fills the screen");
+    {
+        const Terminal term = feed("\x1b[?6h\x1b[4h\x1b[1m\x1b[!px");
+        selfTestCheck(failures, !term.screen().originMode() && !term.screen().insertMode() &&
+                                    (term.screen().cellAt(0, 0).flags & CellFlag::Bold) == 0u,
+                      "csi: DECSTR soft reset");
+    }
+    selfTestCheck(failures, !feed("\x1b[?1049h\x1b" "c").screen().inAltScreen(), "esc: RIS leaves the alternate screen");
+    selfTestCheck(failures, cursorAt(feed("a\x1b[20h\n"), 1, 0), "mode 20: LNM makes LF return");
+    selfTestCheck(failures, feed("\x1b[?5h").reverseVideo() && !feed("\x1b[?5h\x1b[?5l").reverseVideo(),
+                  "mode 5: reverse video");
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
 {
     parserStateMachine(failures);
     sgrAttributes(failures);
+    cursorSequences(failures);
+    screenModes(failures);
 }
 
 } // namespace konsoll

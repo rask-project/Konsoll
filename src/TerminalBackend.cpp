@@ -1582,8 +1582,10 @@ int TerminalBackend::selRowRight(int visibleRow) const
 
 Cell TerminalBackend::resolvedCell(const Cell &cell) const
 {
-    unsigned int fg = resolveColor(cell.fg, m_defaultFg);
-    unsigned int bg = resolveColor(cell.bg, m_defaultBg);
+    // DECSCNM (reverse video) swaps the default colors for the whole screen.
+    const bool reverseScreen = m_terminal && m_terminal->reverseVideo();
+    unsigned int fg = resolveColor(cell.fg, reverseScreen ? m_defaultBg : m_defaultFg);
+    unsigned int bg = resolveColor(cell.bg, reverseScreen ? m_defaultFg : m_defaultBg);
     if ((cell.flags & CellFlag::Reverse) != 0) {
         std::swap(fg, bg);
     }

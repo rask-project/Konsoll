@@ -2,6 +2,7 @@
 
 #include "Cell.h"
 
+#include <array>
 #include <deque>
 #include <optional>
 #include <vector>
@@ -27,11 +28,27 @@ public:
     // Cursor.
     int cursorRow() const { return m_cursorRow; }
     int cursorCol() const { return m_cursorCol; }
+    // Absolute screen position, ignoring origin mode (clamped to the grid).
     void moveCursor(int row, int col);
+    // CUP/HVP/VPA position: relative to the scroll region in origin mode.
+    void moveCursorAddressed(int row, int col);
+    // CUU/CUD: stop at the scroll margin when the cursor is inside it.
+    void cursorUp(int count);
+    void cursorDown(int count);
+    // DECSC/DECRC: position, pending wrap and origin mode, one slot per
+    // screen (main / alternate), as in xterm.
     void saveCursor();
     void restoreCursor();
     void showCursor(bool visible);
     bool cursorVisible() const { return m_cursorVisible; }
+
+    // Modes.
+    bool originMode() const { return (m_modes & OriginMode) != 0; }
+    void setOriginMode(bool on);
+    bool autoWrap() const { return (m_modes & AutoWrapMode) != 0; }
+    void setAutoWrap(bool on);
+    bool insertMode() const { return (m_modes & InsertMode) != 0; }
+    void setInsertMode(bool on);
 
     // Cell access for rendering.
     const Cell &cellAt(int row, int col) const;
@@ -56,7 +73,10 @@ public:
     void lineFeed();
     void carriageReturn();
     void backspace();
-    void tab();
+    void tab(int count = 1);
+    void backTab(int count);
+    void setTabStop();          // HTS
+    void clearTabStop(int mode); // TBC: 0 at the cursor, 3 all
     void reverseIndex();
 
     // Erase.
@@ -106,13 +126,31 @@ public:
 
     // Alternate screen.
     void enterAltScreen();
-    void leaveAltScreen();
+    // `restoreCursor` (mode 1049) restores the main screen's DECSC cursor
+    // before the main screen is re-wrapped, so the reflow keeps it in place.
+    void leaveAltScreen(bool restoreCursor);
     bool inAltScreen() const { return m_inAlt; }
 
-    // Full reset (ESC c).
+    // Full reset (ESC c): leaves the alternate screen and resets every mode.
     void fullReset();
+    // Soft reset (DECSTR): modes, margins and the saved cursor; keeps content.
+    void softReset();
+    // DECALN: fill the screen with 'E' (screen alignment test).
+    void alignmentTest();
 
 private:
+    static constexpr unsigned char OriginMode = 0x01;
+    static constexpr unsigned char AutoWrapMode = 0x02;
+    static constexpr unsigned char InsertMode = 0x04;
+    static constexpr int SavedPendingWrap = 0x01;
+    static constexpr int SavedOriginMode = 0x02;
+
+    struct SavedCursor {
+        int row{0};
+        int col{0};
+        int state{0}; // SavedPendingWrap | SavedOriginMode
+    };
+
     struct ReflowedScreen {
         std::vector<Line> lines;
         std::vector<bool> wrapped;
@@ -121,6 +159,8 @@ private:
     void scrollUpOne(int top, int bottom);
     void scrollDownOne(int top, int bottom);
     void blankLine(int row);
+    void resetTabStops(int fromCol);
+    void applySavedCursor(const SavedCursor &saved);
     int previousCharCol() const;
     Cell eraseCell() const;
     // Blank both halves of the wide pair cell `col` of the cursor row belongs
@@ -154,20 +194,21 @@ private:
     std::vector<bool> m_mainWrapped;
     std::deque<bool> m_scrollbackWrapped;
     std::vector<bool> m_mainSavedWrapped;
+    std::vector<bool> m_tabStops; // per column: a tab stop is set
     int m_rows;
     int m_cols;
     unsigned int m_eraseBg = 0; // encoded like Cell::bg; 0 = default
     int m_cursorRow = 0;
     int m_cursorCol = 0;
-    int m_savedRow = 0;
-    int m_savedCol = 0;
     int m_scrollTop = 0;    // 0-based inclusive
     int m_scrollBottom = 0; // 0-based inclusive
     int m_maxScrollback = 0; // 0 = unlimited
     int m_scrollOffset = 0; // 0 = at the bottom
+    std::array<SavedCursor, 2> m_savedCursors{}; // [0] main, [1] alternate
     bool m_cursorVisible = true;
     bool m_inAlt = false;
     bool m_pendingWrap = false;
+    unsigned char m_modes = AutoWrapMode;
 };
 
 } // namespace konsoll

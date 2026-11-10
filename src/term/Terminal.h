@@ -5,6 +5,7 @@
 #include <QByteArray>
 #include <QString>
 
+#include <array>
 #include <vector>
 
 namespace konsoll
@@ -30,17 +31,17 @@ public:
 
     // OSC window title.
     QString title() const { return m_title; }
-    bool titleDirty() const { return m_titleDirty; }
-    void clearTitleDirty() { m_titleDirty = false; }
+    bool titleDirty() const { return (m_extraFlags & TitleDirty) != 0; }
+    void clearTitleDirty() { setExtraFlag(TitleDirty, false); }
     QString currentDirectory() const { return m_currentDirectory; }
     QString remoteHost() const { return m_remoteHost; }
     bool remoteHostDirty() const { return (m_extraFlags & RemoteHostDirty) != 0; }
-    void clearRemoteHostDirty() { m_extraFlags &= static_cast<unsigned char>(~RemoteHostDirty); }
-    bool currentDirectoryDirty() const { return m_currentDirectoryDirty; }
-    void clearCurrentDirectoryDirty() { m_currentDirectoryDirty = false; }
+    void clearRemoteHostDirty() { setExtraFlag(RemoteHostDirty, false); }
+    bool currentDirectoryDirty() const { return (m_extraFlags & CurrentDirectoryDirty) != 0; }
+    void clearCurrentDirectoryDirty() { setExtraFlag(CurrentDirectoryDirty, false); }
     QString clipboardText() const { return m_clipboardText; }
-    bool clipboardTextDirty() const { return m_clipboardTextDirty; }
-    void clearClipboardTextDirty() { m_clipboardTextDirty = false; }
+    bool clipboardTextDirty() const { return (m_extraFlags & ClipboardTextDirty) != 0; }
+    void clearClipboardTextDirty() { setExtraFlag(ClipboardTextDirty, false); }
 
     // Device-attributes reply (so apps like vim/less don't hang waiting).
     bool daPending() const { return m_daPending; }
@@ -53,15 +54,15 @@ public:
     const std::vector<CommandBlock> &commandBlocks() const { return m_commandBlocks; }
     int activeCommandStartLine() const { return m_commandStartLine; }
     void clearCommandBlocks();
-    bool commandFinished() const { return m_commandFinished; }
-    void clearCommandFinished() { m_commandFinished = false; }
+    bool commandFinished() const { return (m_extraFlags & CommandFinishedPending) != 0; }
+    void clearCommandFinished() { setExtraFlag(CommandFinishedPending, false); }
     // True while a command is executing (OSC 133 C -> D window).
     bool commandRunning() const { return m_commandRunning; }
 
     // Set when a full-screen erase (ESC[2J) is processed, so the backend can
     // drop any selection that now sits over blank lines.
-    bool clearPending() const { return m_clearPending; }
-    void clearClearPending() { m_clearPending = false; }
+    bool clearPending() const { return (m_extraFlags & ClearPending) != 0; }
+    void clearClearPending() { setExtraFlag(ClearPending, false); }
 
     bool mouseTracking() const { return m_mouseModes != 0; }
     bool mouseMotionTracking() const { return (m_mouseModes & 0x06u) != 0; }
@@ -72,6 +73,8 @@ public:
     bool keyboardProtocolQueryPending() const { return (m_extraFlags & KeyboardProtocolQueryPending) != 0; }
     void clearKeyboardProtocolQueryPending() { setExtraFlag(KeyboardProtocolQueryPending, false); }
     bool synchronizedUpdates() const { return (m_extraFlags & SynchronizedUpdates) != 0; }
+    bool reverseVideo() const { return (m_extraFlags & ReverseVideo) != 0; }
+    bool applicationKeypad() const { return (m_extraFlags & ApplicationKeypad) != 0; }
     QByteArray mouseReport(int button, int row, int col, int event, unsigned int modifiers) const;
 
     // OSC 10/11 foreground/background color queries from full-screen apps.
@@ -84,13 +87,29 @@ private:
     // (SGR 4:3, 38:2::r:g:b). An omitted value is -1.
     using ParamGroups = std::vector<std::vector<int>>;
 
-    static constexpr unsigned char RemoteHostDirty = 0x01;
-    static constexpr unsigned char BracketedPasteEnabled = 0x02;
-    static constexpr unsigned char SynchronizedUpdates = 0x04;
-    static constexpr unsigned char KittyKeyboardEnabled = 0x08;
-    static constexpr unsigned char SgrMouse = 0x10;
-    static constexpr unsigned char ApplicationCursorKeys = 0x20;
-    static constexpr unsigned char KeyboardProtocolQueryPending = 0x40;
+    static constexpr unsigned int RemoteHostDirty = 1u << 0;
+    static constexpr unsigned int BracketedPasteEnabled = 1u << 1;
+    static constexpr unsigned int SynchronizedUpdates = 1u << 2;
+    static constexpr unsigned int KittyKeyboardEnabled = 1u << 3;
+    static constexpr unsigned int SgrMouse = 1u << 4;
+    static constexpr unsigned int ApplicationCursorKeys = 1u << 5;
+    static constexpr unsigned int KeyboardProtocolQueryPending = 1u << 6;
+    static constexpr unsigned int NewlineMode = 1u << 7;  // LNM: LF also returns
+    static constexpr unsigned int ReverseVideo = 1u << 8; // DECSCNM
+    static constexpr unsigned int ApplicationKeypad = 1u << 9; // DECKPAM
+    static constexpr unsigned int TitleDirty = 1u << 10;
+    static constexpr unsigned int CurrentDirectoryDirty = 1u << 11;
+    static constexpr unsigned int ClipboardTextDirty = 1u << 12;
+    static constexpr unsigned int CommandFinishedPending = 1u << 13;
+    static constexpr unsigned int ClearPending = 1u << 14;
+
+    // DECSC state beyond the cursor position (which Screen saves): the pen
+    // and the character set designations, one slot per screen.
+    struct SavedTerminalState {
+        Cell pen;
+        std::array<char, 4> charsets{'B', 'B', 'B', 'B'};
+        int glSet{0};
+    };
 
     // DEC/ECMA-48 parser states (after Paul Williams' VT500 state machine).
     // Every sequence is consumed whole, so an unsupported one never leaks its
@@ -148,7 +167,16 @@ private:
     void handleCommandMark(char mark);
     void handleEsc(char c);
     void cursorMove(int dRow, int dCol);
-    void setExtraFlag(unsigned char flag, bool on);
+    void setExtraFlag(unsigned int flag, bool on);
+    void saveCursorState();
+    void restoreCursorState(bool position);
+    void setAltScreenMode(int mode, bool set);
+    void softReset();
+    void fullReset();
+    void printCodePoint(unsigned int codePoint);
+    unsigned int mapCharset(unsigned char c);
+    void repeatLastCharacter(int count);
+    void handleAnsiMode(bool set, const std::vector<int> &params);
 
     static ParamGroups parseParamGroups(const QByteArray &body);
     // The first value of each group, omitted -> 0 (the "default" marker).
@@ -175,6 +203,9 @@ private:
     QString m_clipboardText;
     // SGR style (and OSC 8 link) applied to subsequent characters; `ch` unused.
     Cell m_pen;
+    std::array<SavedTerminalState, 2> m_savedStates{}; // [0] main, [1] alternate
+    unsigned int m_lastGraphic = 0; // last printed code point, for REP (0 = none)
+    unsigned int m_extraFlags = 0;
     unsigned int m_utf8CodePoint = 0;
     unsigned int m_utf8Minimum = 0;
     int m_commandStartLine = -1;
@@ -184,16 +215,15 @@ private:
     unsigned char m_utf8Remaining = 0;
     char m_csiPrefix = 0;
     char m_escIntermediate = 0;
-    bool m_titleDirty = false;
-    bool m_currentDirectoryDirty = false;
-    bool m_clipboardTextDirty = false;
+    // G0..G3 designations ('B' ASCII, '0' DEC special graphics, 'A' UK), the
+    // set invoked into GL (SO/SI, LS2/LS3) and a pending single shift.
+    std::array<char, 4> m_charsets{'B', 'B', 'B', 'B'};
+    unsigned char m_glSet = 0;
+    unsigned char m_singleShift = 0;
     bool m_daPending = false;
-    bool m_clearPending = false;
-    bool m_commandFinished = false;
     bool m_commandRunning = false;
     unsigned char m_dsrQuery = 0;
     unsigned char m_colorQuery = 0;
-    unsigned char m_extraFlags = 0;
     unsigned char m_mouseModes = 0;
 };
 

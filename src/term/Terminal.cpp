@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <ranges>
+#include <string_view>
 #include <utility>
 
 namespace konsoll
@@ -190,7 +192,7 @@ void Terminal::processGroundByte(unsigned char c)
     if (c < 0x20 || c == 0x7f) {
         executeControl(c);
     } else if (c < 0x80) {
-        m_screen.putChar(c, m_pen);
+        printCodePoint(mapCharset(c));
     } else if (c >= 0xc2 && c <= 0xdf) {
         m_utf8CodePoint = c & 0x1fu;
         m_utf8Minimum = 0x80;
@@ -222,8 +224,17 @@ void Terminal::executeControl(unsigned char c)
     case '\n':
     case 0x0b:
     case 0x0c:
-        // VT and FF act as LF, as in xterm.
+        // VT and FF act as LF, as in xterm. In LNM, LF also returns.
+        if ((m_extraFlags & NewlineMode) != 0) {
+            m_screen.carriageReturn();
+        }
         m_screen.lineFeed();
+        break;
+    case 0x0e: // SO: invoke G1 into GL
+        m_glSet = 1;
+        break;
+    case 0x0f: // SI: invoke G0 into GL
+        m_glSet = 0;
         break;
     case '\b':
         m_screen.backspace();
@@ -237,7 +248,7 @@ void Terminal::executeControl(unsigned char c)
         m_state = State::Ground;
         break;
     default:
-        // Every other C0 control (NUL, BEL, SO/SI, ...) and DEL has no glyph:
+        // Every other C0 control (NUL, BEL, ...) and DEL has no glyph:
         // drop it instead of storing it in a cell, where it renders as a
         // missing-glyph box over the text.
         break;
@@ -413,14 +424,59 @@ void Terminal::putCodePoint(unsigned int codePoint)
         return;
     }
 
-    // Supplementary-plane characters (e.g. Nerd Font icons, U+F0xxx) occupy
-    // one cell holding the full code point; the renderer encodes them as a
-    // surrogate-pair string. East Asian wide characters and emoji take two.
+    printCodePoint(codePoint);
+}
+
+// Writes one graphic character. Supplementary-plane characters (e.g. Nerd
+// Font icons, U+F0xxx) occupy one cell holding the full code point; the
+// renderer encodes them as a surrogate-pair string. East Asian wide
+// characters and emoji take two.
+void Terminal::printCodePoint(unsigned int codePoint)
+{
     if (isWideChar(codePoint)) {
         m_screen.putWideChar(codePoint, m_pen);
     } else {
         m_screen.putChar(codePoint, m_pen);
     }
+    m_lastGraphic = codePoint;
+}
+
+namespace
+{
+// DEC Special Graphics (ESC ( 0) for 0x5f..0x7e: line drawing and symbols.
+constexpr std::array<char16_t, 32> kDecSpecialGraphics{
+    u'\u00a0', u'\u25c6', u'\u2592', u'\u2409', u'\u240c', u'\u240d', u'\u240a', u'\u00b0',
+    u'\u00b1', u'\u2424', u'\u240b', u'\u2518', u'\u2510', u'\u250c', u'\u2514', u'\u253c',
+    u'\u23ba', u'\u23bb', u'\u2500', u'\u23bc', u'\u23bd', u'\u251c', u'\u2524', u'\u2534',
+    u'\u252c', u'\u2502', u'\u2264', u'\u2265', u'\u03c0', u'\u2260', u'\u00a3', u'\u00b7',
+};
+} // namespace
+
+// Maps a printable ASCII byte through the character set in GL (or the one a
+// single shift selected for this character).
+unsigned int Terminal::mapCharset(unsigned char c)
+{
+    const unsigned char set = m_singleShift != 0 ? m_singleShift : m_glSet;
+    m_singleShift = 0;
+    const char charset = m_charsets[set];
+    if (charset == '0' && c >= 0x5f && c <= 0x7e) {
+        return kDecSpecialGraphics[c - 0x5f];
+    }
+    if (charset == 'A' && c == '#') {
+        return 0xa3; // UK set: pound sign
+    }
+    return c;
+}
+
+// REP: repeat the preceding graphic character; bounded by the screen size.
+void Terminal::repeatLastCharacter(int count)
+{
+    if (m_lastGraphic == 0) {
+        return;
+    }
+    const int times = std::min(std::max(count, 1), m_screen.rows() * m_screen.cols());
+    // printCodePoint keeps m_lastGraphic unchanged while repeating it.
+    std::ranges::for_each(std::views::iota(0, times), [this](int) { printCodePoint(m_lastGraphic); });
 }
 
 bool Terminal::isZeroWidth(unsigned int codePoint)
@@ -515,32 +571,67 @@ void Terminal::handleCsi(char final)
     const std::vector<int> p = parseParams(m_csiParams);
 
     switch (final) {
-    case 'A':
-        cursorMove(-paramAt(p, 0, 1), 0);
+    case 'A': // CUU
+        m_screen.cursorUp(paramAt(p, 0, 1));
         break;
-    case 'B':
-        cursorMove(paramAt(p, 0, 1), 0);
+    case 'B': // CUD
+        m_screen.cursorDown(paramAt(p, 0, 1));
         break;
-    case 'C':
+    case 'E': // CNL
+        m_screen.cursorDown(paramAt(p, 0, 1));
+        m_screen.carriageReturn();
+        break;
+    case 'F': // CPL
+        m_screen.cursorUp(paramAt(p, 0, 1));
+        m_screen.carriageReturn();
+        break;
+    case 'C': // CUF
+    case 'a': // HPR
         cursorMove(0, paramAt(p, 0, 1));
         break;
-    case 'D':
+    case 'D': // CUB
         cursorMove(0, -paramAt(p, 0, 1));
         break;
-    case 'G':
+    case 'G': // CHA
+    case '`': // HPA
         m_screen.moveCursor(m_screen.cursorRow(), paramAt(p, 0, 1) - 1);
         break;
-    case 'd':
-        m_screen.moveCursor(paramAt(p, 0, 1) - 1, m_screen.cursorCol());
+    case 'd': // VPA
+        m_screen.moveCursorAddressed(paramAt(p, 0, 1) - 1, m_screen.cursorCol());
         break;
-    case 'H':
-    case 'f':
-        m_screen.moveCursor(paramAt(p, 0, 1) - 1, paramAt(p, 1, 1) - 1);
+    case 'e': // VPR
+        cursorMove(paramAt(p, 0, 1), 0);
+        break;
+    case 'H': // CUP
+    case 'f': // HVP
+        m_screen.moveCursorAddressed(paramAt(p, 0, 1) - 1, paramAt(p, 1, 1) - 1);
+        break;
+    case 'I': // CHT
+        m_screen.tab(paramAt(p, 0, 1));
+        break;
+    case 'Z': // CBT
+        m_screen.backTab(paramAt(p, 0, 1));
+        break;
+    case 'b': // REP
+        repeatLastCharacter(paramAt(p, 0, 1));
+        break;
+    case 'g': // TBC
+        m_screen.clearTabStop(paramAt(p, 0, 0));
+        break;
+    case 's': // SCOSC (no left/right margin mode, so CSI s never means DECSLRM)
+        saveCursorState();
+        break;
+    case 'u': // SCORC
+        restoreCursorState(true);
+        break;
+    case 'h': // SM
+    case 'l': // RM
+        handleAnsiMode(final == 'h', p);
         break;
     case 'J': // NOLINT: similar erase branches
         m_screen.eraseInDisplay(paramAt(p, 0, 0));
         if (paramAt(p, 0, 0) == 2) {
-            m_clearPending = true; // full-screen erase: selection now sits over blanks.
+            setExtraFlag(ClearPending, true); // full-screen erase: selection now sits over blanks.
         }
         break;
     case 'K': // NOLINT: similar erase branches
@@ -577,8 +668,10 @@ void Terminal::handleCsi(char final)
         m_screen.setScrollRegion(paramAt(p, 0, 1), paramAt(p, 1, m_screen.rows()));
         break;
     case 'c':
-        m_daPending = true;
-        break; // Primary DA query.
+        if (paramAt(p, 0, 0) == 0) {
+            m_daPending = true; // Primary DA query.
+        }
+        break;
     case 'n':
         if (paramAt(p, 0, 0) == 5 || paramAt(p, 0, 0) == 6) {
             m_dsrQuery = static_cast<unsigned char>(paramAt(p, 0, 0));
@@ -630,12 +723,124 @@ void Terminal::handlePrefixedCsi(char final)
     setExtraFlag(KittyKeyboardEnabled, !params.empty() && params.front() != 0);
 }
 
-void Terminal::handleCsiWithIntermediates(char /*final*/)
+void Terminal::handleCsiWithIntermediates(char final)
 {
+    if (m_csiIntermediates == "!" && final == 'p') {
+        softReset(); // DECSTR
+    }
 }
 
-void Terminal::handleEscIntermediate(char /*intermediate*/, char /*final*/)
+void Terminal::handleEscIntermediate(char intermediate, char final)
 {
+    switch (intermediate) {
+    case '(': // designate G0..G3 (SCS)
+    case ')':
+    case '*':
+    case '+': {
+        const auto set = static_cast<std::size_t>(std::string_view("()*+").find(intermediate));
+        m_charsets[set] = final;
+        break;
+    }
+    case '#':
+        if (final == '8') {
+            m_screen.alignmentTest(); // DECALN
+        }
+        break;
+    default:
+        // ESC % G (UTF-8), ESC SP F (7-bit controls), ...: nothing to do.
+        break;
+    }
+}
+
+void Terminal::handleAnsiMode(bool set, const std::vector<int> &params)
+{
+    std::ranges::for_each(params, [this, &set](int mode) {
+        if (mode == 4) {
+            m_screen.setInsertMode(set); // IRM
+        } else if (mode == 20) {
+            setExtraFlag(NewlineMode, set); // LNM
+        }
+    });
+}
+
+// DECSC: Screen saves the position; the pen and character sets live here.
+void Terminal::saveCursorState()
+{
+    m_screen.saveCursor();
+    m_savedStates[m_screen.inAltScreen() ? 1 : 0] = SavedTerminalState{
+        .pen = m_pen,
+        .charsets = m_charsets,
+        .glSet = m_glSet,
+    };
+}
+
+void Terminal::restoreCursorState(bool position)
+{
+    if (position) {
+        m_screen.restoreCursor();
+    }
+    const SavedTerminalState &saved = m_savedStates[m_screen.inAltScreen() ? 1 : 0];
+    m_pen = saved.pen;
+    m_charsets = saved.charsets;
+    m_glSet = static_cast<unsigned char>(saved.glSet);
+    m_screen.setEraseBackground(m_pen.bg);
+}
+
+// 47 / 1047 / 1049 switch buffers; 1048 only saves/restores the cursor.
+void Terminal::setAltScreenMode(int mode, bool set)
+{
+    if (mode == 1048) {
+        if (set) {
+            saveCursorState();
+        } else {
+            restoreCursorState(true);
+        }
+        return;
+    }
+    clearCommandBlocks();
+    if (mode == 1049 && set) {
+        saveCursorState();
+    }
+    if (set) {
+        m_screen.enterAltScreen();
+        return;
+    }
+    // Leaving 1049 restores the main screen's DECSC cursor before the main
+    // screen re-wraps; the pen and charsets follow.
+    m_screen.leaveAltScreen(mode == 1049);
+    if (mode == 1049) {
+        restoreCursorState(false);
+    }
+}
+
+// DECSTR: modes, margins, pen, character sets and saved cursor back to their
+// power-on values; screen content stays.
+void Terminal::softReset()
+{
+    m_screen.softReset();
+    m_pen = Cell{};
+    m_screen.setEraseBackground(0);
+    m_charsets = {'B', 'B', 'B', 'B'};
+    m_glSet = 0;
+    m_singleShift = 0;
+    m_savedStates[m_screen.inAltScreen() ? 1 : 0] = {};
+    setExtraFlag(ApplicationCursorKeys | ApplicationKeypad | NewlineMode, false);
+}
+
+// RIS (ESC c): everything, including the alternate screen and input modes.
+void Terminal::fullReset()
+{
+    m_screen.fullReset();
+    clearCommandBlocks();
+    m_pen = Cell{};
+    m_charsets = {'B', 'B', 'B', 'B'};
+    m_glSet = 0;
+    m_singleShift = 0;
+    m_savedStates = {};
+    m_lastGraphic = 0;
+    m_mouseModes = 0;
+    // Keep only notifications the backend has not consumed yet.
+    m_extraFlags &= RemoteHostDirty | TitleDirty | CurrentDirectoryDirty | ClipboardTextDirty | CommandFinishedPending;
 }
 
 void Terminal::handleDcs(const QByteArray & /*body*/)
@@ -649,16 +854,24 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
         case 1:
             setExtraFlag(ApplicationCursorKeys, set);
             break;
+        case 5:
+            setExtraFlag(ReverseVideo, set); // DECSCNM
+            break;
+        case 6:
+            m_screen.setOriginMode(set); // DECOM
+            m_screen.moveCursorAddressed(0, 0);
+            break;
+        case 7:
+            m_screen.setAutoWrap(set); // DECAWM
+            break;
         case 25:
             m_screen.showCursor(set);
             break;
+        case 47:
+        case 1047:
+        case 1048:
         case 1049:
-            clearCommandBlocks();
-            if (set) {
-                m_screen.enterAltScreen();
-            } else {
-                m_screen.leaveAltScreen();
-            }
+            setAltScreenMode(mode, set);
             break;
         case 1000:
             m_mouseModes = set ? static_cast<unsigned char>(m_mouseModes | 0x01u)
@@ -681,7 +894,6 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
         case 2026:
             setExtraFlag(SynchronizedUpdates, set);
             break;
-        case 6: // Origin mode: ignored.
         default:
             break;
         }
@@ -916,7 +1128,7 @@ void Terminal::handleOscClipboard(const QByteArray &body)
         const QByteArray decoded = QByteArray::fromBase64(encoded, QByteArray::AbortOnBase64DecodingErrors);
         if (!encoded.isEmpty() && decoded.size() <= 1'000'000) {
             m_clipboardText = QString::fromUtf8(decoded);
-            m_clipboardTextDirty = true;
+            setExtraFlag(ClipboardTextDirty, true);
         }
     }
 }
@@ -927,7 +1139,7 @@ void Terminal::handleOscCurrentDirectory(const QByteArray &body)
     const QString path = url.scheme() == QStringLiteral("file") ? url.path(QUrl::FullyDecoded) : QString{};
     if (path.startsWith(QLatin1Char('/')) && path != m_currentDirectory) {
         m_currentDirectory = path;
-        m_currentDirectoryDirty = true;
+        setExtraFlag(CurrentDirectoryDirty, true);
     }
 }
 
@@ -938,7 +1150,7 @@ void Terminal::handleOscCommandMark(const QByteArray &body)
     }
     handleCommandMark(body.at(4));
     if (body.at(4) == 'D') {
-        m_commandFinished = true;
+        setExtraFlag(CommandFinishedPending, true);
     }
 }
 
@@ -954,7 +1166,7 @@ void Terminal::handleOscTitle(const QByteArray &body)
     if (num == "0" || num == "2") {
         if (m_title != text) {
             m_title = text;
-            m_titleDirty = true;
+            setExtraFlag(TitleDirty, true);
         }
     }
 }
@@ -1006,11 +1218,32 @@ void Terminal::handleCommandMark(char mark)
 void Terminal::handleEsc(char c)
 {
     switch (c) {
-    case '7':
-        m_screen.saveCursor();
+    case '7': // DECSC
+        saveCursorState();
         break;
-    case '8':
-        m_screen.restoreCursor();
+    case '8': // DECRC
+        restoreCursorState(true);
+        break;
+    case 'H': // HTS
+        m_screen.setTabStop();
+        break;
+    case 'n': // LS2
+        m_glSet = 2;
+        break;
+    case 'o': // LS3
+        m_glSet = 3;
+        break;
+    case 'N': // SS2
+        m_singleShift = 2;
+        break;
+    case 'O': // SS3
+        m_singleShift = 3;
+        break;
+    case '=': // DECKPAM
+        setExtraFlag(ApplicationKeypad, true);
+        break;
+    case '>': // DECKPNM
+        setExtraFlag(ApplicationKeypad, false);
         break;
     case 'M':
         m_screen.reverseIndex();
@@ -1022,21 +1255,17 @@ void Terminal::handleEsc(char c)
         m_screen.carriageReturn();
         m_screen.lineFeed();
         break;
-    case 'c':
-        m_screen.fullReset();
-        clearCommandBlocks();
-        m_pen = Cell{};
-        m_screen.setEraseBackground(0);
-        setExtraFlag(ApplicationCursorKeys, false);
+    case 'c': // RIS
+        fullReset();
         break;
     default:
         break;
     }
 }
 
-void Terminal::setExtraFlag(unsigned char flag, bool on)
+void Terminal::setExtraFlag(unsigned int flag, bool on)
 {
-    m_extraFlags = on ? static_cast<unsigned char>(m_extraFlags | flag) : static_cast<unsigned char>(m_extraFlags & ~flag);
+    m_extraFlags = on ? (m_extraFlags | flag) : (m_extraFlags & ~flag);
 }
 
 void Terminal::cursorMove(int dRow, int dCol) // NOLINT: dRow/dCol are inherently swappable

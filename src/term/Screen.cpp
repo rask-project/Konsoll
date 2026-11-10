@@ -78,6 +78,17 @@ Screen::Screen(int rows, int cols) : m_rows(rows), m_cols(cols), m_scrollBottom(
 {
     m_main = makeGrid(rows, cols);
     m_mainWrapped.assign(rows, false);
+    resetTabStops(0);
+}
+
+// Default tab stops every 8 columns from `fromCol` on; earlier columns keep
+// what HTS/TBC set.
+void Screen::resetTabStops(int fromCol)
+{
+    m_tabStops.resize(static_cast<std::size_t>(m_cols), false);
+    std::ranges::for_each(std::views::iota(std::clamp(fromCol, 0, m_cols), m_cols), [this](int col) {
+        m_tabStops[static_cast<std::size_t>(col)] = col > 0 && col % 8 == 0;
+    });
 }
 
 void Screen::resize(int rows, int cols)
@@ -125,6 +136,7 @@ void Screen::resize(int rows, int cols)
     m_scrollTop = 0;
     m_scrollBottom = rows - 1;
     m_pendingWrap = false;
+    resetTabStops(oldCols);
 }
 
 void Screen::moveCursor(int row, int col)
@@ -138,20 +150,68 @@ void Screen::moveCursor(int row, int col)
     }
 }
 
+void Screen::moveCursorAddressed(int row, int col)
+{
+    if (originMode()) {
+        moveCursor(std::clamp(row + m_scrollTop, m_scrollTop, m_scrollBottom), col);
+    } else {
+        moveCursor(row, col);
+    }
+}
+
+void Screen::cursorUp(int count)
+{
+    const int top = m_cursorRow >= m_scrollTop ? m_scrollTop : 0;
+    moveCursor(std::max(m_cursorRow - std::max(count, 1), top), m_cursorCol);
+}
+
+void Screen::cursorDown(int count)
+{
+    const int bottom = m_cursorRow <= m_scrollBottom ? m_scrollBottom : m_rows - 1;
+    moveCursor(std::min(m_cursorRow + std::max(count, 1), bottom), m_cursorCol);
+}
+
 void Screen::saveCursor()
 {
-    m_savedRow = m_cursorRow;
-    m_savedCol = m_cursorCol;
+    m_savedCursors[m_inAlt ? 1 : 0] = SavedCursor{
+        .row = m_cursorRow,
+        .col = m_cursorCol,
+        .state = (m_pendingWrap ? SavedPendingWrap : 0) | (originMode() ? SavedOriginMode : 0),
+    };
 }
 
 void Screen::restoreCursor()
 {
-    m_cursorRow = std::clamp(m_savedRow, 0, m_rows - 1);
-    m_cursorCol = std::clamp(m_savedCol, 0, m_cols - 1);
-    m_pendingWrap = false;
+    applySavedCursor(m_savedCursors[m_inAlt ? 1 : 0]);
     if (!m_inAlt) {
         m_mainWrapped[m_cursorRow] = false;
     }
+}
+
+void Screen::applySavedCursor(const SavedCursor &saved)
+{
+    m_cursorRow = std::clamp(saved.row, 0, m_rows - 1);
+    m_cursorCol = std::clamp(saved.col, 0, m_cols - 1);
+    m_pendingWrap = (saved.state & SavedPendingWrap) != 0 && autoWrap();
+    setOriginMode((saved.state & SavedOriginMode) != 0);
+}
+
+void Screen::setOriginMode(bool on)
+{
+    m_modes = on ? withFlag(m_modes, OriginMode) : withoutFlag(m_modes, OriginMode);
+}
+
+void Screen::setAutoWrap(bool on)
+{
+    m_modes = on ? withFlag(m_modes, AutoWrapMode) : withoutFlag(m_modes, AutoWrapMode);
+    if (!on) {
+        m_pendingWrap = false;
+    }
+}
+
+void Screen::setInsertMode(bool on)
+{
+    m_modes = on ? withFlag(m_modes, InsertMode) : withoutFlag(m_modes, InsertMode);
 }
 
 void Screen::showCursor(bool visible)
@@ -246,11 +306,16 @@ void Screen::putChar(unsigned int ch, const Cell &pen)
         m_pendingWrap = false;
     }
     breakWideAt(m_cursorCol);
+    if (insertMode()) {
+        insertColumns(1); // IRM: shift the rest of the row right first.
+    }
     Cell &c = grid()[m_cursorRow][m_cursorCol];
     c = pen;
     c.ch = ch;
     if (m_cursorCol + 1 >= m_cols) {
-        m_pendingWrap = true;
+        // Without DECAWM the cursor stays put and the next character
+        // overwrites the last column.
+        m_pendingWrap = autoWrap();
     } else {
         ++m_cursorCol;
     }
@@ -267,7 +332,9 @@ void Screen::putWideChar(unsigned int ch, const Cell &pen)
         lineFeedImpl(true);
         m_pendingWrap = false;
     }
-    if (m_cursorCol + 1 >= m_cols) {
+    if (m_cursorCol + 1 >= m_cols && !autoWrap()) {
+        m_cursorCol = m_cols - 2; // no wrap: the pair takes the last two columns
+    } else if (m_cursorCol + 1 >= m_cols) {
         // Only the last column is left: pad it and wrap, as xterm does.
         breakWideAt(m_cursorCol);
         grid()[m_cursorRow][m_cursorCol] = Cell{.fg = 0, .bg = pen.bg, .ch = ' ', .flags = CellFlag::WideSpacer};
@@ -276,6 +343,9 @@ void Screen::putWideChar(unsigned int ch, const Cell &pen)
     }
     breakWideAt(m_cursorCol);
     breakWideAt(m_cursorCol + 1);
+    if (insertMode()) {
+        insertColumns(2);
+    }
     Line &line = grid()[m_cursorRow];
     Cell lead = pen;
     lead.ch = ch;
@@ -287,7 +357,7 @@ void Screen::putWideChar(unsigned int ch, const Cell &pen)
     line[m_cursorCol + 1] = spacer;
     if (m_cursorCol + 2 >= m_cols) {
         m_cursorCol = m_cols - 1;
-        m_pendingWrap = true;
+        m_pendingWrap = autoWrap();
     } else {
         m_cursorCol += 2;
     }
@@ -300,12 +370,14 @@ void Screen::lineFeed()
 
 void Screen::lineFeedImpl(bool soft)
 {
-    if (m_cursorRow >= m_scrollBottom) {
+    // Only the bottom margin scrolls the region; below it (a status line
+    // under the scroll region) the cursor moves down to the last row.
+    if (m_cursorRow == m_scrollBottom) {
         scrollUpOne(m_scrollTop, m_scrollBottom);
         if (!m_inAlt) {
             m_mainWrapped[m_scrollBottom] = soft;
         }
-    } else {
+    } else if (m_cursorRow < m_rows - 1) {
         ++m_cursorRow;
         if (!m_inAlt) {
             m_mainWrapped[m_cursorRow] = soft;
@@ -327,18 +399,46 @@ void Screen::backspace()
     m_pendingWrap = false;
 }
 
-void Screen::tab()
+void Screen::tab(int count)
 {
-    const int next = ((m_cursorCol / 8) + 1) * 8;
-    m_cursorCol = std::min(next, m_cols - 1);
+    std::ranges::for_each(std::views::iota(0, std::max(count, 1)), [this](int) {
+        const auto from = m_tabStops.begin() + std::min(m_cursorCol + 1, m_cols);
+        const auto stop = std::find(from, m_tabStops.end(), true);
+        m_cursorCol = stop == m_tabStops.end() ? m_cols - 1 : static_cast<int>(stop - m_tabStops.begin());
+    });
     m_pendingWrap = false;
+}
+
+void Screen::backTab(int count)
+{
+    std::ranges::for_each(std::views::iota(0, std::max(count, 1)), [this](int) {
+        const auto before = std::make_reverse_iterator(m_tabStops.begin() + m_cursorCol);
+        const auto stop = std::find(before, m_tabStops.rend(), true);
+        m_cursorCol = stop == m_tabStops.rend() ? 0 : static_cast<int>(stop.base() - m_tabStops.begin()) - 1;
+    });
+    m_pendingWrap = false;
+}
+
+void Screen::setTabStop()
+{
+    m_tabStops[static_cast<std::size_t>(m_cursorCol)] = true;
+}
+
+void Screen::clearTabStop(int mode)
+{
+    if (mode == 0) {
+        m_tabStops[static_cast<std::size_t>(m_cursorCol)] = false;
+    } else if (mode == 3) {
+        std::ranges::fill(m_tabStops, false);
+    }
 }
 
 void Screen::reverseIndex()
 {
-    if (m_cursorRow <= m_scrollTop) {
+    // Mirror of LF: only the top margin scrolls the region.
+    if (m_cursorRow == m_scrollTop) {
         scrollDownOne(m_scrollTop, m_scrollBottom);
-    } else {
+    } else if (m_cursorRow > 0) {
         --m_cursorRow;
     }
 }
@@ -399,16 +499,19 @@ void Screen::eraseChars(int count)
 
 void Screen::scrollUp(int count)
 {
-    for (int i = 0; i < count; ++i) {
+    const int lines = std::min(std::max(count, 1), m_scrollBottom - m_scrollTop + 1);
+    std::ranges::for_each(std::views::iota(0, lines), [this](int) {
         scrollUpOne(m_scrollTop, m_scrollBottom);
-    }
+        if (!m_inAlt) {
+            m_mainWrapped[m_scrollBottom] = false;
+        }
+    });
 }
 
 void Screen::scrollDown(int count)
 {
-    for (int i = 0; i < count; ++i) {
-        scrollDownOne(m_scrollTop, m_scrollBottom);
-    }
+    const int lines = std::min(std::max(count, 1), m_scrollBottom - m_scrollTop + 1);
+    std::ranges::for_each(std::views::iota(0, lines), [this](int) { scrollDownOne(m_scrollTop, m_scrollBottom); });
 }
 
 void Screen::insertLines(int count)
@@ -436,6 +539,7 @@ void Screen::insertLines(int count)
         std::move_backward(wrappedFirst, wrappedMiddle, wrappedLast);
         std::fill(m_mainWrapped.begin() + m_cursorRow, m_mainWrapped.begin() + m_cursorRow + lineCount, false);
     }
+    m_cursorCol = 0; // IL/DL return the cursor to the left margin.
     m_pendingWrap = false;
 }
 
@@ -466,20 +570,22 @@ void Screen::deleteLines(int count)
             false
         );
     }
+    m_cursorCol = 0;
     m_pendingWrap = false;
 }
 
 void Screen::setScrollRegion(int top, int bottom) // NOLINT: top/bottom are inherently swappable
 {
-    // 1-based inclusive; clamp to the grid.
-    int t = std::clamp(top - 1, 0, m_rows - 1);
-    int b = std::clamp(bottom - 1, 0, m_rows - 1);
-    if (t > b) {
-        std::swap(t, b);
+    // 1-based inclusive; clamp to the grid. A region of fewer than two
+    // lines is invalid and ignored, as in xterm.
+    const int t = std::clamp(top - 1, 0, m_rows - 1);
+    const int b = std::clamp(bottom - 1, 0, m_rows - 1);
+    if (t >= b) {
+        return;
     }
     m_scrollTop = t;
     m_scrollBottom = b;
-    moveCursor(t, 0);
+    moveCursorAddressed(0, 0); // DECSTBM homes the cursor (origin-relative).
 }
 
 void Screen::resetScrollRegion()
@@ -493,19 +599,16 @@ void Screen::deleteColumns(int count)
     if (count <= 0) {
         return;
     }
+    // Never more than the cells from the cursor to the right margin.
+    const int n = std::min(count, m_cols - m_cursorCol);
     breakWideAt(m_cursorCol);
-    breakWideAt(std::min(m_cursorCol + count, m_cols - 1));
-    auto &g = grid();
-    Line &row = g[m_cursorRow];
-    if (count >= m_cols) {
-        row.assign(m_cols, eraseCell());
-        return;
+    if (m_cursorCol + n < m_cols) {
+        breakWideAt(m_cursorCol + n);
     }
-    // Shift [cursorCol .. end-count] left by `count`.
-    for (int c = m_cursorCol; c + count < m_cols; ++c) {
-        row[c] = row[c + count];
-    }
-    std::fill(row.end() - count, row.end(), eraseCell());
+    Line &row = grid()[m_cursorRow];
+    std::move(row.begin() + m_cursorCol + n, row.end(), row.begin() + m_cursorCol);
+    std::fill(row.end() - n, row.end(), eraseCell());
+    m_pendingWrap = false;
 }
 
 void Screen::insertColumns(int count)
@@ -513,21 +616,15 @@ void Screen::insertColumns(int count)
     if (count <= 0) {
         return;
     }
+    const int n = std::min(count, m_cols - m_cursorCol);
     breakWideAt(m_cursorCol);
-    breakWideAt(std::max(m_cols - count - 1, 0));
-    auto &g = grid();
-    Line &row = g[m_cursorRow];
-    if (count >= m_cols) {
-        row.assign(m_cols, eraseCell());
-        return;
+    if (m_cols - n > m_cursorCol) {
+        breakWideAt(m_cols - n); // the pair pushed across the right margin
     }
-    // Shift [cursorCol .. end] right by `count` (overflow dropped).
-    for (int c = m_cols - 1; c >= m_cursorCol + count; --c) {
-        row[c] = row[c - count];
-    }
-    for (int c = m_cursorCol; c < m_cursorCol + count; ++c) {
-        row[c] = eraseCell();
-    }
+    Line &row = grid()[m_cursorRow];
+    std::move_backward(row.begin() + m_cursorCol, row.end() - n, row.end());
+    std::fill(row.begin() + m_cursorCol, row.begin() + m_cursorCol + n, eraseCell());
+    m_pendingWrap = false;
 }
 
 const Line &Screen::scrollbackLine(int index) const
@@ -557,11 +654,13 @@ void Screen::enterAltScreen()
     m_mainSavedWrapped = m_mainWrapped;
     m_alt = makeGrid(m_rows, m_cols);
     m_inAlt = true;
-    clearScrollback();
-    moveCursor(0, 0);
+    // The alternate screen has no scrollback: show its bottom. The main
+    // scrollback is kept for when the full-screen app exits.
+    m_scrollOffset = 0;
+    m_pendingWrap = false;
 }
 
-void Screen::leaveAltScreen()
+void Screen::leaveAltScreen(bool restoreCursor)
 {
     if (!m_inAlt) {
         return;
@@ -569,22 +668,50 @@ void Screen::leaveAltScreen()
     m_main = m_mainSaved;
     m_mainWrapped = m_mainSavedWrapped;
     m_inAlt = false;
+    if (restoreCursor) {
+        applySavedCursor(m_savedCursors[0]);
+    }
     // The restored main screen was last laid out at the old width; re-wrap
-    // it to the current width.
+    // it to the current width (keeping the cursor on its content).
     reflow();
-    moveCursor(0, 0);
+    m_pendingWrap = false;
 }
 
 void Screen::fullReset()
 {
-    auto &g = grid();
-    g.assign(m_rows, Line(m_cols, blankCell()));
+    leaveAltScreen(false);
+    m_main.assign(m_rows, Line(m_cols, blankCell()));
+    m_mainWrapped.assign(m_rows, false);
+    m_eraseBg = 0;
+    m_modes = AutoWrapMode;
+    m_cursorVisible = true;
+    m_savedCursors = {};
+    resetScrollRegion();
+    std::ranges::fill(m_tabStops, false);
+    resetTabStops(0);
+    moveCursor(0, 0);
+}
+
+void Screen::softReset()
+{
+    m_modes = AutoWrapMode;
+    m_cursorVisible = true;
+    m_pendingWrap = false;
+    m_savedCursors[m_inAlt ? 1 : 0] = {};
+    resetScrollRegion();
+}
+
+void Screen::alignmentTest()
+{
+    resetScrollRegion();
+    setOriginMode(false);
+    Cell filled = blankCell();
+    filled.ch = 'E';
+    grid().assign(m_rows, Line(m_cols, filled));
     if (!m_inAlt) {
         m_mainWrapped.assign(m_rows, false);
     }
     moveCursor(0, 0);
-    m_pendingWrap = false;
-    resetScrollRegion();
 }
 
 void Screen::scrollUpOne(int top, int bottom) // NOLINT: top/bottom are inherently swappable
