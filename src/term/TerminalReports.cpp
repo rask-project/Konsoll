@@ -306,6 +306,10 @@ int Terminal::decModeState(int mode) const
         return flag(ColorSchemeReports);
     case 2048:
         return flag(InBandResize);
+    case 45:
+        return state(m_screen.reverseWrap());
+    case 1045:
+        return state(m_screen.extendedReverseWrap());
     case 69:
         return state(m_screen.leftRightMarginMode()); // DECLRMM
     default:

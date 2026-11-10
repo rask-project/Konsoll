@@ -1226,6 +1226,9 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
         case 80:
             setExtraFlag(SixelDisplayMode, set); // DECSDM
             break;
+        case 45:
+            m_screen.setReverseWrap(set);
+            break;
         case 69:
             m_screen.setLeftRightMarginMode(set); // DECLRMM
             break;
@@ -1284,6 +1287,9 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
             break;
         case 1016:
             setExtraFlag(SgrPixelMouse, set);
+            break;
+        case 1045:
+            m_screen.setExtendedReverseWrap(set);
             break;
         case 1036: // metaSendsEscape
         case 1039: // altSendsEscape

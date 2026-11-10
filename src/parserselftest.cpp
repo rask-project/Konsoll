@@ -676,6 +676,17 @@ void modifyOtherKeys(int &failures)
                   "modifyOtherKeys 2: every Ctrl / Alt key, CSI u format");
 }
 
+// Reverse wraparound (?45 / ?1045).
+void reverseWraparound(int &failures)
+{
+    selfTestCheck(failures, cursorAt(feed("\x1b[?45habcdefghijkl\r\b"), 0, 9) && cursorAt(feed("abcdefghijkl\r\b"), 1, 0),
+                  "reverse wrap: BS at column 0 returns to a wrapped line's end (only with ?45)");
+    selfTestCheck(failures, cursorAt(feed("\x1b[?45hab\r\n\b"), 1, 0) && cursorAt(feed("\x1b[?1045hab\r\n\b"), 0, 9) &&
+                                cursorAt(feed("\x1b[?1045h\b"), 3, 9),
+                  "reverse wrap: ?45 needs a wrap, ?1045 crosses hard breaks and the top margin");
+    selfTestCheck(failures, replies("\x1b[?45h\x1b[?45$p\x1b[?1045$p") == "\x1b[?45;1$y\x1b[?1045;2$y", "reverse wrap: DECRQM");
+}
+
 // Horizontal wheel buttons and highlight tracking (?1001).
 void mouseExtras(int &failures)
 {
@@ -792,6 +803,7 @@ void runParserSelfTest(int &failures)
     graphemeClusters(failures);
     optionAsMeta(failures);
     mouseExtras(failures);
+    reverseWraparound(failures);
     fixtureRegressions(failures);
 }
 

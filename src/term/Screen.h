@@ -57,6 +57,12 @@ public:
     // Mode 2027: grapheme clusters take one (or two) cells.
     bool graphemeClustering() const { return (m_modes & GraphemeMode) != 0; }
     void setGraphemeClustering(bool on);
+    // ?45 reverse wraparound: BS at the left margin goes back to the end of
+    // a line that wrapped into this one; ?1045 even without a wrap.
+    bool reverseWrap() const { return (m_modes & ReverseWrapMode) != 0; }
+    void setReverseWrap(bool on);
+    bool extendedReverseWrap() const { return (m_modes & ExtendedReverseWrapMode) != 0; }
+    void setExtendedReverseWrap(bool on);
     // DECLRMM (?69) and DECSLRM: left/right margins (0-based inclusive).
     bool leftRightMarginMode() const { return (m_modes & LeftRightMarginMode) != 0; }
     void setLeftRightMarginMode(bool on);
@@ -209,6 +215,8 @@ private:
     static constexpr unsigned char InsertMode = 0x04;
     static constexpr unsigned char LeftRightMarginMode = 0x08;
     static constexpr unsigned char GraphemeMode = 0x10;
+    static constexpr unsigned char ReverseWrapMode = 0x20;         // ?45
+    static constexpr unsigned char ExtendedReverseWrapMode = 0x40; // ?1045
     static constexpr int SavedPendingWrap = 0x01;
     static constexpr int SavedOriginMode = 0x02;
 

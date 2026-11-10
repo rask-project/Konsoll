@@ -472,10 +472,32 @@ void Screen::carriageReturn()
 
 void Screen::backspace()
 {
-    if (m_cursorCol > 0 && m_cursorCol != leftMargin()) {
+    const bool atLeft = m_cursorCol == 0 || m_cursorCol == leftMargin();
+    if (!atLeft) {
         --m_cursorCol;
+    } else if (extendedReverseWrap() || reverseWrap()) {
+        // The row above wrapped into this one (the alternate screen does not
+        // record wraps, so any line counts there).
+        const bool wrapped = m_inAlt || (m_cursorRow > 0 && m_mainWrapped[static_cast<std::size_t>(m_cursorRow)]);
+        if (m_cursorRow > m_scrollTop && (wrapped || extendedReverseWrap())) {
+            --m_cursorRow;
+            m_cursorCol = rightMargin();
+        } else if (m_cursorRow == m_scrollTop && extendedReverseWrap()) {
+            m_cursorRow = m_scrollBottom; // ?1045 wraps from the top to the bottom margin
+            m_cursorCol = rightMargin();
+        }
     }
     m_pendingWrap = false;
+}
+
+void Screen::setReverseWrap(bool on)
+{
+    m_modes = on ? withFlag(m_modes, ReverseWrapMode) : withoutFlag(m_modes, ReverseWrapMode);
+}
+
+void Screen::setExtendedReverseWrap(bool on)
+{
+    m_modes = on ? withFlag(m_modes, ExtendedReverseWrapMode) : withoutFlag(m_modes, ExtendedReverseWrapMode);
 }
 
 void Screen::tab(int count)
