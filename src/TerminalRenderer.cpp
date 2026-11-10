@@ -167,6 +167,28 @@ void TerminalRenderer::setSelectedTextColor(const QColor &color)
     emit colorsChanged();
 }
 
+void TerminalRenderer::setDefaultCursorShape(int shape)
+{
+    shape = std::clamp(shape, 0, CursorShapeMask);
+    if (shape == defaultCursorShape()) {
+        return;
+    }
+    m_cursorState = (m_cursorState & ~(CursorShapeMask << DefaultCursorShift)) | (shape << DefaultCursorShift);
+    refresh();
+    emit defaultCursorChanged();
+}
+
+void TerminalRenderer::setDefaultCursorBlink(bool blink)
+{
+    if (blink == defaultCursorBlink()) {
+        return;
+    }
+    constexpr int blinkBit = DefaultCursorBlink << DefaultCursorShift;
+    m_cursorState = blink ? (m_cursorState | blinkBit) : (m_cursorState & ~blinkBit);
+    refresh();
+    emit defaultCursorChanged();
+}
+
 void TerminalRenderer::setHoverRow(int row)
 {
     if (row == m_hoverRow) {
@@ -282,8 +304,13 @@ void TerminalRenderer::refresh()
     }
     m_cursorRow = cursorRow;
     m_cursorCol = s.cursorCol();
-    m_cursorState = (s.cursorBlinking() ? CursorBlinking : 0) | (s.focused() ? CursorFocused : 0) |
-                    (s.cursorShape() << CursorShapeShift);
+    // DECSCUSR 0 (the default) means the user's style; ?12 can still make
+    // it blink.
+    const bool programStyle = s.cursorStyle() != 0;
+    const int shape = programStyle ? s.cursorShape() : defaultCursorShape();
+    const bool blinking = s.cursorBlinking() || (!programStyle && defaultCursorBlink());
+    m_cursorState = (m_cursorState & DefaultCursorMask) | (blinking ? CursorBlinking : 0) |
+                    (s.focused() ? CursorFocused : 0) | (shape << CursorShapeShift);
     m_highlightFirst = s.highlightActive() ? s.highlightStartRow() : -1;
     m_highlightLast = s.highlightActive() ? s.highlightEndRow() : -1;
 
@@ -456,7 +483,7 @@ void TerminalRenderer::appendCursor(std::vector<ColorRect> &rects, bool overlay)
     } else if (cursorShape() == 2) {
         rects.push_back({.x = x, .y = y, .w = kThickness, .h = h, .color = m_cursorColor});
     } else {
-        // Unfocused block: a 1 px outline.
+        // Hollow block (the style, or any block while unfocused): a 1 px outline.
         rects.push_back({.x = x, .y = y, .w = w, .h = 1.0F, .color = m_cursorColor});
         rects.push_back({.x = x, .y = y + h - 1.0F, .w = w, .h = 1.0F, .color = m_cursorColor});
         rects.push_back({.x = x, .y = y + 1.0F, .w = 1.0F, .h = h - 2.0F, .color = m_cursorColor});
@@ -630,12 +657,19 @@ void TerminalRenderer::syncImages(QSGNode &below, QSGNode &above, ImageCacheNode
 
 void TerminalRenderer::uploadRects(QSGGeometryNode &node, const std::vector<ColorRect> &rects)
 {
+    // Never upload an empty geometry: the batch renderer drops a node whose
+    // vertex count reaches 0 and does not draw it again when rects return
+    // (a blinking underline/bar cursor, alone in the overlay, vanished for
+    // good). A transparent zero-size rect keeps the node in its batch.
+    static constexpr std::array<ColorRect, 1> kPlaceholder{{{.x = 0.0F, .y = 0.0F, .w = 0.0F, .h = 0.0F, .color = 0u}}};
+    const std::span<const ColorRect> uploaded = rects.empty() ? std::span<const ColorRect>(kPlaceholder)
+                                                              : std::span<const ColorRect>(rects);
     QSGGeometry *geometry = node.geometry();
-    geometry->allocate(static_cast<int>(rects.size()) * kVerticesPerRect);
+    geometry->allocate(static_cast<int>(uploaded.size()) * kVerticesPerRect);
     const std::span vertices(geometry->vertexDataAsColoredPoint2D(), static_cast<std::size_t>(geometry->vertexCount()));
 
     std::size_t index = 0;
-    std::ranges::for_each(rects, [&](const ColorRect &rect) {
+    std::ranges::for_each(uploaded, [&](const ColorRect &rect) {
         // QSGVertexColorMaterial expects premultiplied colors.
         const int alpha = qAlpha(rect.color);
         const auto channel = [alpha](int value) { return static_cast<uchar>((value * alpha) / 255); };

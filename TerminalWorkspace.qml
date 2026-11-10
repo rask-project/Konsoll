@@ -18,6 +18,8 @@ Item {
 
     required property TerminalManager sessionManager
     required property font terminalFont
+    required property int cursorShape
+    required property bool cursorBlink
 
     property real safeTop: 0
     property real safeLeft: 0
@@ -74,6 +76,8 @@ Item {
                     sessionManager: itemWorkspace.sessionManager
                     node: item.modelData.rootNode
                     terminalFont: itemWorkspace.terminalFont
+                    cursorShape: itemWorkspace.cursorShape
+                    cursorBlink: itemWorkspace.cursorBlink
                     onSaveBufferRequested: session => itemWorkspace.saveBufferRequested(session)
                 }
             }

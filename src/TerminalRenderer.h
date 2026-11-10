@@ -49,6 +49,13 @@ class TerminalRenderer : public QQuickItem
     Q_PROPERTY(int hoverRow READ hoverRow WRITE setHoverRow NOTIFY hoverChanged)
     Q_PROPERTY(int hoverStart READ hoverStart WRITE setHoverStart NOTIFY hoverChanged)
     Q_PROPERTY(int hoverEnd READ hoverEnd WRITE setHoverEnd NOTIFY hoverChanged)
+    // The user's cursor style (Settings > Appearance), used until a program
+    // picks one with DECSCUSR (and again after CSI 0 SP q): 0 block,
+    // 1 underline, 2 bar, 3 hollow block.
+    Q_PROPERTY(int defaultCursorShape READ defaultCursorShape WRITE setDefaultCursorShape NOTIFY
+                   defaultCursorChanged)
+    Q_PROPERTY(bool defaultCursorBlink READ defaultCursorBlink WRITE setDefaultCursorBlink NOTIFY
+                   defaultCursorChanged)
 
 public:
     explicit TerminalRenderer(QQuickItem *parent = nullptr);
@@ -69,6 +76,10 @@ public:
     void setHoverStart(int col);
     int hoverEnd() const { return m_hoverEnd; }
     void setHoverEnd(int col);
+    int defaultCursorShape() const { return (m_cursorState >> DefaultCursorShift) & CursorShapeMask; }
+    void setDefaultCursorShape(int shape);
+    bool defaultCursorBlink() const { return ((m_cursorState >> DefaultCursorShift) & DefaultCursorBlink) != 0; }
+    void setDefaultCursorBlink(bool blink);
 
 signals:
     void sessionChanged();
@@ -76,6 +87,7 @@ signals:
     void cellSizeChanged();
     void colorsChanged();
     void hoverChanged();
+    void defaultCursorChanged();
 
 protected:
     QSGNode *updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *data) override;
@@ -92,6 +104,10 @@ private:
     static constexpr int CursorBlinking = 0x01;
     static constexpr int CursorFocused = 0x02;
     static constexpr int CursorShapeShift = 4;
+    static constexpr int CursorShapeMask = 0x03;
+    static constexpr int DefaultCursorShift = 8;
+    static constexpr int DefaultCursorBlink = 0x04;
+    static constexpr int DefaultCursorMask = 0x07 << DefaultCursorShift;
 
     struct Row {
         std::vector<Cell> cells; // resolved colors, selection/cursor applied
@@ -133,7 +149,7 @@ private:
     void syncImages(QSGNode &below, QSGNode &above, ImageCacheNode &cache);
     // Whether the cursor cell's glyph is drawn inverted (a filled block).
     bool cursorInvertsGlyph() const;
-    int cursorShape() const { return m_cursorState >> CursorShapeShift; }
+    int cursorShape() const { return (m_cursorState >> CursorShapeShift) & CursorShapeMask; }
     void updateBlinkTimer();
     QRectF cellSpan(int row, int col, int count) const;
 
@@ -169,8 +185,9 @@ private:
     QRgb m_cursorColor{0xffe0e0e0};
     int m_blinkRows{0};  // rows holding SGR 5/6 blinking cells
     int m_blinkPhase{1}; // 1 = blinking text / cursor shown, 0 = hidden
-    // CursorBlinking | CursorFocused, and the DECSCUSR shape (0 block,
-    // 1 underline, 2 bar) from bit CursorShapeShift on.
+    // CursorBlinking | CursorFocused, the effective shape (0 block,
+    // 1 underline, 2 bar, 3 hollow block) at CursorShapeShift, and the user's
+    // default shape | DefaultCursorBlink at DefaultCursorShift.
     int m_cursorState{0};
 };
 

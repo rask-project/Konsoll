@@ -11,6 +11,8 @@ Item {
     required property TerminalManager sessionManager
     required property var node
     required property font terminalFont
+    required property int cursorShape
+    required property bool cursorBlink
 
     signal saveBufferRequested(var session)
 
@@ -156,6 +158,8 @@ Item {
                     session: leafItem.session
                     active: leafItem.active
                     terminalFont: pane.terminalFont
+                    cursorShape: pane.cursorShape
+                    cursorBlink: pane.cursorBlink
                 }
             }
         }

@@ -1910,6 +1910,11 @@ int TerminalBackend::pointerShape() const
     return name.isEmpty() ? -1 : pointerCursorShape(name);
 }
 
+int TerminalBackend::cursorStyle() const
+{
+    return m_terminal ? m_terminal->cursorStyle() : 0;
+}
+
 int TerminalBackend::cursorShape() const
 {
     return m_terminal ? m_terminal->cursorShape() : 0;

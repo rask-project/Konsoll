@@ -244,6 +244,41 @@ Window {
                         }
                     }
 
+                    FormGroup {
+                        FormRow {
+                            label: qsTr("Cursor style")
+                            showSeparator: false
+
+                            ComboBox {
+                                Layout.preferredWidth: 150
+
+                                model: [qsTr("Block"), qsTr("Underline"), qsTr("Bar"), qsTr("Hollow block")]
+                                currentIndex: control.preferences.cursorShape
+                                onActivated: index => control.preferences.cursorShape = index
+                            }
+                        }
+
+                        FormRow {
+                            label: qsTr("Blinking cursor")
+
+                            Switch {
+                                checked: control.preferences.cursorBlink
+                                onToggled: control.preferences.cursorBlink = checked
+                            }
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 10
+                        Layout.rightMargin: 10
+
+                        text: qsTr("Programs such as Neovim can still change the cursor while they run (DECSCUSR).")
+                        font.pointSize: 11
+                        color: control.secondaryTextColor
+                        wrapMode: Text.Wrap
+                    }
+
                     Item {
                         Layout.fillHeight: true
                     }

@@ -8,6 +8,8 @@ Item {
     id: view
 
     required property font terminalFont
+    required property int cursorShape
+    required property bool cursorBlink
     required property TerminalManager sessionManager
 
     // Measured from the font by the native renderer.
@@ -282,6 +284,8 @@ Item {
 
         session: view.session
         font: view.terminalFont
+        defaultCursorShape: view.cursorShape
+        defaultCursorBlink: view.cursorBlink
         accentColor: appPalette.accent
         selectedTextColor: appPalette.highlightedText
         hoverRow: selectionArea._linkModifierDown ? selectionArea._hoverRow : -1

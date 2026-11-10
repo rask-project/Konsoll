@@ -171,7 +171,9 @@ public:
     Q_INVOKABLE int cursorRow() const;
     Q_INVOKABLE int cursorCol() const;
     Q_INVOKABLE bool cursorVisible() const;
-    // DECSCUSR shape (0 block, 1 underline, 2 bar) and blinking.
+    // DECSCUSR shape (0 block, 1 underline, 2 bar) and blinking; the raw
+    // style is 0 while the program has not picked one (the user's default).
+    int cursorStyle() const;
     int cursorShape() const;
     int pointerShape() const;
     bool cursorBlinking() const;

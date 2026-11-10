@@ -555,6 +555,8 @@ Window {
         windowTranslucency: translucency
         fullScreen: appWindow.visibility === Window.FullScreen
         terminalFont: appWindow.terminalFont
+        cursorShape: appWindow.settings.cursorShape
+        cursorBlink: appWindow.settings.cursorBlink
 
         anchors.fill: parent
         safeTop: appWindow.SafeArea.margins.top
