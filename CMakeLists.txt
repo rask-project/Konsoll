@@ -66,7 +66,7 @@ qt_add_qml_module(konsoll
         Main.qml
         TerminalWindow.qml
         SaveTextDialog.qml
-        SettingsDialog.qml
+        SettingsWindow.qml
         TerminalWorkspace.qml
         TerminalPaneLayout.qml
         TerminalView.qml

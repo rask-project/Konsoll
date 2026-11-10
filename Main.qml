@@ -8,6 +8,11 @@ Item {
 
     readonly property AboutDialog aboutDialog: AboutDialog {}
     property AppSettings settings: AppSettings {}
+    // One Settings window for the whole app, like a native macOS app.
+    readonly property SettingsWindow settingsWindow: SettingsWindow {
+        windowManager: manager
+        preferences: manager.settings
+    }
 
     property var windows: []
     property TerminalWindow createdWindow: null
@@ -81,6 +86,9 @@ Item {
         // closing during termination must not overwrite that choice.
         if (!WindowStateStore.terminating()) {
             if (manager.windows.length === 0) {
+                // Settings would otherwise keep the app alive (quit on last
+                // window closed) with no terminal left.
+                manager.settingsWindow.close();
                 // Closing the last window ends the app: it is the window to
                 // restore on the next launch, so save it instead of dropping it.
                 manager.lastActiveWindowId = w.windowId;
