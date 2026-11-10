@@ -68,6 +68,8 @@ public:
 
     // Start the terminal with the detected default shell.
     Q_INVOKABLE void start(const QString &workingDirectory = {});
+    // A session without a PTY that just shows `bytes` (render-dump harness).
+    void startReplay(int cols, int rows, const QByteArray &bytes);
     // Request session shutdown. Returns false if the worker thread has not
     // stopped within the bounded wait; objects remain alive until it does.
     bool close();
@@ -167,6 +169,17 @@ public:
     // DECSCUSR shape (0 block, 1 underline, 2 bar) and blinking.
     int cursorShape() const;
     bool cursorBlinking() const;
+    // Images placed on the visible rows: `target` in cell units (fractions
+    // for pixel offsets and natural sizes), `source` in image pixels.
+    struct VisibleImage {
+        std::shared_ptr<const QImage> image;
+        QRectF target;
+        QRect source;
+        std::uint64_t serial{0};
+        std::int64_t z{0}; // kitty z-index: below the text when negative
+    };
+    std::vector<VisibleImage> visibleImages() const;
+
     // Keyboard focus of this session's view (window active + view focused):
     // drives the hollow unfocused cursor and ?1004 focus reports.
     Q_INVOKABLE void setFocused(bool focused);

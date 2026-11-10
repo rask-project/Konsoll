@@ -8,6 +8,7 @@
 #include <QPointer>
 #include <QQuickItem>
 #include <QRawFont>
+#include <QSGTexture>
 #include <QTimer>
 #include <QtQml>
 
@@ -80,6 +81,14 @@ protected:
     QSGNode *updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *data) override;
 
 private:
+    // Owns the image textures; part of the scene graph so they are freed on
+    // the render thread.
+    class ImageCacheNode : public QSGNode
+    {
+    public:
+        std::unordered_map<std::uint64_t, std::unique_ptr<QSGTexture>> textures;
+    };
+
     static constexpr int CursorBlinking = 0x01;
     static constexpr int CursorFocused = 0x02;
     static constexpr int CursorShapeShift = 4;
@@ -119,6 +128,7 @@ private:
     void toggleBlink();
     void appendUnderline(std::vector<ColorRect> &rects, const Cell &cell, const QRectF &span) const;
     void appendCursor(std::vector<ColorRect> &rects, bool overlay) const;
+    void syncImages(QSGNode &below, QSGNode &above, ImageCacheNode &cache);
     // Whether the cursor cell's glyph is drawn inverted (a filled block).
     bool cursorInvertsGlyph() const;
     int cursorShape() const { return m_cursorState >> CursorShapeShift; }
@@ -129,6 +139,7 @@ private:
 
     // Members ordered heaviest-first for -Wpadded (see AGENTS.md).
     std::vector<Row> m_rows;
+    std::vector<TerminalBackend::VisibleImage> m_images; // kitty / sixel images on screen
     std::vector<unsigned char> m_dirty; // per row: text node needs rebuild
     QPointer<TerminalBackend> m_session;
     QFont m_baseFont;

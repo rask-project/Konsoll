@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Graphics.h"
 #include "Screen.h"
 
 #include <QByteArray>
@@ -30,6 +31,8 @@ public:
 
     Screen &screen() { return m_screen; }
     const Screen &screen() const { return m_screen; }
+    // Images (kitty graphics protocol, sixel) and where they are placed.
+    const GraphicsStore &graphics() const { return m_graphics; }
 
     // OSC window title.
     QString title() const { return m_title; }
@@ -145,6 +148,7 @@ private:
     static constexpr unsigned int NrcMode = 1u << 24;               // ?42
     static constexpr unsigned int Vt52Mode = 1u << 25;              // ?2 reset (DECANM)
     static constexpr unsigned int ErasureMode = 1u << 26;           // ERM (6): erase protected cells too
+    static constexpr unsigned int SixelDisplayMode = 1u << 27;      // ?80 DECSDM: no sixel scrolling
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.
@@ -175,6 +179,7 @@ private:
     enum class StringKind : std::uint8_t {
         Osc,
         Dcs,
+        Apc,
         Ignore
     };
 
@@ -198,6 +203,11 @@ private:
     void handlePrefixedCsi(char final);
     void handleCsiWithIntermediates(char final);
     void handleDcs(const QByteArray &body);
+    void handleApc(const QByteArray &body);
+    void handleSixel(const QByteArray &body);
+    void handleGraphicsAttributes(const std::vector<int> &params);
+    GraphicsContext graphicsContext() const;
+    void eraseImages(int mode);
     void putCodePoint(unsigned int codePoint);
     void combineWithPrevious(unsigned int mark);
     static bool isZeroWidth(unsigned int codePoint);
@@ -255,6 +265,7 @@ private:
     static int paramAt(const std::vector<int> &p, int i, int def);
 
     Screen m_screen;
+    GraphicsStore m_graphics;
     std::vector<CommandBlock> m_commandBlocks;
     // CSI being parsed: parameter bytes (digits, ';', ':'), intermediate bytes
     // (0x20-0x2F; also an ESC sequence's) and the private prefix ('?', '>',

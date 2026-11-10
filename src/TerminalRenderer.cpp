@@ -4,6 +4,7 @@
 #include <QQuickWindow>
 #include <QSGGeometry>
 #include <QSGGeometryNode>
+#include <QSGImageNode>
 #include <QSGTextNode>
 #include <QSGVertexColorMaterial>
 #include <QTextLayout>
@@ -288,6 +289,7 @@ void TerminalRenderer::refresh()
 
     std::vector<Cell> scratch;
     std::ranges::for_each(std::views::iota(0, s.gridRows()), [&](int row) { pullRow(row, scratch); });
+    m_images = s.visibleImages();
 
     m_blinkRows = static_cast<int>(
         std::ranges::count_if(m_rows, [](const Row &r) { return std::ranges::any_of(r.cells, isBlinking); }));
@@ -373,22 +375,29 @@ QSGNode *TerminalRenderer::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData
     QSGNode *root = oldNode;
     if (root == nullptr) {
         created = std::make_unique<QSGNode>();
-        created->appendChildNode(makeColorNode().release());           // background
-        created->appendChildNode(std::make_unique<QSGNode>().release()); // text rows
-        created->appendChildNode(makeColorNode().release());           // overlay
+        created->appendChildNode(makeColorNode().release());                  // background
+        created->appendChildNode(std::make_unique<QSGNode>().release());        // images below the text
+        created->appendChildNode(std::make_unique<QSGNode>().release());        // text rows
+        created->appendChildNode(std::make_unique<QSGNode>().release());        // images above the text
+        created->appendChildNode(makeColorNode().release());                  // overlay
+        created->appendChildNode(std::make_unique<ImageCacheNode>().release()); // image textures
         root = created.get();
         markAllDirty();
     }
 
     auto &background = static_cast<QSGGeometryNode &>(*root->childAtIndex(0));
-    QSGNode &textRows = *root->childAtIndex(1);
-    auto &overlay = static_cast<QSGGeometryNode &>(*root->childAtIndex(2));
+    QSGNode &imagesBelow = *root->childAtIndex(1);
+    QSGNode &textRows = *root->childAtIndex(2);
+    QSGNode &imagesAbove = *root->childAtIndex(3);
+    auto &overlay = static_cast<QSGGeometryNode &>(*root->childAtIndex(4));
+    auto &imageCache = static_cast<ImageCacheNode &>(*root->childAtIndex(5));
 
     std::vector<ColorRect> rects;
     appendBackgroundRects(rects);
     uploadRects(background, rects);
 
     syncTextRows(textRows);
+    syncImages(imagesBelow, imagesAbove, imageCache);
 
     rects.clear();
     appendOverlayRects(rects);
@@ -570,6 +579,42 @@ void TerminalRenderer::appendUnderline(std::vector<ColorRect> &rects, const Cell
         rects.push_back({.x = x, .y = bottom, .w = w, .h = 1.0F, .color = color});
         break;
     }
+}
+
+// Kitty / sixel images: rebuilt each frame from the cached textures; a
+// texture lives as long as its image is on screen.
+void TerminalRenderer::syncImages(QSGNode &below, QSGNode &above, ImageCacheNode &cache)
+{
+    const auto clearLayer = [](QSGNode &layer) {
+        while (layer.childCount() > 0) {
+            QSGNode *const child = layer.firstChild();
+            layer.removeChildNode(child);
+            const std::unique_ptr<QSGNode> discard(child);
+        }
+    };
+    clearLayer(below);
+    clearLayer(above);
+
+    std::unordered_map<std::uint64_t, std::unique_ptr<QSGTexture>> used;
+    std::ranges::for_each(m_images, [&](const TerminalBackend::VisibleImage &visible) {
+        auto cached = cache.textures.find(visible.serial);
+        if (cached != cache.textures.end()) {
+            used.emplace(visible.serial, std::move(cached->second));
+            cache.textures.erase(cached);
+        } else if (used.find(visible.serial) == used.end()) {
+            used.emplace(visible.serial, std::unique_ptr<QSGTexture>(window()->createTextureFromImage(*visible.image)));
+        }
+        std::unique_ptr<QSGImageNode> node(window()->createImageNode());
+        node->setTexture(used.at(visible.serial).get());
+        node->setOwnsTexture(false);
+        node->setFiltering(QSGTexture::Linear);
+        node->setSourceRect(QRectF(visible.source));
+        node->setRect(QRectF(visible.target.x() * m_cellWidth, visible.target.y() * m_cellHeight,
+                             visible.target.width() * m_cellWidth, visible.target.height() * m_cellHeight));
+        (visible.z < 0 ? below : above).appendChildNode(node.release());
+    });
+    // Textures of images no longer shown are freed here (render thread).
+    cache.textures = std::move(used);
 }
 
 void TerminalRenderer::uploadRects(QSGGeometryNode &node, const std::vector<ColorRect> &rects)

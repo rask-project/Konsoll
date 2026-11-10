@@ -7,6 +7,7 @@
 #include <string_view>
 
 #include "AppQuitGuard.h"
+#include "renderdump.h"
 #include "screendump.h"
 #include "selftest.h"
 
@@ -34,6 +35,7 @@ int main(int argc, char *argv[])
             break;
         }
     }
+    const bool renderDump = argc > 1 && std::string_view(argv[1]) == "--render-dump";
     if (selfTest) {
         qputenv("QT_QPA_PLATFORM", "offscreen");
     }
@@ -42,6 +44,9 @@ int main(int argc, char *argv[])
     app.setQuitOnLastWindowClosed(true);
     if (selfTest) {
         return konsoll::runSelfTest();
+    }
+    if (renderDump) {
+        return konsoll::runRenderDump(std::span(argv, static_cast<std::size_t>(argc)));
     }
     QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/assets/konsoll.png")));
 

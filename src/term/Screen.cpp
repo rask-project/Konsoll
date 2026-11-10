@@ -452,7 +452,7 @@ void Screen::eraseCells(int row, int first, int last, unsigned int protectedMask
     }
     Line &line = grid()[row];
     const Cell blank = eraseCell();
-    std::for_each(line.begin() + first, line.begin() + last + 1, [&blank, protectedMask](Cell &cell) {
+    std::for_each(line.begin() + first, line.begin() + last + 1, [&blank, &protectedMask](Cell &cell) {
         if ((cell.attrs & protectedMask) == 0u) {
             cell = blank;
         }
@@ -465,9 +465,9 @@ void Screen::eraseInDisplay(int mode, unsigned int protectedMask)
         clearScrollback();
         return;
     }
-    const auto eraseRows = [this, protectedMask](int from, int to) {
+    const auto eraseRows = [this, &protectedMask](int from, int to) {
         std::ranges::for_each(std::views::iota(from, to),
-                              [this, protectedMask](int r) { eraseCells(r, 0, m_cols - 1, protectedMask); });
+                              [this, &protectedMask](int r) { eraseCells(r, 0, m_cols - 1, protectedMask); });
     };
     if (mode == 0) {
         // Cursor to end of screen.
@@ -668,6 +668,7 @@ const Line &Screen::scrollbackLine(int index) const
 
 void Screen::clearScrollback()
 {
+    m_droppedLines += static_cast<long long>(m_scrollback.size());
     m_scrollback.clear();
     m_scrollbackWrapped.clear();
     m_scrollOffset = 0;
@@ -747,6 +748,8 @@ void Screen::scrollUpOne(int top, int bottom) // NOLINT: top/bottom are inherent
     auto &g = grid();
     if (top == 0 && !m_inAlt) {
         pushScrollback(g[top], m_mainWrapped[top]);
+    } else if (top == 0) {
+        ++m_altScrolled; // images on the alternate screen scroll with it
     }
     for (int r = top; r < bottom; ++r) {
         g[r] = g[r + 1];
@@ -801,6 +804,7 @@ void Screen::pushScrollback(const Line &line, bool wrapped)
     while (m_maxScrollback > 0 && static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
         m_scrollback.pop_front();
         m_scrollbackWrapped.pop_front();
+        ++m_droppedLines;
         // Popping the oldest line shifts the view down by one; keep it on the
         // same absolute line.
         if (m_scrollOffset > 0) {
@@ -816,6 +820,7 @@ void Screen::setMaxScrollback(int max)
     while (m_maxScrollback > 0 && static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
         m_scrollback.pop_front();
         m_scrollbackWrapped.pop_front();
+        ++m_droppedLines;
         if (m_scrollOffset > 0) {
             --m_scrollOffset;
         }

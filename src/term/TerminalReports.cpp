@@ -129,7 +129,7 @@ void Terminal::handleDeviceAttributes(char prefix, int param)
         return;
     }
     if (prefix == 0) {
-        reply("\x1b[?62;22c"); // DA1: VT220 with ANSI color
+        reply("\x1b[?62;4;22c"); // DA1: VT220 with sixel graphics and ANSI color
     } else if (prefix == '>') {
         reply("\x1b[>1;" + number(versionNumber()) + ";0c"); // DA2: VT220, firmware version
     } else if (prefix == '=') {
@@ -245,6 +245,8 @@ int Terminal::decModeState(int mode) const
         return flag(CursorBlinkMode);
     case 25:
         return state(m_screen.cursorVisible());
+    case 80:
+        return flag(SixelDisplayMode);
     case 1004:
         return flag(FocusReporting);
     case 1007:

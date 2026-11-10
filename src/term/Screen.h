@@ -130,6 +130,16 @@ public:
     // True when this physical row continues the logical line above it.
     bool isWrappedContinuation(int index) const;
 
+    // Absolute line numbers that survive scrolling and history trimming, for
+    // anchoring images: lineAnchor(i) is the line lineAt(i) shows,
+    // rowAnchor(r) screen row r. The alternate screen counts its own
+    // scrolls.
+    long long lineAnchor(int index) const { return (m_inAlt ? m_altScrolled : m_droppedLines) + index; }
+    long long rowAnchor(int row) const
+    {
+        return lineAnchor((m_inAlt ? 0 : static_cast<int>(m_scrollback.size())) + row);
+    }
+
     // Alternate screen.
     void enterAltScreen();
     // `restoreCursor` (mode 1049) restores the main screen's DECSC cursor
@@ -202,6 +212,8 @@ private:
     std::deque<bool> m_scrollbackWrapped;
     std::vector<bool> m_mainSavedWrapped;
     std::vector<bool> m_tabStops; // per column: a tab stop is set
+    long long m_droppedLines = 0; // history lines removed from the top so far
+    long long m_altScrolled = 0;  // alternate-screen scroll-ups so far
     int m_rows;
     int m_cols;
     unsigned int m_eraseBg = 0; // encoded like Cell::bg; 0 = default

@@ -96,6 +96,8 @@ qt_add_qml_module(konsoll
         src/pty/PtyWorker.cpp
         src/pty/PtyWorker.h
         src/parserselftest.cpp
+        src/renderdump.cpp
+        src/renderdump.h
         src/screendump.cpp
         src/screendump.h
         src/selftest.cpp
@@ -105,6 +107,8 @@ qt_add_qml_module(konsoll
         src/term/Charsets.h
         src/term/CharWidth.cpp
         src/term/CharWidth.h
+        src/term/Graphics.cpp
+        src/term/Graphics.h
         src/term/Palette.cpp
         src/term/Palette.h
         src/term/Screen.cpp
@@ -165,6 +169,7 @@ target_compile_definitions(konsoll PRIVATE
 target_link_libraries(konsoll
     PRIVATE Qt6::Quick Qt6::CanvasPainter Qt6::QuickControls2 Qt6::QuickDialogs2 Qt6::Svg
     "-framework QuartzCore"
+    z
 )
 
 install(TARGETS konsoll

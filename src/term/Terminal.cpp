@@ -239,8 +239,10 @@ void Terminal::processEscapeByte(unsigned char c)
         return;
     case 'X': // SOS
     case '^': // PM
-    case '_': // APC
         enterString(State::IgnoreString, StringKind::Ignore);
+        return;
+    case '_': // APC: kitty graphics (APC G ...)
+        enterString(State::Dcs, StringKind::Apc);
         return;
     default:
         break;
@@ -427,6 +429,8 @@ void Terminal::finishString()
         handleOsc(body);
     } else if (m_stringKind == StringKind::Dcs) {
         handleDcs(body);
+    } else if (m_stringKind == StringKind::Apc) {
+        handleApc(body);
     }
 }
 
@@ -646,6 +650,7 @@ void Terminal::handleCsi(char final)
         handleAnsiMode(final == 'h', p);
         break;
     case 'J':
+        eraseImages(paramAt(p, 0, 0));
         m_screen.eraseInDisplay(paramAt(p, 0, 0), isoProtection());
         if (paramAt(p, 0, 0) == 2) {
             setExtraFlag(ClearPending, true); // full-screen erase: selection now sits over blanks.
@@ -718,6 +723,9 @@ void Terminal::handlePrivateCsi(char final)
         break;
     case 'n': // DECDSR
         handleDeviceStatus(paramAt(params, 0, 0), true);
+        break;
+    case 'S': // XTSMGRAPHICS
+        handleGraphicsAttributes(params);
         break;
     case 'J': // DECSED: selective erase keeps protected cells
         m_screen.eraseInDisplay(paramAt(params, 0, 0), CellAttr::DecProtected | CellAttr::IsoProtected);
@@ -851,7 +859,9 @@ void Terminal::setAltScreenMode(int mode, bool set)
         return;
     }
     // Leaving 1049 restores the main screen's DECSC cursor before the main
-    // screen re-wraps; the pen and charsets follow.
+    // screen re-wraps; the pen and charsets follow. Alternate-screen images
+    // go with that screen.
+    m_graphics.clearAlternate();
     m_screen.leaveAltScreen(mode == 1049);
     if (mode == 1049) {
         restoreCursorState(false);
@@ -876,6 +886,7 @@ void Terminal::softReset()
 void Terminal::fullReset()
 {
     m_screen.fullReset();
+    m_graphics.clear();
     clearCommandBlocks();
     m_pen = Cell{};
     m_charsets = {'B', 'B', 'B', 'B'};
@@ -902,10 +913,96 @@ void Terminal::handleDcs(const QByteArray &body)
 {
     if (body.startsWith("+q")) {
         handleXtgettcap(body.mid(2)); // XTGETTCAP
-    } else if (body.startsWith("$q")) {
-        handleDecrqss(body.mid(2)); // DECRQSS
+        return;
     }
-    // Sixel, tmux passthrough and other DCS strings are consumed unused.
+    if (body.startsWith("$q")) {
+        handleDecrqss(body.mid(2)); // DECRQSS
+        return;
+    }
+    // Sixel: DCS P1 ; P2 ; P3 q data ST.
+    const auto final = std::ranges::find_if(body, [](char c) { return (c < '0' || c > '9') && c != ';'; });
+    if (final != body.end() && *final == 'q') {
+        handleSixel(body);
+    }
+    // tmux passthrough and other DCS strings are consumed unused.
+}
+
+void Terminal::handleApc(const QByteArray &body)
+{
+    if (!body.startsWith('G')) {
+        return;
+    }
+    const KittyResult result = m_graphics.handleKitty(body.mid(1), graphicsContext());
+    reply(result.reply);
+    if (result.placed != 0 && result.moveCursor != 0) {
+        // The cursor moves to the cell after the image's last column, on its
+        // last row (scrolling if needed), as in kitty.
+        const int column = m_screen.cursorCol();
+        std::ranges::for_each(std::views::iota(1, std::max(result.cursorRows, 1)), [this](int) { m_screen.lineFeed(); });
+        m_screen.moveCursor(m_screen.cursorRow(), std::min(column + result.cursorColumns, m_screen.cols() - 1));
+    }
+}
+
+void Terminal::handleSixel(const QByteArray &body)
+{
+    const qsizetype q = body.indexOf('q');
+    const std::vector<int> params = parseParams(body.left(q));
+    const QImage image = decodeSixel(body.mid(q + 1), paramAt(params, 1, 0) == 1);
+    if (image.isNull()) {
+        return;
+    }
+    const bool displayMode = (m_extraFlags & SixelDisplayMode) != 0;
+    GraphicsContext context = graphicsContext();
+    if (displayMode) {
+        // DECSDM: the image goes to the top-left corner, nothing scrolls.
+        context.anchor = m_screen.rowAnchor(0);
+        context.column = 0;
+    }
+    const int rows = m_graphics.addSixel(image, context);
+    if (!displayMode) {
+        // Sixel scrolling: the cursor goes below the image, in its column.
+        const int column = m_screen.cursorCol();
+        std::ranges::for_each(std::views::iota(0, rows), [this](int) { m_screen.lineFeed(); });
+        m_screen.moveCursor(m_screen.cursorRow(), column);
+    }
+}
+
+GraphicsContext Terminal::graphicsContext() const
+{
+    return GraphicsContext{
+        .anchor = m_screen.rowAnchor(m_screen.cursorRow()),
+        .column = m_screen.cursorCol(),
+        .cellWidth = m_cellPixelWidth,
+        .cellHeight = m_cellPixelHeight,
+        .alternate = m_screen.inAltScreen() ? 1 : 0,
+        .top = m_screen.rowAnchor(0),
+    };
+}
+
+// ED 2 removes the images on the screen, ED 3 those in the history.
+void Terminal::eraseImages(int mode)
+{
+    const int alternate = m_screen.inAltScreen() ? 1 : 0;
+    if (mode == 2) {
+        m_graphics.erasePlacements(alternate, m_screen.rowAnchor(0), m_screen.rowAnchor(m_screen.rows() - 1));
+    } else if (mode == 3 && alternate == 0) {
+        m_graphics.erasePlacements(0, m_screen.lineAnchor(0) - (1LL << 40), m_screen.rowAnchor(0) - 1);
+    }
+}
+
+// XTSMGRAPHICS: CSI ? Pi ; Pa ; Pv S. Item 1 = color registers, 2 = sixel
+// geometry; any action reads back the (fixed) values.
+void Terminal::handleGraphicsAttributes(const std::vector<int> &params)
+{
+    const int item = paramAt(params, 0, 0);
+    if (item == 1) {
+        reply("\x1b[?1;0;256S");
+    } else if (item == 2) {
+        reply("\x1b[?2;0;" + QByteArray::number(m_screen.cols() * m_cellPixelWidth) + ";" +
+              QByteArray::number(m_screen.rows() * m_cellPixelHeight) + "S");
+    } else {
+        reply("\x1b[?" + QByteArray::number(item) + ";1;0S"); // not supported (ReGIS)
+    }
 }
 
 void Terminal::handleDec(bool set, const std::vector<int> &params)
@@ -933,6 +1030,9 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
             break;
         case 42:
             setExtraFlag(NrcMode, set); // DECNRCM
+            break;
+        case 80:
+            setExtraFlag(SixelDisplayMode, set); // DECSDM
             break;
         case 95:
             setExtraFlag(NoClearOnColumnChange, set); // DECNCSM

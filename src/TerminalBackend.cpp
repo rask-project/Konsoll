@@ -206,6 +206,18 @@ void TerminalBackend::start(const QString &workingDirectory)
     m_state = SessionState::Starting;
 }
 
+void TerminalBackend::startReplay(int cols, int rows, const QByteArray &bytes)
+{
+    m_cols = cols;
+    m_rows = rows;
+    m_terminal = std::make_unique<Terminal>(m_rows, m_cols, m_remoteHostToken);
+    m_terminal->setDefaultColors(m_defaultFg, m_defaultBg);
+    m_terminal->setCellPixelSize(m_cellPixelWidth, m_cellPixelHeight);
+    m_state = SessionState::Running;
+    onData(bytes);
+    emit frameReady();
+}
+
 bool TerminalBackend::close()
 {
     if (m_state == SessionState::Stopped) {
@@ -1614,6 +1626,43 @@ unsigned int TerminalBackend::foregroundColor() const
 unsigned int TerminalBackend::cursorColor() const
 {
     return m_terminal && m_terminal->cursorColorOverride() != 0 ? m_terminal->cursorColorOverride() : foregroundColor();
+}
+
+std::vector<TerminalBackend::VisibleImage> TerminalBackend::visibleImages() const
+{
+    std::vector<VisibleImage> out;
+    if (!m_terminal) {
+        return out;
+    }
+    const Screen &screen = m_terminal->screen();
+    const GraphicsStore &graphics = m_terminal->graphics();
+    const long long top = screen.lineAnchor(visibleStart());
+    const int alternate = screen.inAltScreen() ? 1 : 0;
+    const double cellWidth = std::max(m_cellPixelWidth, 1);
+    const double cellHeight = std::max(m_cellPixelHeight, 1);
+    std::ranges::for_each(graphics.placements(), [&](const GraphicsPlacement &placement) {
+        const long long row = placement.anchor - top;
+        const GraphicsImage *const image = graphics.image(placement.imageId);
+        if (placement.alternate != alternate || image == nullptr || row + placement.rows <= 0 || row >= m_rows) {
+            return;
+        }
+        // c= / r= stretch the image over that many cells; otherwise it keeps
+        // its pixel size.
+        const bool scaled = placement.scaled != 0;
+        const QRectF target(placement.column + (placement.offsetX / cellWidth),
+                            static_cast<double>(row) + (placement.offsetY / cellHeight),
+                            scaled ? placement.columns : placement.source.width() / cellWidth,
+                            scaled ? placement.rows : placement.source.height() / cellHeight);
+        out.push_back(VisibleImage{
+            .image = image->pixels,
+            .target = target,
+            .source = placement.source,
+            .serial = image->serial,
+            .z = placement.z,
+        });
+    });
+    std::ranges::stable_sort(out, {}, &VisibleImage::z);
+    return out;
 }
 
 int TerminalBackend::keyboardFlags() const

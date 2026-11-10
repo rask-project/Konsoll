@@ -3,7 +3,9 @@
 #include "KeyEncoder.h"
 #include "term/Terminal.h"
 
+#include <QBuffer>
 #include <QByteArray>
+#include <QImage>
 #include <QString>
 
 namespace konsoll
@@ -214,7 +216,7 @@ QByteArray replies(const QByteArray &bytes, int rows = 4, int cols = 10)
 // Stage 4a: query replies.
 void queryReplies(int &failures)
 {
-    selfTestCheck(failures, replies("\x1b[c") == "\x1b[?62;22c" && replies("\x1b[0c") == "\x1b[?62;22c",
+    selfTestCheck(failures, replies("\x1b[c") == "\x1b[?62;4;22c" && replies("\x1b[0c") == "\x1b[?62;4;22c",
                   "reply: DA1");
     selfTestCheck(failures, replies("\x1b[>c").startsWith("\x1b[>1;") && replies("\x1b[=c") == "\x1bP!|00000000\x1b\\",
                   "reply: DA2 / DA3");
@@ -403,7 +405,7 @@ void vttestFindings(int &failures)
         Terminal term(4, 10, QStringLiteral("selftest"));
         term.write("\x1b[?2l\x1bY\"%x\x1bZ\x1b<\x1b[c");
         selfTestCheck(failures, term.screen().cellAt(2, 5).ch == 'x' && !term.vt52Mode() &&
-                                    term.takeResponses() == "\x1b/Z\x1b[?62;22c",
+                                    term.takeResponses() == "\x1b/Z\x1b[?62;4;22c",
                       "vt52: ESC Y addressing, identify, ESC < back to ANSI");
     }
     selfTestCheck(failures, replies("\x1b[0x\x1b[1x") == "\x1b[2;1;1;128;128;1;0x\x1b[3;1;1;128;128;1;0x", "reply: DECREQTPARM");
@@ -451,6 +453,89 @@ void kittyKeyboard(int &failures)
                   "kitty: keypad codes, F3 as CSI 13 ~, F13+ private codes");
 }
 
+// Kitty graphics protocol and sixel.
+void graphicsProtocols(int &failures)
+{
+    // 2x2 RGBA: red, green, blue, white.
+    const QByteArray rgba("\xff\x00\x00\xff\x00\xff\x00\xff\x00\x00\xff\xff\xff\xff\xff\xff", 16);
+    const QByteArray apc = "\x1b_G";
+    const QByteArray st = "\x1b\\";
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write(apc + "a=T,f=32,s=2,v=2,i=7;" + rgba.toBase64() + st);
+        const GraphicsStore &graphics = term.graphics();
+        const GraphicsImage *const image = graphics.image(7);
+        selfTestCheck(failures, term.takeResponses() == "\x1b_Gi=7;OK\x1b\\" && image != nullptr &&
+                                    image->pixels->pixelColor(1, 0) == QColor(0, 255, 0) &&
+                                    graphics.placements().size() == 1 && term.screen().cursorCol() == 1,
+                      "kitty graphics: transmit and display raw RGBA, reply OK, move the cursor");
+        term.write(apc + "a=d,d=i,i=7" + st);
+        const bool placementGone = term.graphics().placements().empty() && term.graphics().image(7) != nullptr;
+        term.write(apc + "a=d,d=I,i=7" + st);
+        selfTestCheck(failures, placementGone && term.graphics().image(7) == nullptr,
+                      "kitty graphics: d=i keeps the image data, d=I frees it");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        const QByteArray encoded = rgba.toBase64();
+        term.write(apc + "a=t,f=32,s=2,v=2,I=3,m=1;" + encoded.left(8) + st);
+        term.write(apc + "m=0;" + encoded.mid(8) + st);
+        const QByteArray stored = term.takeResponses();
+        term.write(apc + "a=p,I=3,c=4,r=2,q=1" + st);
+        const GraphicsStore &graphics = term.graphics();
+        selfTestCheck(failures, stored.startsWith("\x1b_Gi=") && stored.contains(",I=3;OK") && graphics.placements().size() == 1 &&
+                                    graphics.placements().front().columns == 4 && graphics.placements().front().rows == 2 &&
+                                    term.takeResponses().isEmpty() && term.screen().cursorRow() == 1,
+                      "kitty graphics: chunked transmit by number, put with c/r, quiet");
+    }
+    {
+        QImage png(3, 1, QImage::Format_RGB32);
+        png.fill(Qt::blue);
+        QByteArray pngBytes;
+        QBuffer buffer(&pngBytes);
+        buffer.open(QIODevice::WriteOnly);
+        png.save(&buffer, "PNG");
+        const QByteArray zlib = qCompress(rgba).mid(4); // qCompress = 4-byte size + zlib stream
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write(apc + "a=t,f=100,i=1;" + pngBytes.toBase64() + st);
+        term.write(apc + "a=t,f=32,s=2,v=2,o=z,i=2;" + zlib.toBase64() + st);
+        term.write(apc + "a=q,i=9,f=32,s=2,v=2;" + rgba.toBase64() + st);
+        term.write(apc + "a=q,i=10,f=100;" + QByteArray("junk").toBase64() + st);
+        const QByteArray replies = term.takeResponses();
+        selfTestCheck(failures, term.graphics().image(1) != nullptr && term.graphics().image(1)->pixels->width() == 3 &&
+                                    term.graphics().image(2) != nullptr && term.graphics().image(9) == nullptr &&
+                                    replies.contains("\x1b_Gi=9;OK") && replies.contains("\x1b_Gi=10;EBADPNG"),
+                      "kitty graphics: PNG, zlib-compressed data, queries (valid and invalid)");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1bPq#0;2;100;0;0#0~~\x1b\\");
+        const GraphicsStore &graphics = term.graphics();
+        const bool placed = graphics.placements().size() == 1;
+        const GraphicsImage *const image = placed ? graphics.image(graphics.placements().front().imageId) : nullptr;
+        selfTestCheck(failures, image != nullptr && image->pixels->width() == 2 && image->pixels->height() == 6 &&
+                                    image->pixels->pixelColor(1, 5) == QColor(255, 0, 0) && term.screen().cursorRow() == 1,
+                      "sixel: decode color registers and data, cursor below the image");
+        term.write("\r\n\r\n\r\n\r\n");
+        const long long anchor = term.graphics().placements().front().anchor;
+        selfTestCheck(failures, anchor < term.screen().rowAnchor(0), "graphics: images scroll with the text");
+        term.write("\x1b[2J");
+        selfTestCheck(failures, !term.graphics().placements().empty(), "graphics: ED 2 keeps images scrolled off screen");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b[?1049h" + apc + "a=T,f=32,s=2,v=2;" + rgba.toBase64() + st);
+        const bool placed = term.graphics().placements().size() == 1;
+        term.write("\x1b[?1049l");
+        selfTestCheck(failures, placed && term.graphics().placements().empty(),
+                      "graphics: leaving the alternate screen removes its images");
+        term.write(apc + "a=T,f=32,s=2,v=2;" + rgba.toBase64() + st + "\x1b[2J");
+        selfTestCheck(failures, term.graphics().placements().empty(), "graphics: ED 2 removes images on the screen");
+    }
+    selfTestCheck(failures, replies("\x1b[?1;1;0S\x1b[?2;1;0S", 4, 10) == "\x1b[?1;0;256S\x1b[?2;0;80;64S",
+                  "reply: XTSMGRAPHICS color registers and sixel geometry");
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
@@ -465,6 +550,7 @@ void runParserSelfTest(int &failures)
     linksAndColors(failures);
     vttestFindings(failures);
     kittyKeyboard(failures);
+    graphicsProtocols(failures);
 }
 
 } // namespace konsoll

@@ -74,7 +74,8 @@ Item {
 
     function syncSessionSize() {
         if (session && width >= cellWidth * 2 + 2 * canvasInset && height >= cellHeight * 2 + 2 * canvasInset) {
-            session.setCellPixelSize(Math.round(cellWidth), Math.round(cellHeight));
+            // Device pixels, so images applications size from it stay sharp.
+            session.setCellPixelSize(Math.round(cellWidth * Screen.devicePixelRatio), Math.round(cellHeight * Screen.devicePixelRatio));
             session.resize(cols, rows);
         }
     }
