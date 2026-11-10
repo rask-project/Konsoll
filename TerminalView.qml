@@ -134,14 +134,17 @@ Item {
             // Numeric keypad keys skip text composition: the backend sends
             // SS3 codes in application keypad mode, their text otherwise.
             const isKeypadKey = (event.modifiers & Qt.KeypadModifier) !== 0;
-            if (hasCommand || hasOption || hasPhysicalControl || isSpecialKey || isKeypadKey) {
+            // Kitty "report all keys as escape codes" (flag 8): every key,
+            // including plain text and modifiers, goes to the session.
+            const reportAllKeys = view.session && (view.session.keyboardFlags & 8) !== 0;
+            if (hasCommand || hasOption || hasPhysicalControl || isSpecialKey || isKeypadKey || reportAllKeys) {
                 if (hasCommand && event.key === Qt.Key_F) {
                     searchBar.openSearch();
                     event.accepted = true;
                     return;
                 }
                 if (view.session)
-                    view.sessionManager.routeKeyPress(view.session, event.key, event.text, event.modifiers);
+                    view.sessionManager.routeKeyEvent(view.session, event.key, event.text, event.modifiers, event.isAutoRepeat ? 2 : 1);
                 event.accepted = true;
             }
         }
@@ -153,6 +156,9 @@ Item {
             if (event.key === Qt.Key_Meta)
                 linkModifiers &= ~Qt.MetaModifier;
             selectionArea.updateLinkHover(linkModifiers);
+            // Kitty "report event types" (flag 2): key releases too.
+            if (view.active && view.session && (view.session.keyboardFlags & 2) !== 0 && !event.isAutoRepeat)
+                view.sessionManager.routeKeyEvent(view.session, event.key, event.text, event.modifiers, 3);
         }
 
         onTextChanged: {

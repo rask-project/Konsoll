@@ -234,6 +234,7 @@ bool TerminalBackend::close()
 void TerminalBackend::onData(const QByteArray &data)
 {
     const bool wasMouseTracking = mouseTracking();
+    const int keyboardFlagsBefore = keyboardFlags();
     const bool wasMouseMotionTracking = mouseMotionTracking();
     const bool wasCommandRunning = commandRunning();
     m_terminal->write(data);
@@ -250,6 +251,9 @@ void TerminalBackend::onData(const QByteArray &data)
     }
     if (wasCommandRunning != commandRunning()) {
         emit commandRunningChanged();
+    }
+    if (keyboardFlagsBefore != keyboardFlags()) {
+        emit keyboardFlagsChanged();
     }
     // Query replies go out in the order the queries arrived: Neovim pairs
     // OSC 11 with CSI 5n and expects the OSC color reply first.
@@ -367,6 +371,11 @@ void TerminalBackend::scheduleFrame()
 
 void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
 {
+    keyEvent(key, text, modifiers, KeyEventType::Press);
+}
+
+void TerminalBackend::keyEvent(int key, const QString &text, int modifiers, int eventType)
+{
     const unsigned int mods = static_cast<unsigned int>(modifiers);
     // In this QML key-event path on macOS, ControlModifier is used for app
     // shortcuts (Command), while MetaModifier carries the physical Control
@@ -378,7 +387,20 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
 
     // Editor shortcuts: copy / paste / select-all.
     if (command) {
-        editorShortcuts(key);
+        if (eventType != KeyEventType::Release) {
+            editorShortcuts(key);
+        }
+        return;
+    }
+    const bool keypad = (mods & static_cast<unsigned int>(Qt::KeypadModifier)) != 0;
+    const unsigned int keyMods =
+        (shift ? KeyMod::Shift : 0u) | (option ? KeyMod::Alt : 0u) | (control ? KeyMod::Control : 0u);
+    if (eventType == KeyEventType::Release) {
+        // Releases only reach the PTY under kitty flag 2.
+        const QByteArray out = keyOutputBytes(key, text, keyMods, keypad, eventType);
+        if (!out.isEmpty() && m_worker) {
+            writeToPty(out);
+        }
         return;
     }
 
@@ -399,16 +421,13 @@ void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
         return;
     }
 
-    const bool keypad = (mods & static_cast<unsigned int>(Qt::KeypadModifier)) != 0;
-    const unsigned int keyMods =
-        (shift ? KeyMod::Shift : 0u) | (option ? KeyMod::Alt : 0u) | (control ? KeyMod::Control : 0u);
-    const QByteArray out = keyOutputBytes(key, text, keyMods, keypad);
+    const QByteArray out = keyOutputBytes(key, text, keyMods, keypad, eventType);
     if (!out.isEmpty() && m_worker) {
         writeToPty(out);
     }
 }
 
-QByteArray TerminalBackend::keyOutputBytes(int key, const QString &text, unsigned int mods, bool keypad) const
+QByteArray TerminalBackend::keyOutputBytes(int key, const QString &text, unsigned int mods, bool keypad, int eventType) const
 {
     if (!m_terminal) {
         return {};
@@ -418,7 +437,7 @@ QByteArray TerminalBackend::keyOutputBytes(int key, const QString &text, unsigne
                                (keypad ? KeyMode::FromKeypad : 0u) |
                                (m_terminal->newlineMode() ? KeyMode::NewlineMode : 0u) |
                                (m_terminal->vt52Mode() ? KeyMode::Vt52 : 0u);
-    return encodeKey(key, text, mods, modes, m_terminal->kittyKeyboardFlags());
+    return encodeKey(key, text, mods, modes, m_terminal->kittyKeyboardFlags(), eventType);
 }
 
 void TerminalBackend::writeText(const QString &text)
@@ -1595,6 +1614,11 @@ unsigned int TerminalBackend::foregroundColor() const
 unsigned int TerminalBackend::cursorColor() const
 {
     return m_terminal && m_terminal->cursorColorOverride() != 0 ? m_terminal->cursorColorOverride() : foregroundColor();
+}
+
+int TerminalBackend::keyboardFlags() const
+{
+    return m_terminal ? static_cast<int>(m_terminal->kittyKeyboardFlags()) : 0;
 }
 
 int TerminalBackend::cursorShape() const

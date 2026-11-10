@@ -421,6 +421,36 @@ void vttestFindings(int &failures)
                   "protect: DECSCA vs DECSEL, SPA vs EL, ERM erases protected cells");
 }
 
+// Kitty keyboard protocol, all progressive enhancements.
+void kittyKeyboard(int &failures)
+{
+    const auto key = [](int k, const QString &text, unsigned int mods, unsigned int flags,
+                        int event = KeyEventType::Press, unsigned int modes = 0) {
+        return encodeKey(k, text, mods, modes, flags, event);
+    };
+    const QString a = QStringLiteral("a");
+    selfTestCheck(failures, key(Qt::Key_A, a, 0, 8) == "\x1b[97u" && key(Qt::Key_Return, {}, 0, 8) == "\x1b[13u" &&
+                                key(Qt::Key_Shift, {}, KeyMod::Shift, 8) == "\x1b[57441;2u" &&
+                                key(Qt::Key_Shift, {}, KeyMod::Shift, 1).isEmpty(),
+                  "kitty 8: text, Enter and modifier keys as escape codes");
+    selfTestCheck(failures, key(Qt::Key_A, a, 0, 2, KeyEventType::Release) == "\x1b[97;1:3u" &&
+                                key(Qt::Key_C, {}, KeyMod::Control, 3, KeyEventType::Repeat) == "\x1b[99;5:2u" &&
+                                key(Qt::Key_Up, {}, 0, 2) == "\x1b[A" &&
+                                key(Qt::Key_Up, {}, 0, 2, KeyEventType::Release) == "\x1b[1;1:3A" &&
+                                key(Qt::Key_A, a, 0, 2, KeyEventType::Repeat) == "a",
+                  "kitty 2: repeat and release events");
+    selfTestCheck(failures, key(Qt::Key_Return, {}, 0, 2, KeyEventType::Release).isEmpty() &&
+                                key(Qt::Key_Return, {}, 0, 10, KeyEventType::Release) == "\x1b[13;1:3u" &&
+                                key(Qt::Key_A, a, 0, 0, KeyEventType::Release).isEmpty(),
+                  "kitty 2: Enter release needs flag 8; legacy mode has no releases");
+    selfTestCheck(failures, key(Qt::Key_A, QStringLiteral("A"), KeyMod::Shift, 12) == "\x1b[97:65;2u",
+                  "kitty 4: shifted alternate key");
+    selfTestCheck(failures, key(Qt::Key_A, a, 0, 24) == "\x1b[97;1;97u", "kitty 16: associated text");
+    selfTestCheck(failures, key(Qt::Key_5, QStringLiteral("5"), 0, 1, KeyEventType::Press, KeyMode::FromKeypad) == "\x1b[57404u" &&
+                                key(Qt::Key_F3, {}, 0, 1) == "\x1b[13~" && key(Qt::Key_F13, {}, 0, 1) == "\x1b[57376u",
+                  "kitty: keypad codes, F3 as CSI 13 ~, F13+ private codes");
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
@@ -434,6 +464,7 @@ void runParserSelfTest(int &failures)
     keyEncoding(failures);
     linksAndColors(failures);
     vttestFindings(failures);
+    kittyKeyboard(failures);
 }
 
 } // namespace konsoll

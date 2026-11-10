@@ -1,9 +1,11 @@
 #include "KeyEncoder.h"
 
+#include <QList>
 #include <Qt>
 
 #include <algorithm>
 #include <array>
+#include <optional>
 
 namespace konsoll
 {
@@ -151,44 +153,183 @@ QByteArray optionWordKey(int key)
     }
 }
 
-// Kitty "disambiguate escape codes" (flag 1): Escape and modified
-// Enter/Tab/Backspace and Ctrl/Alt text keys become CSI code;mods u. An
-// Option press that composed a character (Option+2 = ™) sends that text, as
-// kitty does by default on macOS.
-QByteArray encodeKitty(int key, const QString &text, unsigned int mods)
+// --- Kitty keyboard protocol ---------------------------------------------
+
+constexpr unsigned int kKittyDisambiguate = 1u;
+constexpr unsigned int kKittyEventTypes = 2u;
+constexpr unsigned int kKittyAlternates = 4u;
+constexpr unsigned int kKittyAllKeys = 8u;
+constexpr unsigned int kKittyText = 16u;
+
+// A key with its kitty number and final byte ('u', '~' or a cursor letter).
+// `legacy` keys (Enter, Tab, Backspace) keep their legacy bytes until "report
+// all keys" (flag 8) is on; `modifier` keys are reported only with flag 8.
+constexpr int kKittyNormal = 0;
+constexpr int kKittyLegacy = 1;
+constexpr int kKittyModifier = 2;
+
+struct KittyKey {
+    int key;
+    int code;
+    int final;
+    int kind;
+};
+
+constexpr std::array kKittyFunctionalKeys{
+    KittyKey{.key = Qt::Key_Escape, .code = 27, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Return, .code = 13, .final = 'u', .kind = kKittyLegacy},
+    KittyKey{.key = Qt::Key_Enter, .code = 13, .final = 'u', .kind = kKittyLegacy},
+    KittyKey{.key = Qt::Key_Tab, .code = 9, .final = 'u', .kind = kKittyLegacy},
+    KittyKey{.key = Qt::Key_Backtab, .code = 9, .final = 'u', .kind = kKittyLegacy},
+    KittyKey{.key = Qt::Key_Backspace, .code = 127, .final = 'u', .kind = kKittyLegacy},
+    KittyKey{.key = Qt::Key_Insert, .code = 2, .final = '~', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Delete, .code = 3, .final = '~', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Left, .code = 1, .final = 'D', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Right, .code = 1, .final = 'C', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Up, .code = 1, .final = 'A', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Down, .code = 1, .final = 'B', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_PageUp, .code = 5, .final = '~', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_PageDown, .code = 6, .final = '~', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Home, .code = 1, .final = 'H', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_End, .code = 1, .final = 'F', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_CapsLock, .code = 57358, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_ScrollLock, .code = 57359, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_NumLock, .code = 57360, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Print, .code = 57361, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Pause, .code = 57362, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Menu, .code = 57363, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_F1, .code = 1, .final = 'P', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_F2, .code = 1, .final = 'Q', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_F3, .code = 13, .final = '~', .kind = kKittyNormal}, // CSI R would read as CPR
+    KittyKey{.key = Qt::Key_F4, .code = 1, .final = 'S', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_F5, .code = 15, .final = '~', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_F6, .code = 17, .final = '~', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_F7, .code = 18, .final = '~', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_F8, .code = 19, .final = '~', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_F9, .code = 20, .final = '~', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_F10, .code = 21, .final = '~', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_F11, .code = 23, .final = '~', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_F12, .code = 24, .final = '~', .kind = kKittyNormal},
+    // On macOS Qt::Key_Meta is the Control key and Qt::Key_Control Command.
+    KittyKey{.key = Qt::Key_Shift, .code = 57441, .final = 'u', .kind = kKittyModifier},
+    KittyKey{.key = Qt::Key_Meta, .code = 57442, .final = 'u', .kind = kKittyModifier},
+    KittyKey{.key = Qt::Key_Alt, .code = 57443, .final = 'u', .kind = kKittyModifier},
+    KittyKey{.key = Qt::Key_Control, .code = 57444, .final = 'u', .kind = kKittyModifier},
+};
+
+constexpr std::array kKittyKeypadKeys{
+    KittyKey{.key = Qt::Key_0, .code = 57399, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_1, .code = 57400, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_2, .code = 57401, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_3, .code = 57402, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_4, .code = 57403, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_5, .code = 57404, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_6, .code = 57405, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_7, .code = 57406, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_8, .code = 57407, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_9, .code = 57408, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Period, .code = 57409, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Slash, .code = 57410, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Asterisk, .code = 57411, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Minus, .code = 57412, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Plus, .code = 57413, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Enter, .code = 57414, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Equal, .code = 57415, .final = 'u', .kind = kKittyNormal},
+    KittyKey{.key = Qt::Key_Comma, .code = 57416, .final = 'u', .kind = kKittyNormal},
+};
+
+// The kitty code of a key: keypad and functional keys from the tables, F13+
+// from the private-use range, text keys as their lowercase code point.
+// `text` is set for keys that produce text.
+std::optional<KittyKey> kittyKeyFor(int key, unsigned int modes, bool &textKey)
 {
-    const auto csiU = [mods](int code) {
-        QByteArray out = "\x1b[" + QByteArray::number(code);
-        if (mods != 0) {
-            out += ";" + modifierParam(mods);
+    textKey = false;
+    if ((modes & KeyMode::FromKeypad) != 0) {
+        const auto *const keypad = std::ranges::find(kKittyKeypadKeys, key, &KittyKey::key);
+        if (keypad != kKittyKeypadKeys.end()) {
+            return *keypad;
         }
-        return out + "u";
-    };
-    if (key == Qt::Key_Escape) {
-        return csiU(27);
     }
-    if (mods == 0) {
+    const auto *const functional = std::ranges::find(kKittyFunctionalKeys, key, &KittyKey::key);
+    if (functional != kKittyFunctionalKeys.end()) {
+        return *functional;
+    }
+    if (key >= Qt::Key_F13 && key <= Qt::Key_F35) {
+        return KittyKey{.key = key, .code = 57376 + (key - Qt::Key_F13), .final = 'u', .kind = kKittyNormal};
+    }
+    if (key >= 0x20 && key < 0x110000 && QChar::isPrint(static_cast<char32_t>(key))) {
+        textKey = true;
+        const auto lower = static_cast<int>(QChar::toLower(static_cast<char32_t>(key)));
+        return KittyKey{.key = key, .code = lower, .final = 'u', .kind = kKittyNormal};
+    }
+    return std::nullopt;
+}
+
+// CSI code[:shifted] ; mods[:event] ; text u  (or the CSI 1;mods X / CSI n;mods ~
+// forms of the functional keys).
+QByteArray kittySequence(const KittyKey &kitty, int shifted, unsigned int mods, int eventType, const QString &text)
+{
+    QByteArray modifiers;
+    if (mods != 0 || eventType != KeyEventType::Press || !text.isEmpty()) {
+        modifiers = modifierParam(mods);
+        if (eventType != KeyEventType::Press) {
+            modifiers += ":" + QByteArray::number(eventType);
+        }
+    }
+    if (kitty.final != 'u' && kitty.final != '~') {
+        // Cursor keys and F1/F2/F4: CSI X, or CSI 1 ; mods X.
+        return modifiers.isEmpty() ? QByteArray("\x1b[") + static_cast<char>(kitty.final)
+                                   : "\x1b[1;" + modifiers + static_cast<char>(kitty.final);
+    }
+    QByteArray out = "\x1b[" + QByteArray::number(kitty.code);
+    if (shifted != 0) {
+        out += ":" + QByteArray::number(shifted);
+    }
+    if (!modifiers.isEmpty()) {
+        out += ";" + modifiers;
+    }
+    if (!text.isEmpty()) {
+        QByteArray codepoints;
+        std::ranges::for_each(text.toUcs4(), [&codepoints](char32_t cp) {
+            codepoints += (codepoints.isEmpty() ? "" : ":") + QByteArray::number(static_cast<int>(cp));
+        });
+        out += ";" + codepoints;
+    }
+    return out + static_cast<char>(kitty.final);
+}
+
+// The kitty encoding of an event, or an empty array when the legacy
+// encoding applies (plain text, unmodified Enter/Tab/Backspace below flag 8)
+// or nothing is sent (releases below flag 2, modifier keys below flag 8).
+QByteArray encodeKitty(int key, const QString &text, unsigned int mods, unsigned int modes, unsigned int flags,
+                       int eventType)
+{
+    const bool allKeys = (flags & kKittyAllKeys) != 0;
+    const bool events = (flags & kKittyEventTypes) != 0;
+    if (!events && eventType != KeyEventType::Press) {
+        return {}; // without flag 2 a repeat is a press, a release nothing
+    }
+    bool textKey = false;
+    const std::optional<KittyKey> kitty = kittyKeyFor(key, modes, textKey);
+    if (!kitty || (kitty->kind == kKittyModifier && !allKeys)) {
         return {};
     }
-    switch (key) {
-    case Qt::Key_Return:
-    case Qt::Key_Enter:
-        return csiU(13);
-    case Qt::Key_Tab:
-    case Qt::Key_Backtab:
-        return csiU(9);
-    case Qt::Key_Backspace:
-        return csiU(127);
-    default:
-        break;
-    }
+    // Option composing a character (Option+2 = ™) sends that text, as kitty
+    // does by default on macOS.
     const bool composed = (mods & KeyMod::Control) == 0 && !text.isEmpty() && text.at(0).unicode() >= 0x80;
-    // Text keys (Qt key codes are their ASCII value) with Ctrl or Alt:
-    // the unshifted, lowercase code point.
-    if (!composed && (mods & (KeyMod::Control | KeyMod::Alt)) != 0 && key >= 0x20 && key <= 0x7e) {
-        return csiU(key >= 'A' && key <= 'Z' ? key - 'A' + 'a' : key);
+    const bool plainText = textKey && ((mods & ~KeyMod::Shift) == 0 || composed);
+    const bool legacyKey = kitty->kind == kKittyLegacy && mods == 0;
+    if (!allKeys && eventType != KeyEventType::Release && (plainText || legacyKey)) {
+        return {}; // legacy bytes (the text, CR, TAB, DEL)
     }
-    return {};
+    if (!allKeys && legacyKey) {
+        return {}; // Enter/Tab/Backspace releases need flag 8
+    }
+    const bool alternates = (flags & kKittyAlternates) != 0 && textKey && (mods & KeyMod::Shift) != 0;
+    const int upper = static_cast<int>(QChar::toUpper(static_cast<char32_t>(kitty->code)));
+    const int shifted = alternates && upper != kitty->code ? upper : 0;
+    const bool withText = (flags & kKittyText) != 0 && allKeys && textKey && eventType != KeyEventType::Release;
+    return kittySequence(*kitty, shifted, mods, eventType, withText ? text : QString{});
 }
 
 QByteArray encodeEditingKey(int key, unsigned int mods, unsigned int modes)
@@ -224,16 +365,20 @@ QByteArray encodeEditingKey(int key, unsigned int mods, unsigned int modes)
 
 } // namespace
 
-QByteArray encodeKey(int key, const QString &text, unsigned int mods, unsigned int modes, unsigned int kittyFlags)
+QByteArray encodeKey(int key, const QString &text, unsigned int mods, unsigned int modes, unsigned int kittyFlags,
+                     int eventType)
 {
     const bool control = (mods & KeyMod::Control) != 0;
     const bool alt = (mods & KeyMod::Alt) != 0;
 
-    if ((kittyFlags & 1u) != 0) {
-        const QByteArray kitty = encodeKitty(key, text, mods);
+    if ((kittyFlags & (kKittyDisambiguate | kKittyEventTypes | kKittyAllKeys)) != 0) {
+        const QByteArray kitty = encodeKitty(key, text, mods, modes, kittyFlags, eventType);
         if (!kitty.isEmpty()) {
             return kitty;
         }
+    }
+    if (eventType == KeyEventType::Release) {
+        return {}; // legacy encodings have no releases
     }
     if ((modes & KeyMode::FromKeypad) != 0 && (modes & KeyMode::ApplicationKeypad) != 0 && mods == 0) {
         const auto *const keypad = std::ranges::find(kKeypadKeys, key, &KeypadKey::key);

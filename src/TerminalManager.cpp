@@ -525,6 +525,14 @@ void TerminalManager::routeKeyPress(QObject *sessionObject, int key, const QStri
     }
 }
 
+void TerminalManager::routeKeyEvent(QObject *sessionObject, int key, const QString &text, int modifiers, int eventType)
+{
+    auto *session = qobject_cast<TerminalBackend *>(sessionObject);
+    if ((session != nullptr) && session == m_activeSession) {
+        session->keyEvent(key, text, modifiers, eventType);
+    }
+}
+
 void TerminalManager::routeTextInput(QObject *sessionObject, const QString &text)
 {
     auto *session = qobject_cast<TerminalBackend *>(sessionObject);

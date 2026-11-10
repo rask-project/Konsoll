@@ -54,6 +54,9 @@ class TerminalBackend : public QObject
     Q_PROPERTY(int highlightStartRow READ highlightStartRow NOTIFY highlightChanged)
     Q_PROPERTY(int highlightEndRow READ highlightEndRow NOTIFY highlightChanged)
     Q_PROPERTY(bool mouseTracking READ mouseTracking NOTIFY mouseTrackingChanged)
+    // Kitty keyboard protocol flags the application enabled: the view sends
+    // every key here (flag 8) and key releases (flag 2).
+    Q_PROPERTY(int keyboardFlags READ keyboardFlags NOTIFY keyboardFlagsChanged)
     Q_PROPERTY(bool mouseMotionTracking READ mouseMotionTracking NOTIFY mouseTrackingChanged)
     Q_PROPERTY(bool commandRunning READ commandRunning NOTIFY commandRunningChanged)
     Q_PROPERTY(unsigned int backgroundColor READ backgroundColor NOTIFY colorSchemeChanged)
@@ -74,6 +77,9 @@ public:
 
     // Input from QML.
     Q_INVOKABLE void keyPress(int key, const QString &text, int modifiers);
+    // A key press (1), auto-repeat (2) or release (3) — KeyEventType.
+    Q_INVOKABLE void keyEvent(int key, const QString &text, int modifiers, int eventType);
+    int keyboardFlags() const;
     Q_INVOKABLE void writeText(const QString &text);
     Q_INVOKABLE void mousePress(int button, int row, int col, int modifiers);
     Q_INVOKABLE void mouseRelease(int button, int row, int col, int modifiers);
@@ -197,6 +203,7 @@ signals:
     void selectionChanged();
     void highlightChanged();
     void mouseTrackingChanged();
+    void keyboardFlagsChanged();
     void commandRunningChanged();
     void quitRequested();
     void commandFinished();
@@ -226,7 +233,7 @@ private:
     void startNextTransfer();
     void clearTextSelectionAndHighlight();
     void sendMouseReport(int button, int row, int col, int event, int modifiers);
-    QByteArray keyOutputBytes(int key, const QString &text, unsigned int mods, bool keypad) const;
+    QByteArray keyOutputBytes(int key, const QString &text, unsigned int mods, bool keypad, int eventType) const;
     QVariantMap linkFromMatch(const QRegularExpressionMatch &match, int col) const;
     // Route PTY I/O to the session worker via a queued call (never touch the
     // master descriptor from this thread).

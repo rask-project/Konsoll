@@ -127,6 +127,8 @@ public:
     Q_INVOKABLE void splitActive(int orientation);
     Q_INVOKABLE void navigateActivationHistory(int direction);
     Q_INVOKABLE void routeKeyPress(QObject *session, int key, const QString &text, int modifiers);
+    // routeKeyPress with an event type: press (1), repeat (2), release (3).
+    Q_INVOKABLE void routeKeyEvent(QObject *session, int key, const QString &text, int modifiers, int eventType);
     Q_INVOKABLE void routeTextInput(QObject *session, const QString &text);
 
     QJsonArray serializeState() const;
