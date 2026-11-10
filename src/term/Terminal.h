@@ -90,6 +90,8 @@ public:
 
     // OSC 8 hyperlink target of a cell's `link` id (empty for 0 / unknown).
     QString linkTarget(unsigned short id) const;
+    // iTerm2 SetUserVar=name=base64 values (decoded).
+    QByteArray userVar(const QByteArray &name) const { return m_userVars.value(name); }
 
     // ?1007: in the alternate screen, the wheel sends cursor keys.
     bool alternateScroll() const { return (m_extraFlags & AlternateScroll) != 0; }
@@ -287,6 +289,8 @@ private:
     void handleOscPaletteReset(const QByteArray &indices);
     void handleOscHyperlink(const QByteArray &body);
     void handleOscNotification(const QByteArray &body);
+    void handleOscIterm(const QByteArray &command);
+    void placeItermImage(const QByteArray &args, const QByteArray &base64);
     unsigned int dynamicColor(int code) const;
     void setDynamicColor(int code, unsigned int color);
     void reportInBandSize();
@@ -313,6 +317,11 @@ private:
     QByteArray m_stringBody;
     // Pending query replies (see takeResponses).
     QByteArray m_responses;
+    // iTerm2 MultipartFile in progress (File= arguments and data so far)
+    // and SetUserVar variables.
+    QByteArray m_itermFileArgs;
+    QByteArray m_itermFileData;
+    QHash<QByteArray, QByteArray> m_userVars;
     // XTWINOPS 22/23 title stack.
     std::vector<QString> m_titleStack;
     std::vector<TerminalRequest> m_requests;

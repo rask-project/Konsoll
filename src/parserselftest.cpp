@@ -676,6 +676,42 @@ void modifyOtherKeys(int &failures)
                   "modifyOtherKeys 2: every Ctrl / Alt key, CSI u format");
 }
 
+// iTerm2 OSC 1337: inline images and other commands.
+void itermProtocol(int &failures)
+{
+    QImage png(32, 16, QImage::Format_RGB32);
+    png.fill(Qt::green);
+    QByteArray bytes;
+    QBuffer buffer(&bytes);
+    buffer.open(QIODevice::WriteOnly);
+    png.save(&buffer, "PNG");
+    const QByteArray data = bytes.toBase64();
+    {
+        Terminal term(6, 20, QStringLiteral("selftest"));
+        term.write("\x1b]1337;File=name=eA==;inline=1;width=4:" + data + "\x07");
+        const auto &placements = term.graphics().placements();
+        selfTestCheck(failures, placements.size() == 1 && placements.front().columns == 4 && placements.front().rows == 1 &&
+                                    term.screen().cursorCol() == 4,
+                      "iterm: File= inline image sized in cells, keeping the aspect ratio");
+        term.write("\x1b]1337;File=inline=0:" + data + "\x07");
+        selfTestCheck(failures, term.graphics().placements().size() == 1, "iterm: files without inline=1 are not shown");
+    }
+    {
+        Terminal term(6, 20, QStringLiteral("selftest"));
+        term.write("\x1b]1337;MultipartFile=inline=1;width=50%\x07\x1b]1337;FilePart=" + data.left(20) + "\x07\x1b]1337;FilePart=" +
+                   data.mid(20) + "\x07\x1b]1337;FileEnd\x07");
+        selfTestCheck(failures, term.graphics().placements().size() == 1 && term.graphics().placements().front().columns == 10,
+                      "iterm: MultipartFile / FilePart / FileEnd, width in percent");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b]1337;CurrentDir=/tmp\x07\x1b]1337;SetUserVar=gitBranch=bWFpbg==\x07\x1b]1337;ReportCellSize\x07");
+        selfTestCheck(failures, term.currentDirectory() == QStringLiteral("/tmp") && term.userVar("gitBranch") == "main" &&
+                                    term.takeResponses() == "\x1b]1337;ReportCellSize=16;8\x1b\\",
+                      "iterm: CurrentDir, SetUserVar and ReportCellSize");
+    }
+}
+
 // OSC 9 / OSC 777 desktop notifications.
 void notifications(int &failures)
 {
@@ -835,6 +871,7 @@ void runParserSelfTest(int &failures)
     reverseWraparound(failures);
     reflowAnchors(failures);
     notifications(failures);
+    itermProtocol(failures);
     fixtureRegressions(failures);
 }
 

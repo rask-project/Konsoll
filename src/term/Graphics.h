@@ -56,6 +56,13 @@ struct KittyResult {
     int placed{0};     // 1 when the command placed an image
 };
 
+// Where an iTerm2 inline image went: the cells it covers (0 when nothing
+// was placed).
+struct ItermResult {
+    int columns{0};
+    int rows{0};
+};
+
 // Images and placements of one terminal: the kitty graphics protocol (APC G)
 // and sixel (DCS q) both end up here.
 class GraphicsStore
@@ -66,6 +73,11 @@ public:
     // Places a decoded sixel image at the context's cursor; returns the
     // rows it covers.
     int addSixel(const QImage &image, const GraphicsContext &context);
+    // iTerm2 OSC 1337 File= (and MultipartFile / FilePart / FileEnd): `args`
+    // are the File= key=value pairs, `base64` the file. Only inline=1 files
+    // are shown. `screenColumns` / `screenRows` size the N% dimensions.
+    ItermResult placeItermFile(const QByteArray &args, const QByteArray &base64, const GraphicsContext &context,
+                               int screenColumns, int screenRows);
 
     // Deletes placements whose top row is in [first, last] on the main
     // (alternate = 0) or alternate screen.

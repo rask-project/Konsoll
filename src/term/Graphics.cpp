@@ -470,6 +470,88 @@ int GraphicsStore::addSixel(const QImage &image, const GraphicsContext &context)
     return m_placements.back().rows;
 }
 
+namespace
+{
+// An iTerm2 width / height: N cells, Npx pixels, N% of the screen or auto
+// (0). Returns pixels.
+int itermDimension(const QByteArray &value, int cell, int screenCells)
+{
+    if (value.isEmpty() || value == "auto") {
+        return 0;
+    }
+    if (value.endsWith("px")) {
+        return std::max(value.chopped(2).toInt(), 0);
+    }
+    if (value.endsWith('%')) {
+        return std::clamp(value.chopped(1).toInt(), 0, 100) * screenCells * cell / 100;
+    }
+    return std::max(value.toInt(), 0) * cell;
+}
+} // namespace
+
+ItermResult GraphicsStore::placeItermFile(const QByteArray &args, const QByteArray &base64, const GraphicsContext &context,
+                                          int screenColumns, int screenRows)
+{
+    QByteArray width;
+    QByteArray height;
+    bool shown = false;
+    bool preserve = true;
+    std::ranges::for_each(args.split(';'), [&](const QByteArray &pair) {
+        const qsizetype equals = pair.indexOf('=');
+        const QByteArray key = pair.left(equals);
+        const QByteArray value = equals < 0 ? QByteArray{} : pair.mid(equals + 1);
+        if (key == "inline") {
+            shown = value == "1";
+        } else if (key == "width") {
+            width = value;
+        } else if (key == "height") {
+            height = value;
+        } else if (key == "preserveAspectRatio") {
+            preserve = value != "0";
+        }
+    });
+    const QImage image = shown && base64.size() <= kMaxPayload ? QImage::fromData(QByteArray::fromBase64(base64)) : QImage{};
+    if (image.isNull() || static_cast<qint64>(image.width()) * image.height() > kMaxPixels) {
+        return {};
+    }
+    // Requested box in pixels; a missing side follows the aspect ratio.
+    int boxWidth = itermDimension(width, context.cellWidth, screenColumns);
+    int boxHeight = itermDimension(height, context.cellHeight, screenRows);
+    const double aspect = static_cast<double>(image.width()) / std::max(image.height(), 1);
+    if (boxWidth == 0 && boxHeight == 0) {
+        boxWidth = image.width();
+        boxHeight = image.height();
+    } else if (boxWidth == 0) {
+        boxWidth = static_cast<int>(boxHeight * aspect);
+    } else if (boxHeight == 0) {
+        boxHeight = static_cast<int>(boxWidth / aspect);
+    } else if (preserve) {
+        // Fit inside the box, keeping the aspect ratio.
+        const double scale = std::min(static_cast<double>(boxWidth) / image.width(), static_cast<double>(boxHeight) / image.height());
+        boxWidth = static_cast<int>(image.width() * scale);
+        boxHeight = static_cast<int>(image.height() * scale);
+    }
+    const auto cells = [](int pixels, int cell) { return std::max(1, (pixels + cell - 1) / std::max(cell, 1)); };
+    const std::uint32_t id = storeImage(0, 0, image.convertToFormat(QImage::Format_RGBA8888_Premultiplied));
+    const GraphicsPlacement placement{
+        .anchor = context.anchor,
+        .imageId = id,
+        .placementId = 0,
+        .source = image.rect(),
+        .column = context.column,
+        .columns = cells(boxWidth, context.cellWidth),
+        .rows = cells(boxHeight, context.cellHeight),
+        .z = 0,
+        .alternate = static_cast<short>(context.alternate),
+        .scaled = 1,
+        .offsetX = 0,
+        .offsetY = 0,
+    };
+    m_placements.push_back(placement);
+    touch();
+    return ItermResult{.columns = placement.columns, .rows = placement.rows};
+}
+
 void GraphicsStore::erasePlacements(int alternate, long long first, long long last)
 {
     const auto before = m_placements.size();

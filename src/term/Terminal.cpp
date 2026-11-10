@@ -1527,6 +1527,10 @@ void Terminal::handleOsc(const QByteArray &body)
         handleOscNotification(body);
         return;
     }
+    if (body.startsWith("1337;")) {
+        handleOscIterm(body.mid(5));
+        return;
+    }
     if (body.startsWith("4;")) {
         handleOscPalette(body.mid(2));
         return;
@@ -1540,6 +1544,60 @@ void Terminal::handleOsc(const QByteArray &body)
     }
     handleOscTitle(body);
     // Other OSCs (icon name, notifications, ...) are ignored.
+}
+
+// iTerm2 OSC 1337 commands: inline images (File=, MultipartFile /
+// FilePart / FileEnd), CurrentDir, SetUserVar, ReportCellSize and
+// ClearScrollback. RemoteHost is handled before (it carries a token).
+void Terminal::handleOscIterm(const QByteArray &command)
+{
+    constexpr qsizetype kMaxFile = 400LL * 1024 * 1024;
+    if (command.startsWith("File=")) {
+        const qsizetype colon = command.indexOf(':');
+        if (colon > 0) {
+            placeItermImage(command.mid(5, colon - 5), command.mid(colon + 1));
+        }
+    } else if (command.startsWith("MultipartFile=")) {
+        m_itermFileArgs = command.mid(14);
+        m_itermFileData.clear();
+    } else if (command.startsWith("FilePart=")) {
+        if (m_itermFileData.size() + command.size() <= kMaxFile) {
+            m_itermFileData += command.mid(9);
+        }
+    } else if (command == "FileEnd") {
+        placeItermImage(std::exchange(m_itermFileArgs, {}), std::exchange(m_itermFileData, {}));
+    } else if (command.startsWith("CurrentDir=")) {
+        const QString path = QString::fromUtf8(command.mid(11));
+        if (path.startsWith(QLatin1Char('/')) && path != m_currentDirectory) {
+            m_currentDirectory = path;
+            setExtraFlag(CurrentDirectoryDirty, true);
+        }
+    } else if (command.startsWith("SetUserVar=")) {
+        const QByteArray assignment = command.mid(11);
+        const qsizetype equals = assignment.indexOf('=');
+        if (equals > 0 && m_userVars.size() < 256) {
+            m_userVars.insert(assignment.left(equals), QByteArray::fromBase64(assignment.mid(equals + 1)).left(4096));
+        }
+    } else if (command == "ReportCellSize") {
+        // Height ; width in points; the cell size is kept in device pixels.
+        reply("\x1b]1337;ReportCellSize=" + QByteArray::number(m_cellPixelHeight) + ";" +
+              QByteArray::number(m_cellPixelWidth) + "\x1b\\");
+    } else if (command == "ClearScrollback") {
+        m_screen.clearScrollback();
+    }
+}
+
+void Terminal::placeItermImage(const QByteArray &args, const QByteArray &base64)
+{
+    const ItermResult placed =
+        m_graphics.placeItermFile(args, base64, graphicsContext(), m_screen.cols(), m_screen.rows());
+    if (placed.rows == 0) {
+        return;
+    }
+    // Like a large character: the cursor ends after the image, on its last row.
+    const int column = m_screen.cursorCol();
+    std::ranges::for_each(std::views::iota(1, placed.rows), [this](int) { m_screen.lineFeed(); });
+    m_screen.moveCursor(m_screen.cursorRow(), std::min(column + placed.columns, m_screen.cols() - 1));
 }
 
 // OSC 9 ; text (iTerm2) and OSC 777 ; notify ; title ; body (rxvt) ask for a
