@@ -793,6 +793,11 @@ void Terminal::fullReset()
     // Keep only notifications the backend has not consumed yet.
     m_extraFlags &= RemoteHostDirty | TitleDirty | CurrentDirectoryDirty | ClipboardTextDirty | CommandFinishedPending |
                     DarkColorScheme;
+    m_extraFlags |= AlternateScroll | ColorsDirty;
+    m_paletteOverrides = {};
+    m_fgOverride = 0;
+    m_bgOverride = 0;
+    m_cursorOverride = 0;
 }
 
 void Terminal::handleDcs(const QByteArray &body)
@@ -830,6 +835,9 @@ void Terminal::handleDec(bool set, const std::vector<int> &params)
             break;
         case 1004:
             setExtraFlag(FocusReporting, set);
+            break;
+        case 1007:
+            setExtraFlag(AlternateScroll, set);
             break;
         case 47:
         case 1047:
@@ -1077,11 +1085,23 @@ void Terminal::handleOsc(const QByteArray &body)
         handleOscCommandMark(body);
         return;
     }
-    if (handleOscColorQuery(body)) {
+    if (body.startsWith("8;")) {
+        handleOscHyperlink(body);
+        return;
+    }
+    if (body.startsWith("4;")) {
+        handleOscPalette(body.mid(2));
+        return;
+    }
+    if (body == "104" || body.startsWith("104;")) {
+        handleOscPaletteReset(body.mid(4));
+        return;
+    }
+    if (handleOscColor(body)) {
         return;
     }
     handleOscTitle(body);
-    // "8;" (hyperlink) and others: ignored.
+    // Other OSCs (icon name, notifications, ...) are ignored.
 }
 
 void Terminal::handleOscRemoteHost(const QByteArray &body)

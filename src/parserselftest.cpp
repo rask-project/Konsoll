@@ -336,6 +336,52 @@ void keyEncoding(int &failures)
                   "keys: legacy Shift+Enter newline and Backspace");
 }
 
+// Stage 4d: OSC 8 hyperlinks, OSC color sets/queries, alternate scroll.
+void linksAndColors(int &failures)
+{
+    {
+        const Terminal term = feed("\x1b]8;;https://example.com\x1b\\ab\x1b]8;;\x1b\\c");
+        const Screen &screen = term.screen();
+        const unsigned short id = screen.cellAt(0, 0).link;
+        selfTestCheck(failures, id != 0 && screen.cellAt(0, 1).link == id && screen.cellAt(0, 2).link == 0 &&
+                                    term.linkTarget(id) == QStringLiteral("https://example.com"),
+                      "osc 8: cells carry the hyperlink until it is closed");
+    }
+    {
+        const Terminal term = feed("\x1b]8;id=1;https://a\x1b\\x\x1b]8;;\x1b\\ \x1b]8;id=1;https://a\x1b\\y\x1b[0mz");
+        const Screen &screen = term.screen();
+        selfTestCheck(failures, screen.cellAt(0, 0).link != 0 && screen.cellAt(0, 2).link == screen.cellAt(0, 0).link &&
+                                    screen.cellAt(0, 3).link == screen.cellAt(0, 0).link,
+                      "osc 8: the same id reuses the link, SGR 0 keeps it");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b]4;1;rgb:ff/00/00;2;#00ff00\x1b\\");
+        const bool set = term.paletteColor(1) == 0xffff0000u && term.paletteColor(2) == 0xff00ff00u;
+        term.write("\x1b]4;1;?\x1b\\");
+        const QByteArray query = term.takeResponses();
+        term.write("\x1b]104;1\x1b\\");
+        const bool resetOne = term.paletteColor(1) != 0xffff0000u && term.paletteColor(2) == 0xff00ff00u;
+        term.write("\x1b]104\x1b\\");
+        selfTestCheck(failures, set && query == "\x1b]4;1;rgb:ffff/0000/0000\x1b\\" && resetOne &&
+                                    term.paletteColor(2) != 0xff00ff00u && term.colorsDirty(),
+                      "osc 4 / 104: set, query and reset palette entries");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b]10;#102030\x07\x1b]10;?\x07\x1b]11;rgb:f/f/f\x07");
+        const QByteArray query = term.takeResponses();
+        const bool set = term.foregroundOverride() == 0xff102030u && term.backgroundOverride() == 0xffffffffu;
+        term.write("\x1b]110\x07\x1b]111\x07");
+        selfTestCheck(failures, set && query == "\x1b]10;rgb:1010/2020/3030\x1b\\" && term.foregroundOverride() == 0 &&
+                                    term.backgroundOverride() == 0,
+                      "osc 10 / 11 / 110 / 111: set, query and reset the default colors");
+    }
+    selfTestCheck(failures, feed("").alternateScroll() && !feed("\x1b[?1007l").alternateScroll() &&
+                                replies("\x1b[?1007$p") == "\x1b[?1007;1$y",
+                  "mode 1007: alternate scroll is on by default");
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
@@ -347,6 +393,7 @@ void runParserSelfTest(int &failures)
     queryReplies(failures);
     cursorStyle(failures);
     keyEncoding(failures);
+    linksAndColors(failures);
 }
 
 } // namespace konsoll

@@ -79,6 +79,9 @@ public:
     Q_INVOKABLE void mouseRelease(int button, int row, int col, int modifiers);
     Q_INVOKABLE void mouseMove(int button, int row, int col, int modifiers);
     Q_INVOKABLE void mouseWheel(bool up, int row, int col, int modifiers);
+    // Wheel without mouse tracking: scroll the history, or send cursor keys
+    // in the alternate screen (?1007).
+    Q_INVOKABLE void wheelScroll(int lines);
     Q_INVOKABLE QVariantMap linkAt(int row, int col) const;
     Q_INVOKABLE bool openLinkAt(int row, int col) const;
     Q_INVOKABLE void transferFile(const QUrl &url);
@@ -175,8 +178,10 @@ public:
     bool mouseMotionTracking() const { return m_terminal && m_terminal->mouseMotionTracking(); }
     bool commandRunning() const { return m_terminal && m_terminal->commandRunning(); }
     bool hasForegroundProcess() const { return m_hasForeground; }
-    unsigned int backgroundColor() const { return m_defaultBg; }
-    unsigned int foregroundColor() const { return m_defaultFg; }
+    // The default colors, or the ones the application set (OSC 10/11/12).
+    unsigned int backgroundColor() const;
+    unsigned int foregroundColor() const;
+    unsigned int cursorColor() const;
 
 signals:
     void frameReady();
@@ -231,7 +236,8 @@ private:
     Cell resolvedCell(const Cell &cell) const;
 
     static QString detectDefaultShell();
-    static QRgb resolveColor(unsigned int encoded, unsigned int defaultColor);
+    QRgb resolveColor(unsigned int encoded, unsigned int defaultColor) const;
+    QVariantMap hyperlinkAt(int row, int col) const;
 
     // Selection anchors, in absolute line+col (0 = oldest line). A line < 0
     // marks "no selection". Kept stable across output so a selection stays on

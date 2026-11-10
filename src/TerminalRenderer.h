@@ -82,6 +82,7 @@ protected:
 private:
     static constexpr int CursorBlinking = 0x01;
     static constexpr int CursorFocused = 0x02;
+    static constexpr int CursorShapeShift = 4;
 
     struct Row {
         std::vector<Cell> cells; // resolved colors, selection/cursor applied
@@ -120,6 +121,7 @@ private:
     void appendCursor(std::vector<ColorRect> &rects, bool overlay) const;
     // Whether the cursor cell's glyph is drawn inverted (a filled block).
     bool cursorInvertsGlyph() const;
+    int cursorShape() const { return m_cursorState >> CursorShapeShift; }
     void updateBlinkTimer();
     QRectF cellSpan(int row, int col, int count) const;
 
@@ -151,10 +153,12 @@ private:
     int m_hoverEnd{-1};
     QRgb m_defaultBg{0xff141414};
     QRgb m_defaultFg{0xffe0e0e0};
+    QRgb m_cursorColor{0xffe0e0e0};
     int m_blinkRows{0};  // rows holding SGR 5/6 blinking cells
     int m_blinkPhase{1}; // 1 = blinking text / cursor shown, 0 = hidden
-    int m_cursorShape{0}; // 0 block, 1 underline, 2 bar
-    int m_cursorState{0}; // CursorBlinking | CursorFocused
+    // CursorBlinking | CursorFocused, and the DECSCUSR shape (0 block,
+    // 1 underline, 2 bar) from bit CursorShapeShift on.
+    int m_cursorState{0};
 };
 
 } // namespace konsoll

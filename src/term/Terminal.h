@@ -3,6 +3,7 @@
 #include "Screen.h"
 
 #include <QByteArray>
+#include <QHash>
 #include <QString>
 
 #include <array>
@@ -54,6 +55,21 @@ public:
     void setDefaultColors(unsigned int foreground, unsigned int background);
     // Cell size in pixels, for XTWINOPS size reports and in-band resize.
     void setCellPixelSize(int width, int height);
+
+    // Colors applications set with OSC 4 / 10 / 11 / 12 (0xAARRGGBB; 0 =
+    // not overridden). paletteColor() falls back to the default palette.
+    unsigned int paletteColor(int index) const;
+    unsigned int foregroundOverride() const { return m_fgOverride; }
+    unsigned int backgroundOverride() const { return m_bgOverride; }
+    unsigned int cursorColorOverride() const { return m_cursorOverride; }
+    bool colorsDirty() const { return (m_extraFlags & ColorsDirty) != 0; }
+    void clearColorsDirty() { setExtraFlag(ColorsDirty, false); }
+
+    // OSC 8 hyperlink target of a cell's `link` id (empty for 0 / unknown).
+    QString linkTarget(unsigned short id) const;
+
+    // ?1007: in the alternate screen, the wheel sends cursor keys.
+    bool alternateScroll() const { return (m_extraFlags & AlternateScroll) != 0; }
 
     const std::vector<CommandBlock> &commandBlocks() const { return m_commandBlocks; }
     int activeCommandStartLine() const { return m_commandStartLine; }
@@ -121,6 +137,8 @@ private:
     static constexpr unsigned int SgrPixelMouse = 1u << 18;      // ?1016
     static constexpr unsigned int DarkColorScheme = 1u << 19;
     static constexpr unsigned int FocusReporting = 1u << 20; // ?1004
+    static constexpr unsigned int ColorsDirty = 1u << 21;
+    static constexpr unsigned int AlternateScroll = 1u << 22; // ?1007, on by default
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.
@@ -207,7 +225,12 @@ private:
     void handleXtgettcap(const QByteArray &names);
     void handleKittyKeyboard(char prefix, const std::vector<int> &params);
     QByteArray sgrReport() const;
-    bool handleOscColorQuery(const QByteArray &body);
+    bool handleOscColor(const QByteArray &body);
+    void handleOscPalette(const QByteArray &body);
+    void handleOscPaletteReset(const QByteArray &indices);
+    void handleOscHyperlink(const QByteArray &body);
+    unsigned int dynamicColor(int code) const;
+    void setDynamicColor(int code, unsigned int color);
     void reportInBandSize();
 
     static ParamGroups parseParamGroups(const QByteArray &body);
@@ -232,6 +255,11 @@ private:
     QByteArray m_responses;
     // XTWINOPS 22/23 title stack.
     std::vector<QString> m_titleStack;
+    // OSC 8 targets; a cell's `link` is an index + 1. Keyed for reuse by
+    // the OSC 8 id parameter and URI.
+    std::vector<QString> m_links;
+    QHash<QString, unsigned short> m_linkIds;
+    std::array<unsigned int, 256> m_paletteOverrides{};
     QString m_title;
     QString m_currentDirectory;
     QString m_remoteHost;
@@ -241,11 +269,13 @@ private:
     Cell m_pen;
     std::array<SavedTerminalState, 2> m_savedStates{}; // [0] main, [1] alternate
     unsigned int m_lastGraphic = 0; // last printed code point, for REP (0 = none)
-    unsigned int m_extraFlags = DarkColorScheme; // the default background is dark
+    unsigned int m_extraFlags = DarkColorScheme | AlternateScroll; // the default background is dark
+    unsigned int m_fgOverride = 0;
+    unsigned int m_bgOverride = 0;
+    unsigned int m_cursorOverride = 0;
     unsigned int m_defaultFg = 0xffe0e0e0;
     unsigned int m_defaultBg = 0xff141414;
-    int m_cellPixelWidth = 8;
-    int m_cellPixelHeight = 16;
+
     unsigned int m_utf8CodePoint = 0;
     unsigned int m_utf8Minimum = 0;
     int m_commandStartLine = -1;
@@ -261,6 +291,8 @@ private:
     unsigned char m_glSet = 0;
     unsigned char m_singleShift = 0;
     bool m_commandRunning = false;
+    unsigned short m_cellPixelWidth = 8;
+    unsigned short m_cellPixelHeight = 16;
     unsigned char m_mouseModes = 0;
     // Kitty keyboard flags stack: [depth] holds the current flags, the
     // entries below it the levels CSI > u pushed (at most 8).

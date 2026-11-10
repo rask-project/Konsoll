@@ -263,6 +263,7 @@ void TerminalRenderer::refresh()
     const TerminalBackend &s = *m_session;
     m_defaultBg = static_cast<QRgb>(s.backgroundColor());
     m_defaultFg = static_cast<QRgb>(s.foregroundColor());
+    m_cursorColor = static_cast<QRgb>(s.cursorColor());
     const bool cursorShown = s.cursorVisible() && s.scrollOffset() == 0;
     const int cursorRow = cursorShown ? s.cursorRow() : -1;
     if (cursorRow != m_cursorRow || s.cursorCol() != m_cursorCol) {
@@ -274,8 +275,8 @@ void TerminalRenderer::refresh()
     }
     m_cursorRow = cursorRow;
     m_cursorCol = s.cursorCol();
-    m_cursorShape = s.cursorShape();
-    m_cursorState = (s.cursorBlinking() ? CursorBlinking : 0) | (s.focused() ? CursorFocused : 0);
+    m_cursorState = (s.cursorBlinking() ? CursorBlinking : 0) | (s.focused() ? CursorFocused : 0) |
+                    (s.cursorShape() << CursorShapeShift);
     m_highlightFirst = s.highlightActive() ? s.highlightStartRow() : -1;
     m_highlightLast = s.highlightActive() ? s.highlightEndRow() : -1;
 
@@ -311,7 +312,7 @@ void TerminalRenderer::updateBlinkTimer()
 bool TerminalRenderer::cursorInvertsGlyph() const
 {
     const bool blinkHidden = (m_cursorState & CursorBlinking) != 0 && m_blinkPhase == 0;
-    return m_cursorShape == 0 && (m_cursorState & CursorFocused) != 0 && !blinkHidden;
+    return cursorShape() == 0 && (m_cursorState & CursorFocused) != 0 && !blinkHidden;
 }
 
 void TerminalRenderer::toggleBlink()
@@ -429,17 +430,17 @@ void TerminalRenderer::appendCursor(std::vector<ColorRect> &rects, bool overlay)
     const auto h = static_cast<float>(r.height());
     constexpr float kThickness = 2.0F;
     if (!overlay) {
-        rects.push_back({.x = x, .y = y, .w = w, .h = h, .color = m_defaultFg});
-    } else if (m_cursorShape == 1) {
-        rects.push_back({.x = x, .y = y + h - kThickness, .w = w, .h = kThickness, .color = m_defaultFg});
-    } else if (m_cursorShape == 2) {
-        rects.push_back({.x = x, .y = y, .w = kThickness, .h = h, .color = m_defaultFg});
+        rects.push_back({.x = x, .y = y, .w = w, .h = h, .color = m_cursorColor});
+    } else if (cursorShape() == 1) {
+        rects.push_back({.x = x, .y = y + h - kThickness, .w = w, .h = kThickness, .color = m_cursorColor});
+    } else if (cursorShape() == 2) {
+        rects.push_back({.x = x, .y = y, .w = kThickness, .h = h, .color = m_cursorColor});
     } else {
         // Unfocused block: a 1 px outline.
-        rects.push_back({.x = x, .y = y, .w = w, .h = 1.0F, .color = m_defaultFg});
-        rects.push_back({.x = x, .y = y + h - 1.0F, .w = w, .h = 1.0F, .color = m_defaultFg});
-        rects.push_back({.x = x, .y = y + 1.0F, .w = 1.0F, .h = h - 2.0F, .color = m_defaultFg});
-        rects.push_back({.x = x + w - 1.0F, .y = y + 1.0F, .w = 1.0F, .h = h - 2.0F, .color = m_defaultFg});
+        rects.push_back({.x = x, .y = y, .w = w, .h = 1.0F, .color = m_cursorColor});
+        rects.push_back({.x = x, .y = y + h - 1.0F, .w = w, .h = 1.0F, .color = m_cursorColor});
+        rects.push_back({.x = x, .y = y + 1.0F, .w = 1.0F, .h = h - 2.0F, .color = m_cursorColor});
+        rects.push_back({.x = x + w - 1.0F, .y = y + 1.0F, .w = 1.0F, .h = h - 2.0F, .color = m_cursorColor});
     }
 }
 

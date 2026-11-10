@@ -101,6 +101,8 @@ qt_add_qml_module(konsoll
         src/term/Cell.h
         src/term/CharWidth.cpp
         src/term/CharWidth.h
+        src/term/Palette.cpp
+        src/term/Palette.h
         src/term/Screen.cpp
         src/term/Screen.h
         src/term/Terminal.cpp

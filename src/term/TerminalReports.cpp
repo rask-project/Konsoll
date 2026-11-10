@@ -5,11 +5,14 @@
 
 #include "Terminal.h"
 
+#include "Palette.h"
+
 #include <QColor>
 #include <QString>
 
 #include <algorithm>
 #include <array>
+#include <ranges>
 #include <string_view>
 
 namespace konsoll
@@ -116,8 +119,8 @@ void Terminal::setDefaultColors(unsigned int foreground, unsigned int background
 
 void Terminal::setCellPixelSize(int width, int height)
 {
-    m_cellPixelWidth = std::max(width, 1);
-    m_cellPixelHeight = std::max(height, 1);
+    m_cellPixelWidth = static_cast<unsigned short>(std::clamp(width, 1, 0xffff));
+    m_cellPixelHeight = static_cast<unsigned short>(std::clamp(height, 1, 0xffff));
 }
 
 void Terminal::handleDeviceAttributes(char prefix, int param)
@@ -236,6 +239,8 @@ int Terminal::decModeState(int mode) const
         return state(m_screen.cursorVisible());
     case 1004:
         return flag(FocusReporting);
+    case 1007:
+        return flag(AlternateScroll);
     case 47:
     case 1047:
     case 1049:
@@ -395,24 +400,172 @@ void Terminal::handleKittyKeyboard(char prefix, const std::vector<int> &params)
     }
 }
 
-// OSC 10/11/12 queries (foreground / background / cursor color). Returns
-// whether the OSC was one of them.
-bool Terminal::handleOscColorQuery(const QByteArray &body)
+namespace
 {
-    const qsizetype separator = body.indexOf(';');
-    if (separator <= 0 || body.mid(separator + 1) != "?") {
+// A color spec from OSC 4/10/11/12: rgb:r/g/b with 1-4 hex digits per
+// channel, #rgb / #rrggbb / #rrrrggggbbbb, or an X11/CSS color name.
+// Returns 0 when it is not a color.
+unsigned int parseColorSpec(const QByteArray &spec)
+{
+    if (spec.startsWith("rgb:")) {
+        const QList<QByteArray> parts = spec.mid(4).split('/');
+        if (parts.size() != 3) {
+            return 0;
+        }
+        std::array<int, 3> channels{};
+        bool valid = true;
+        std::ranges::transform(parts, channels.begin(), [&valid](const QByteArray &part) {
+            bool ok = false;
+            const int value = part.toInt(&ok, 16);
+            valid = valid && ok && !part.isEmpty() && part.size() <= 4;
+            // Scale an n-digit hex value to 8 bits.
+            const int max = (1 << (4 * std::clamp(static_cast<int>(part.size()), 1, 4))) - 1;
+            return ok ? (value * 255) / max : 0;
+        });
+        return valid ? qRgb(channels[0], channels[1], channels[2]) : 0u;
+    }
+    const QColor color = QColor::fromString(QString::fromLatin1(spec));
+    return color.isValid() ? color.rgba() | 0xff000000u : 0u;
+}
+} // namespace
+
+unsigned int Terminal::paletteColor(int index) const
+{
+    const auto slot = static_cast<std::size_t>(std::clamp(index, 0, 255));
+    return m_paletteOverrides[slot] != 0 ? m_paletteOverrides[slot] : defaultPaletteColor(index);
+}
+
+// OSC 10/11/12 current colors: foreground, background, cursor.
+unsigned int Terminal::dynamicColor(int code) const
+{
+    if (code == 11) {
+        return m_bgOverride != 0 ? m_bgOverride : m_defaultBg;
+    }
+    if (code == 12 && m_cursorOverride != 0) {
+        return m_cursorOverride;
+    }
+    return m_fgOverride != 0 ? m_fgOverride : m_defaultFg;
+}
+
+void Terminal::setDynamicColor(int code, unsigned int color)
+{
+    if (code == 10) {
+        m_fgOverride = color;
+    } else if (code == 11) {
+        m_bgOverride = color;
+    } else if (code == 12) {
+        m_cursorOverride = color;
+    }
+    setExtraFlag(ColorsDirty, true);
+}
+
+// OSC 10/11/12 (query "?" or set a color spec) and 110/111/112 (reset).
+// "10;fg;bg" sets consecutive colors, as in xterm. Returns whether the OSC
+// was one of them.
+bool Terminal::handleOscColor(const QByteArray &body)
+{
+    if (body == "110" || body == "111" || body == "112") {
+        setDynamicColor(body.toInt() - 100, 0);
+        return true;
+    }
+    const QList<QByteArray> fields = body.split(';');
+    const int first = fields.front().toInt();
+    if (fields.size() < 2 || first < 10 || first > 12) {
         return false;
     }
-    const QByteArray code = body.left(separator);
-    if (code == "10" || code == "12") {
-        reply("\x1b]" + code + ";" + rgbSpec(m_defaultFg) + "\x1b\\");
-        return true;
+    int code = first;
+    std::ranges::for_each(fields | std::views::drop(1), [this, &code](const QByteArray &value) {
+        if (code > 12) {
+            return;
+        }
+        if (value == "?") {
+            reply("\x1b]" + number(code) + ";" + rgbSpec(dynamicColor(code)) + "\x1b\\");
+        } else if (const unsigned int color = parseColorSpec(value); color != 0) {
+            setDynamicColor(code, color);
+        }
+        ++code;
+    });
+    return true;
+}
+
+// OSC 4 ; index ; spec-or-? [; index ; spec-or-? ...]
+void Terminal::handleOscPalette(const QByteArray &body)
+{
+    const QList<QByteArray> fields = body.split(';');
+    std::ranges::for_each(std::views::iota(qsizetype{0}, fields.size() / 2), [this, &fields](qsizetype pair) {
+        bool ok = false;
+        const int index = fields[pair * 2].toInt(&ok);
+        const QByteArray &value = fields[(pair * 2) + 1];
+        if (!ok || index < 0 || index > 255) {
+            return;
+        }
+        if (value == "?") {
+            reply("\x1b]4;" + number(index) + ";" + rgbSpec(paletteColor(index)) + "\x1b\\");
+        } else if (const unsigned int color = parseColorSpec(value); color != 0) {
+            m_paletteOverrides[static_cast<std::size_t>(index)] = color;
+            setExtraFlag(ColorsDirty, true);
+        }
+    });
+}
+
+// OSC 104 resets the whole palette, OSC 104 ; i ; j ... the listed entries
+// (`indices` is what follows "104;").
+void Terminal::handleOscPaletteReset(const QByteArray &indices)
+{
+    if (indices.isEmpty()) {
+        m_paletteOverrides = {};
+    } else {
+        std::ranges::for_each(indices.split(';'), [this](const QByteArray &field) {
+            bool ok = false;
+            const int index = field.toInt(&ok);
+            if (ok && index >= 0 && index <= 255) {
+                m_paletteOverrides[static_cast<std::size_t>(index)] = 0;
+            }
+        });
     }
-    if (code == "11") {
-        reply("\x1b]11;" + rgbSpec(m_defaultBg) + "\x1b\\");
-        return true;
+    setExtraFlag(ColorsDirty, true);
+}
+
+// OSC 8 ; params ; URI starts a hyperlink (an empty URI ends it). Cells
+// printed meanwhile carry its id; the same id= parameter and URI reuse one
+// entry, so a link split across lines stays one link.
+void Terminal::handleOscHyperlink(const QByteArray &body)
+{
+    constexpr qsizetype kMaxUriLength = 8192;
+    const qsizetype separator = body.indexOf(';', 2);
+    if (separator < 0) {
+        return;
     }
-    return false;
+    const QByteArray params = body.mid(2, separator - 2);
+    const QByteArray uri = body.mid(separator + 1);
+    if (uri.isEmpty() || uri.size() > kMaxUriLength) {
+        m_pen.link = 0;
+        return;
+    }
+    QByteArray id;
+    std::ranges::for_each(params.split(':'), [&id](const QByteArray &param) {
+        if (param.startsWith("id=")) {
+            id = param.mid(3);
+        }
+    });
+    const QString target = QString::fromUtf8(uri);
+    const QString key = id.isEmpty() ? target : QString::fromUtf8(id) + QLatin1Char('\n') + target;
+    if (const auto existing = m_linkIds.constFind(key); existing != m_linkIds.cend()) {
+        m_pen.link = existing.value();
+        return;
+    }
+    if (m_links.size() >= 0xffffu) {
+        m_pen.link = 0; // table full: print the text unlinked
+        return;
+    }
+    m_links.push_back(target);
+    m_pen.link = static_cast<unsigned short>(m_links.size());
+    m_linkIds.insert(key, m_pen.link);
+}
+
+QString Terminal::linkTarget(unsigned short id) const
+{
+    return id == 0 || id > m_links.size() ? QString{} : m_links[id - 1U];
 }
 
 namespace

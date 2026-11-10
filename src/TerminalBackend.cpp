@@ -1,6 +1,7 @@
 #include "TerminalBackend.h"
 
 #include "KeyEncoder.h"
+#include "term/Palette.h"
 
 #include <QClipboard>
 #include <QColor>
@@ -32,47 +33,6 @@ namespace konsoll
 
 namespace
 {
-// Standard xterm 256-color palette (0x00RRGGBB).
-std::array<QRgb, 256> buildPalette()
-{
-    std::array<QRgb, 256> p{};
-    p[0] = qRgb(0, 0, 0);
-    p[1] = qRgb(194, 54, 33);
-    p[2] = qRgb(151, 185, 15);
-    p[3] = qRgb(181, 138, 4);
-    // Keep ANSI blue vivid enough to remain legible over the translucent
-    // window when shells use the normal (non-bold) blue for their prompt.
-    p[4] = qRgb(84, 110, 255);
-    p[5] = qRgb(140, 83, 194);
-    p[6] = qRgb(48, 190, 225);
-    p[7] = qRgb(203, 204, 205);
-    p[8] = qRgb(42, 42, 42);
-    p[9] = qRgb(234, 92, 53);
-    p[10] = qRgb(181, 192, 55);
-    p[11] = qRgb(253, 177, 44);
-    p[12] = qRgb(72, 118, 255);
-    p[13] = qRgb(214, 108, 255);
-    p[14] = qRgb(52, 189, 244);
-    p[15] = qRgb(242, 242, 242);
-    int i = 0;
-
-    for (int r = 0; r < 6; ++r) {
-        for (int g = 0; g < 6; ++g) {
-            for (int b = 0; b < 6; ++b) {
-                p[16 + i] =
-                    qRgb((r != 0) ? (r * 40) + 55 : 0, (g != 0) ? (g * 40) + 55 : 0, (b != 0) ? (b * 40) + 55 : 0);
-                ++i;
-            }
-        }
-    }
-
-    for (int i2 = 0; i2 < 24; ++i2) {
-        const int v = (i2 * 10) + 8;
-        p[232 + i2] = qRgb(v, v, v);
-    }
-
-    return p;
-}
 
 double linearRgbChannel(int channel)
 {
@@ -294,6 +254,11 @@ void TerminalBackend::onData(const QByteArray &data)
     // Query replies go out in the order the queries arrived: Neovim pairs
     // OSC 11 with CSI 5n and expects the OSC color reply first.
     flushResponses();
+    if (m_terminal->colorsDirty()) {
+        // OSC 4/10/11/12 changed the palette or default colors.
+        m_terminal->clearColorsDirty();
+        emit colorSchemeChanged();
+    }
 
     if (m_terminal->titleDirty()) {
         m_title = m_terminal->title();
@@ -486,6 +451,10 @@ QVariantMap TerminalBackend::linkAt(int row, int col) const
     if (!m_terminal || row < 0 || row >= m_rows || col < 0 || col >= m_cols) {
         return {};
     }
+    const QVariantMap hyperlink = hyperlinkAt(row, col);
+    if (!hyperlink.isEmpty()) {
+        return hyperlink;
+    }
 
     const Screen &screen = m_terminal->screen();
     const Line &cells = screen.lineAt(visibleStart() + row);
@@ -507,6 +476,51 @@ QVariantMap TerminalBackend::linkAt(int row, int col) const
         }
     }
     return {};
+}
+
+// An OSC 8 hyperlink under the cell: the run of cells sharing its id on the
+// row. Only web, mail and existing local file targets are offered.
+QVariantMap TerminalBackend::hyperlinkAt(int row, int col) const
+{
+    const Line &cells = m_terminal->screen().lineAt(visibleStart() + row);
+    if (col >= static_cast<int>(cells.size()) || cells[static_cast<std::size_t>(col)].link == 0) {
+        return {};
+    }
+    const unsigned short id = cells[static_cast<std::size_t>(col)].link;
+    const QUrl url(m_terminal->linkTarget(id));
+    static const QStringList kSchemes{QStringLiteral("http"), QStringLiteral("https"), QStringLiteral("ftp"),
+                                      QStringLiteral("mailto"), QStringLiteral("file")};
+    if (!url.isValid() || !kSchemes.contains(url.scheme().toLower()) ||
+        (url.isLocalFile() && !QFileInfo::exists(url.toLocalFile()))) {
+        return {};
+    }
+    const auto sameLink = [id](const Cell &cell) { return cell.link == id; };
+    const auto at = cells.begin() + col;
+    const auto first = std::find_if_not(std::make_reverse_iterator(at), cells.rend(), sameLink).base();
+    const auto last = std::find_if_not(at, cells.end(), sameLink);
+    return {
+        {QStringLiteral("target"), url.toString()},
+        {QStringLiteral("start"), static_cast<int>(first - cells.begin())},
+        {QStringLiteral("end"), static_cast<int>(last - cells.begin())}
+    };
+}
+
+void TerminalBackend::wheelScroll(int lines)
+{
+    if (!m_terminal || lines == 0) {
+        return;
+    }
+    // ?1007: full-screen apps without mouse tracking (less, man) get cursor
+    // keys, since the alternate screen has no scrollback to show.
+    if (m_terminal->screen().inAltScreen() && m_terminal->alternateScroll() && !mouseTracking()) {
+        const bool app = m_terminal->applicationCursorKeys();
+        const QByteArray arrow = lines > 0 ? (app ? "\x1bOA" : "\x1b[A") : (app ? "\x1bOB" : "\x1b[B");
+        if (m_worker) {
+            writeToPty(arrow.repeated(std::abs(lines)));
+        }
+        return;
+    }
+    scrollBy(lines);
 }
 
 QVariantMap TerminalBackend::linkFromMatch(const QRegularExpressionMatch &match, int col) const
@@ -1490,8 +1504,10 @@ Cell TerminalBackend::resolvedCell(const Cell &cell) const
 {
     // DECSCNM (reverse video) swaps the default colors for the whole screen.
     const bool reverseScreen = m_terminal && m_terminal->reverseVideo();
-    unsigned int fg = resolveColor(cell.fg, reverseScreen ? m_defaultBg : m_defaultFg);
-    unsigned int bg = resolveColor(cell.bg, reverseScreen ? m_defaultFg : m_defaultBg);
+    const unsigned int defaultFg = foregroundColor();
+    const unsigned int defaultBg = backgroundColor();
+    unsigned int fg = resolveColor(cell.fg, reverseScreen ? defaultBg : defaultFg);
+    unsigned int bg = resolveColor(cell.bg, reverseScreen ? defaultFg : defaultBg);
     if ((cell.flags & CellFlag::Reverse) != 0) {
         std::swap(fg, bg);
     }
@@ -1564,6 +1580,21 @@ bool TerminalBackend::cursorVisible() const
     return m_terminal ? m_terminal->screen().cursorVisible() : true;
 }
 
+unsigned int TerminalBackend::backgroundColor() const
+{
+    return m_terminal && m_terminal->backgroundOverride() != 0 ? m_terminal->backgroundOverride() : m_defaultBg;
+}
+
+unsigned int TerminalBackend::foregroundColor() const
+{
+    return m_terminal && m_terminal->foregroundOverride() != 0 ? m_terminal->foregroundOverride() : m_defaultFg;
+}
+
+unsigned int TerminalBackend::cursorColor() const
+{
+    return m_terminal && m_terminal->cursorColorOverride() != 0 ? m_terminal->cursorColorOverride() : foregroundColor();
+}
+
 int TerminalBackend::cursorShape() const
 {
     return m_terminal ? m_terminal->cursorShape() : 0;
@@ -1603,17 +1634,15 @@ QString TerminalBackend::detectDefaultShell()
     return "/bin/sh";
 }
 
-QRgb TerminalBackend::resolveColor(
-    unsigned int encoded,
-    unsigned int defaultColor
-) // NOLINT: encoded/defaultColor are inherently swappable
+QRgb TerminalBackend::resolveColor(unsigned int encoded, unsigned int defaultColor) const
 {
     if (encoded == 0) {
         return static_cast<QRgb>(defaultColor);
     }
     if (encoded <= 256) {
-        static const std::array<QRgb, 256> palette = buildPalette();
-        return static_cast<QRgb>(0xff000000u | palette[encoded - 1]);
+        // The palette, with any OSC 4 overrides the application set.
+        const int index = static_cast<int>(encoded) - 1;
+        return static_cast<QRgb>(m_terminal ? m_terminal->paletteColor(index) : defaultPaletteColor(index));
     }
     if ((encoded & 0x80000000u) != 0u) {
         const unsigned int rgb = encoded & 0xffffff;

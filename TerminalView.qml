@@ -239,7 +239,7 @@ Item {
                     view.scrollAccumulator += delta;
                     const step = Math.trunc(view.scrollAccumulator);
                     if (step !== 0) {
-                        view.session.scrollBy(step);
+                        view.session.wheelScroll(step);
                         view.scrollAccumulator -= step;
                     }
                 }
