@@ -29,6 +29,14 @@ Window {
     flags: Qt.Window | Qt.ExpandedClientAreaHint | Qt.NoTitleBarBackgroundHint
     color: "transparent"
 
+    // Drives the "Window" menu list and the OS window switcher: each window is
+    // listed by the title of its active workspace (custom name, working
+    // directory, or shell name), mirroring the tab button.
+    title: {
+        const workspace = sessionManager.workspaces[sessionManager.activeWorkspaceIndex];
+        return workspace ? (workspace.title || "Konsoll") : "Konsoll";
+    }
+
     function requestQuit() {
         // Persist the last active window before the AppKit terminate delegate
         // aggregates sessions and owns the confirmation flow.
@@ -396,6 +404,11 @@ Window {
         }
 
         Menu {
+            id: windowMenu
+
+            // Items above the window list (New Window, Close Window, separator).
+            readonly property int windowListOffset: 3
+
             title: qsTr("Window")
 
             MenuItem {
@@ -404,6 +417,37 @@ Window {
 
             MenuItem {
                 action: closeWindowAction
+            }
+
+            MenuSeparator {}
+
+            // Every open window, listed by name; the active one carries the
+            // native check mark. Clicking an entry raises and activates that
+            // window. An Instantiator (not a Repeater) inserts each entry at an
+            // explicit index: a Repeater inside a native Menu misplaces its
+            // first delegate whenever the model is reassigned.
+            Instantiator {
+                model: appWindow.windowManager.windows
+
+                delegate: MenuItem {
+                    id: windowEntry
+
+                    required property Window modelData
+
+                    text: modelData.title
+                    checkable: true
+                    checked: modelData.windowId === appWindow.windowManager.lastActiveWindowId
+                    onTriggered: {
+                        // Clicking toggles `checked`; restore the binding so
+                        // the mark keeps following the active window.
+                        windowEntry.checked = Qt.binding(() => windowEntry.modelData.windowId === appWindow.windowManager.lastActiveWindowId);
+                        windowEntry.modelData.raise();
+                        windowEntry.modelData.requestActivate();
+                    }
+                }
+
+                onObjectAdded: (index, object) => windowMenu.insertItem(windowMenu.windowListOffset + index, object)
+                onObjectRemoved: (index, object) => windowMenu.removeItem(object)
             }
         }
     }

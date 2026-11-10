@@ -81,6 +81,10 @@ void makeWindowTranslucent(WId winId, const QColor &color, qreal alpha)
         return;
     }
 
+    // QML draws its own title bar (the tab strip) in the expanded client area.
+    // The window title only feeds the Window menu and the window switcher, so
+    // AppKit must not paint it over the first tab.
+    [nsWindow setTitleVisibility:NSWindowTitleHidden];
     [nsWindow setOpaque:NO];
     [nsWindow setBackgroundColor:[NSColor colorWithRed:color.redF()
                                                  green:color.greenF()
