@@ -26,7 +26,7 @@ QByteArray number(int value)
     return QByteArray::number(value);
 }
 
-// KONSOLL_VERSION "3.3.1" as the DA2 firmware version 30301.
+// KONSOLL_VERSION "3.4.0" as the DA2 firmware version 30400.
 int versionNumber()
 {
     const QList<QByteArray> parts = QByteArray(KONSOLL_VERSION).split('.');
