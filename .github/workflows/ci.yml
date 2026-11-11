@@ -46,6 +46,15 @@ jobs:
       - name: Build
         run: cmake --build build/ci
 
+      - name: Use zsh as the login shell
+        # Sessions start the passwd shell; the self-test expects zsh (the
+        # macOS default), while the runner account uses bash.
+        run: |
+          dscl . -read "/Users/$USER" UserShell
+          sudo dscl . -create "/Users/$USER" UserShell /bin/zsh
+          dscacheutil -flushcache
+          dscl . -read "/Users/$USER" UserShell
+
       - name: Self-test
         env:
           QT_QPA_PLATFORM: offscreen
