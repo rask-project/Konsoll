@@ -7,7 +7,7 @@
 A native terminal for macOS, built in QML (Qt Quick) on top of Qt 6.12.
 
 Konsoll is a clean, native macOS terminal with a real pseudo-terminal (PTY)
-running your default shell — no KDE/Plasma dependencies. It renders the screen
+running your default shell. It renders the screen
 with a native Qt Quick scene-graph renderer, emulates a VT500-class terminal
 with the modern xterm, kitty and iTerm2 extensions, and offers an
 iTerm2-style see-through window with native Liquid Glass.
