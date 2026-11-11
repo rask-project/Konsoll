@@ -50,8 +50,9 @@ signals:
     void processExited(int exitCode);
     // The PTY failed to start.
     void startFailed(const QString &error);
-    // The PTY foreground process group is reported on every poll.
-    void foregroundProcessChanged(bool hasForeground);
+    // The PTY foreground job's executable name (empty while the shell is in
+    // the foreground), reported on every poll.
+    void foregroundProcessChanged(const QString &name);
     // The worker released its PTY resources.
     void shutdownComplete();
 

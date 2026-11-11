@@ -126,8 +126,7 @@ void PtyWorker::checkForeground()
 {
     // Report the current foreground state on every poll; the backend caches
     // it and ignores repeats, so no state is kept here.
-    const bool hasForeground = m_pty ? m_pty->hasForegroundProcess() : false;
-    emit foregroundProcessChanged(hasForeground);
+    emit foregroundProcessChanged(m_pty ? m_pty->foregroundProcessName() : QString{});
 }
 
 } // namespace konsoll

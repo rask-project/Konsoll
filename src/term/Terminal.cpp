@@ -193,6 +193,9 @@ void Terminal::executeControl(unsigned char c)
         // CAN/SUB abort any sequence in progress.
         m_state = State::Ground;
         break;
+    case kBel:
+        setExtraFlag(BellPending, true);
+        break;
     default:
         // Every other C0 control (NUL, BEL, ...) and DEL has no glyph:
         // drop it instead of storing it in a cell, where it renders as a
@@ -1202,7 +1205,7 @@ void Terminal::fullReset()
     }
     // Keep only notifications the backend has not consumed yet.
     m_extraFlags &= RemoteHostDirty | TitleDirty | CurrentDirectoryDirty | ClipboardTextDirty | CommandFinishedPending |
-                    DarkColorScheme | PointerShapeDirty;
+                    DarkColorScheme | PointerShapeDirty | BellPending | ProgressDirty;
     m_extraFlags |= AlternateScroll | ColorsDirty;
     m_paletteOverrides = {};
     m_fgOverride = 0;
@@ -1633,6 +1636,10 @@ void Terminal::handleOsc(const QByteArray &body)
         handleOscHyperlink(body);
         return;
     }
+    if (body == "9;4" || body.startsWith("9;4;")) {
+        handleOscProgress(body.mid(4));
+        return;
+    }
     if (body.startsWith("9;") || body.startsWith("777;")) {
         handleOscNotification(body);
         return;
@@ -1743,6 +1750,32 @@ void Terminal::handleOscNotification(const QByteArray &body)
                                          .a = 0,
                                          .b = 0,
                                          .c = 0});
+}
+
+// OSC 9 ; 4 ; state ; percent: 0 removes the progress, 1 sets it, 2 is an
+// error, 3 indeterminate and 4 paused. A missing percent keeps the last one
+// for 2 and 4 (ConEmu); `body` is what follows "9;4;".
+void Terminal::handleOscProgress(const QByteArray &body)
+{
+    const QList<QByteArray> fields = body.split(';');
+    bool stateOk = false;
+    const int state = fields.value(0).toInt(&stateOk);
+    if (!stateOk || state < ProgressNone || state > ProgressPaused) {
+        return;
+    }
+    bool valueOk = false;
+    const int value = std::clamp(fields.value(1).toInt(&valueOk), 0, 100);
+    int newValue = valueOk ? value : 0;
+    if (state == ProgressNone || state == ProgressIndeterminate) {
+        newValue = 0;
+    } else if (!valueOk && state != ProgressNormal) {
+        newValue = m_progressValue;
+    }
+    if (state != m_progressState || newValue != m_progressValue) {
+        m_progressState = static_cast<std::uint16_t>(state);
+        m_progressValue = static_cast<std::uint16_t>(newValue);
+        setExtraFlag(ProgressDirty, true);
+    }
 }
 
 void Terminal::handleOscRemoteHost(const QByteArray &body)
@@ -1921,6 +1954,10 @@ void Terminal::handleOscCommandMark(const QByteArray &body)
     }
     handleCommandMark(body.at(4));
     if (body.at(4) == 'D') {
+        // D ; status ; ... -- later fields (aid=, err=) are ignored.
+        bool ok = false;
+        const int code = body.size() > 6 && body.at(5) == ';' ? body.mid(6).split(';').value(0).toInt(&ok) : 0;
+        m_lastExitCode = ok ? code : -1;
         setExtraFlag(CommandFinishedPending, true);
     }
 }

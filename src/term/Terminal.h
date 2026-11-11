@@ -119,6 +119,27 @@ public:
     void clearCommandFinished() { setExtraFlag(CommandFinishedPending, false); }
     // True while a command is executing (OSC 133 C -> D window).
     bool commandRunning() const { return m_commandRunning; }
+    // Exit status the shell reported with OSC 133 ; D ; status, or -1 when
+    // the last finished command came without one.
+    int lastExitCode() const { return m_lastExitCode; }
+
+    // BEL outside a string: the program rang the bell since the last clear.
+    bool bellPending() const { return (m_extraFlags & BellPending) != 0; }
+    void clearBellPending() { setExtraFlag(BellPending, false); }
+
+    // OSC 9 ; 4 ; state ; percent (ConEmu progress, also Windows Terminal,
+    // Ghostty, systemd, winget): a ProgressState and 0-100.
+    enum ProgressState : std::uint8_t {
+        ProgressNone = 0,
+        ProgressNormal = 1,
+        ProgressError = 2,
+        ProgressIndeterminate = 3,
+        ProgressPaused = 4
+    };
+    int progressState() const { return m_progressState; }
+    int progressValue() const { return m_progressValue; }
+    bool progressDirty() const { return (m_extraFlags & ProgressDirty) != 0; }
+    void clearProgressDirty() { setExtraFlag(ProgressDirty, false); }
 
     // Set when a full-screen erase (ESC[2J) is processed, so the backend can
     // drop any selection that now sits over blank lines.
@@ -203,6 +224,8 @@ private:
     static constexpr std::uint64_t Columns132 = std::uint64_t{1} << 36;            // ?3 DECCOLM set
     static constexpr std::uint64_t EightBitControls = std::uint64_t{1} << 37;      // S8C1T: C1 replies
     static constexpr std::uint64_t UdkLocked = std::uint64_t{1} << 38;             // DECUDK locked
+    static constexpr std::uint64_t BellPending = std::uint64_t{1} << 39;           // BEL not yet consumed
+    static constexpr std::uint64_t ProgressDirty = std::uint64_t{1} << 40;         // OSC 9 ; 4 changed
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.
@@ -316,6 +339,7 @@ private:
     void handleOscPaletteReset(const QByteArray &indices);
     void handleOscHyperlink(const QByteArray &body);
     void handleOscNotification(const QByteArray &body);
+    void handleOscProgress(const QByteArray &body);
     void handleOscIterm(const QByteArray &command);
     void placeItermImage(const QByteArray &args, const QByteArray &base64);
     unsigned int dynamicColor(int code) const;
@@ -382,8 +406,11 @@ private:
     unsigned int m_utf8CodePoint = 0;
     unsigned int m_utf8Minimum = 0;
     int m_commandStartLine = -1;
+    int m_lastExitCode = -1;
     int m_cellPixelWidth = 8;
     int m_cellPixelHeight = 16;
+    std::uint16_t m_progressState = ProgressNone; // OSC 9 ; 4
+    std::uint16_t m_progressValue = 0;
     State m_state = State::Ground;
     StringKind m_stringKind = StringKind::Ignore;
 

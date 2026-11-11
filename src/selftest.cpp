@@ -81,6 +81,48 @@ void selfTestCheck(int &failures, bool condition, const char *what)
 
 namespace
 {
+
+// Tab indicators: the foreground job's kind, and why a background workspace
+// wants attention (bell beats a failed command). `other` is a session in
+// another workspace, activated to put the new one in the background.
+void checkTabIndicators(int &failures, TerminalManager &manager, TerminalBackend *other)
+{
+    manager.addWorkspace();
+    auto *u = activeSession(manager);
+    auto *uWorkspace = static_cast<TerminalWorkspaceModel *>(manager.workspaces().last().value<QObject *>());
+    check(failures, waitFor("indicators: shell output", [u]() { return !u->bufferText().isEmpty(); }, 15000),
+          "indicators: shell produced output");
+    u->writeText("less /etc/hosts\n");
+    check(failures,
+          waitFor("indicators: pager", [u, uWorkspace]() {
+              return u->foregroundProcess() == QStringLiteral("less") && uWorkspace->processKind() == QStringLiteral("pager") &&
+                     uWorkspace->busy();
+          }, 10000),
+          "indicators: foreground job name and kind reach the workspace");
+    u->writeText("q");
+    check(failures,
+          waitFor("indicators: back at the prompt", [u, uWorkspace]() {
+              return u->foregroundProcess().isEmpty() && uWorkspace->processKind().isEmpty();
+          }, 10000),
+          "indicators: kind cleared at the prompt");
+    manager.activateSession(other);
+    u->writeText("printf '\\e]9;4;1;30\\a'; false\n");
+    check(failures,
+          waitFor("indicators: failure", [uWorkspace]() {
+              return uWorkspace->attention() == QStringLiteral("failure") && uWorkspace->progressState() == 1 &&
+                     uWorkspace->progressValue() == 30;
+          }, 10000),
+          "indicators: background failure and OSC 9;4 progress");
+    u->writeText("printf '\\a'; true\n");
+    check(failures,
+          waitFor("indicators: bell", [uWorkspace]() { return uWorkspace->attention() == QStringLiteral("bell"); },
+                  10000),
+          "indicators: bell outranks the failure");
+    manager.activateSession(u);
+    check(failures, uWorkspace->attention().isEmpty(), "indicators: activation clears attention");
+    manager.closeSession(u);
+}
+
 // Dragging a pane rearranges the splits and moves it between windows.
 void checkPaneMoves(int &failures, TerminalManager &manager)
 {
@@ -377,6 +419,9 @@ int runSelfTest()
     check(failures, waitFor("shutdown: sleep spawned", []() { return pgrepCount("sleep 31337") > 0; }, 10000), "shutdown: sleep started");
     manager.closeSession(s);
     check(failures, waitFor("shutdown: sleep gone", []() { return pgrepCount("sleep 31337") == 0; }, 5000), "shutdown: no orphaned sleep");
+
+    // 6b. Tab indicators.
+    checkTabIndicators(failures, manager, a);
 
     // 7. Output backpressure: sustained output above the 1 MiB high-water mark.
     manager.addWorkspace();

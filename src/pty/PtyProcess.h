@@ -3,6 +3,9 @@
 #include <QByteArray>
 #include <QObject>
 #include <QSocketNotifier>
+#include <QString>
+
+#include <sys/types.h>
 
 #include <memory>
 
@@ -41,7 +44,9 @@ public:
     // Pause / resume notifier-driven reads (output backpressure).
     void pauseReading();
     void resumeReading();
-    bool hasForegroundProcess() const;
+    // File name of the foreground job's executable ("nvim", "ssh"), "?" when
+    // it cannot be read, or empty while the shell itself is in the foreground.
+    QString foregroundProcessName() const;
 
     int pid() const { return m_pid; }
 
@@ -54,6 +59,8 @@ signals:
 private:
     void onReadable();
     void closeMaster();
+    // The foreground process group when it is not the shell's, else -1.
+    pid_t foregroundGroup() const;
 
     int m_masterFd = -1;
     int m_pid = -1;

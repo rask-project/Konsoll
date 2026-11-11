@@ -118,7 +118,7 @@ An in-house VT500-style state machine (no `libvterm`), validated against
   sixel, and iTerm2 `OSC 1337` inline images
 - `OSC 8` hyperlinks (Cmd+click), `OSC 4/10/11/12` color control
 - `OSC 52` clipboard (reads ask first by default)
-- `OSC 9` / `OSC 777` desktop notifications
+- `OSC 9` / `OSC 777` desktop notifications, `OSC 9;4` progress in the tab
 - `OSC 7` working directory, `OSC 133` / `OSC 633` command blocks, and the
   iTerm2 `OSC 1337` commands (user variables, current directory, …)
 - `OSC 22` mouse pointer shapes
@@ -131,6 +131,13 @@ An in-house VT500-style state machine (no `libvterm`), validated against
   (`Cmd+T` / `Cmd+W`, named with `Cmd+Shift+T`, `Cmd+Tab` /
   `Cmd+Shift+Tab` to move through activation history); press and hold a tab
   to reorder it
+- **Tab indicators** — an icon for the program running in the tab (ssh and
+  mosh, editors, system monitors, containers, REPLs, database clients,
+  sudo, pagers, git, build tools, tmux), a plain shell icon at the prompt,
+  a spinner while a job runs, and an
+  `OSC 9;4` progress ring. A background tab shows why it wants a look: new
+  output, a finished (✓) or failed (✗) command (`OSC 133;D` exit status), or
+  the bell
 - Nested horizontal/vertical split panes (`Cmd+D` / `Cmd+Shift+D`), each
   pane an independent session with its own title bar and close control
 - **Move a workspace to another window** — right-click a tab and choose
@@ -236,6 +243,7 @@ konsoll/
     ├── WindowRegistry.h/.cpp    # the open windows' managers
     ├── TerminalRenderer.h/.cpp  # scene-graph renderer for the cell grid
     ├── KeyEncoder.h/.cpp        # xterm / kitty key encoding
+    ├── ProcessKind.h/.cpp       # foreground program -> tab icon kind
     ├── NativeKeyTracker.h/.cpp  # native key codes (kitty base layout key)
     ├── pty/
     │   ├── PtyProcess.h/.cpp    # forkpty, read loop, resize, exit

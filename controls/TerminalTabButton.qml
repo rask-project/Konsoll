@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.impl
 import "." as Controls
 
 TabButton {
@@ -19,6 +20,51 @@ TabButton {
     readonly property var hostWindow: sessionManager ? sessionManager.window : null
     readonly property string tabTitle: tab.workspace ? (tab.workspace.title || "Konsoll") : "Konsoll"
     readonly property color systemAccent: systemPalette.accent
+
+    // Tab indicators (TerminalWorkspaceModel): the leading slot shows OSC 9;4
+    // progress, else the kind of program running, else a spinner while a job
+    // runs, else a plain shell icon at the prompt; the trailing badge says
+    // why a background tab wants a look.
+    readonly property int progressState: tab.workspace ? tab.workspace.progressState : 0
+    readonly property int progressValue: tab.workspace ? tab.workspace.progressValue : 0
+    readonly property string processKind: tab.workspace ? tab.workspace.processKind : ""
+    readonly property bool busy: tab.workspace ? tab.workspace.busy : false
+    readonly property string attention: tab.workspace ? tab.workspace.attention : ""
+    // Quick commands finish before the spinner would flash.
+    property bool spinnerDue: false
+    readonly property string leadingMode: tab.progressState > 0 ? "progress" : (tab.processKind !== "" ? "kind" : (tab.busy && tab.spinnerDue ? "spinner" : "shell"))
+
+    readonly property color successColor: "#30d158"
+    readonly property color failureColor: "#ff453a"
+    readonly property color warningColor: "#ffb020"
+    readonly property var kindNames: ({
+            remote: qsTr("Remote session"),
+            editor: qsTr("Editor"),
+            monitor: qsTr("System monitor"),
+            container: qsTr("Containers"),
+            repl: qsTr("Interactive interpreter"),
+            database: qsTr("Database client"),
+            privileged: qsTr("Elevated privileges"),
+            pager: qsTr("Pager"),
+            git: qsTr("Git"),
+            build: qsTr("Build"),
+            multiplexer: qsTr("Terminal multiplexer")
+        })
+    readonly property var attentionNames: ({
+            activity: qsTr("New output"),
+            success: qsTr("Command finished"),
+            failure: qsTr("Command failed"),
+            bell: qsTr("Bell")
+        })
+
+    onBusyChanged: if (!busy)
+        spinnerDue = false
+
+    Timer {
+        interval: 400
+        running: tab.busy && !tab.spinnerDue
+        onTriggered: tab.spinnerDue = true
+    }
 
     signal closeRequested
     signal dragStarted(real sceneX, real sceneY)
@@ -153,7 +199,7 @@ TabButton {
         radius: height / 2
         color: tab.active ? Qt.rgba(tab.systemAccent.r, tab.systemAccent.g, tab.systemAccent.b, 0.05) : Qt.rgba(systemPalette.window.r, systemPalette.window.g, systemPalette.window.b, 0.25)
 
-        border.color: tab.workspace && tab.workspace.alerting ? "#ffb020" : (tab.active ? Qt.rgba(tab.systemAccent.r, tab.systemAccent.g, tab.systemAccent.b, 0.8) : Qt.rgba(systemPalette.windowText.r, systemPalette.windowText.g, systemPalette.windowText.b, 0.05))
+        border.color: tab.attention === "bell" ? tab.warningColor : tab.attention === "failure" ? tab.failureColor : tab.attention === "success" ? tab.successColor : (tab.active ? Qt.rgba(tab.systemAccent.r, tab.systemAccent.g, tab.systemAccent.b, 0.8) : Qt.rgba(systemPalette.windowText.r, systemPalette.windowText.g, systemPalette.windowText.b, 0.05))
         border.width: 1
     }
 
@@ -183,10 +229,41 @@ TabButton {
             height: closeButton.height
         }
 
+        Item {
+            id: leadingIndicator
+
+            width: 16
+            height: 16
+            anchors.verticalCenter: parent.verticalCenter
+
+            Accessible.role: Accessible.Indicator
+            Accessible.name: tab.leadingMode === "kind" ? (tab.kindNames[tab.processKind] || "") : tab.leadingMode === "progress" ? qsTr("Progress %1%").arg(tab.progressValue) : tab.leadingMode === "spinner" ? qsTr("Running") : qsTr("Shell")
+
+            IconImage {
+                anchors.fill: parent
+                visible: tab.leadingMode === "kind" || tab.leadingMode === "shell"
+                name: tab.leadingMode === "shell" ? "kind-shell" : (tab.processKind !== "" ? "kind-" + tab.processKind : "")
+                sourceSize: Qt.size(16, 16)
+                color: tab.processKind === "privileged" ? tab.warningColor : systemPalette.windowText
+            }
+
+            Controls.TabActivityIndicator {
+                anchors.centerIn: parent
+                width: 13
+                height: 13
+                visible: tab.leadingMode === "progress" || tab.leadingMode === "spinner"
+                spinning: tab.leadingMode === "spinner" || tab.progressState === 3
+                value: tab.progressValue
+                // ConEmu states: 2 error, 4 paused.
+                color: tab.progressState === 2 ? tab.failureColor : (tab.progressState === 4 ? tab.warningColor : (tab.leadingMode === "spinner" ? systemPalette.windowText : tab.systemAccent))
+                trackColor: Qt.rgba(systemPalette.windowText.r, systemPalette.windowText.g, systemPalette.windowText.b, 0.15)
+            }
+        }
+
         Text {
             id: tabLabel
 
-            width: Math.max(0, tab.width - tab.leftPadding - tab.rightPadding - closeButton.width - parent.spacing)
+            width: Math.max(0, tab.width - tab.leftPadding - tab.rightPadding - closeButton.width - parent.spacing - leadingIndicator.width - parent.spacing - (attentionBadge.visible ? attentionBadge.width + parent.spacing : 0))
             height: parent.height
 
             text: tab.tabTitle
@@ -290,6 +367,35 @@ TabButton {
                         tab.windowTranslucency.setWindowMovable(true);
                     }
                 }
+            }
+        }
+
+        Item {
+            id: attentionBadge
+
+            visible: tab.attention !== ""
+            width: 14
+            height: 14
+            anchors.verticalCenter: parent.verticalCenter
+
+            Accessible.role: Accessible.Indicator
+            Accessible.name: tab.attentionNames[tab.attention] || ""
+
+            Rectangle {
+                anchors.centerIn: parent
+                visible: tab.attention === "activity"
+                width: 7
+                height: 7
+                radius: 3.5
+                color: tab.systemAccent
+            }
+
+            IconImage {
+                anchors.fill: parent
+                visible: tab.attention !== "activity"
+                name: tab.attention !== "" && tab.attention !== "activity" ? "status-" + tab.attention : ""
+                sourceSize: Qt.size(14, 14)
+                color: tab.attention === "failure" ? tab.failureColor : (tab.attention === "bell" ? tab.warningColor : tab.successColor)
             }
         }
     }

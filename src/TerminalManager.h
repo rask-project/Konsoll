@@ -2,6 +2,7 @@
 
 #include "TerminalBackend.h"
 
+#include <QElapsedTimer>
 #include <QEvent>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -46,6 +47,7 @@ signals:
 
 private:
     friend class TerminalManager;
+    friend class TerminalWorkspaceModel;
 
     TerminalBackend *m_session{};
     std::unique_ptr<TerminalLayoutNode> m_first;
@@ -58,7 +60,17 @@ class TerminalWorkspaceModel final : public QObject
     Q_OBJECT
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
     Q_PROPERTY(QString customTitle READ customTitle NOTIFY titleChanged)
-    Q_PROPERTY(bool alerting READ alerting NOTIFY alertingChanged)
+    // Why the tab wants a look while it is in the background: "activity"
+    // (new output), "success" / "failure" (a command finished with that
+    // exit status) or "bell"; empty when nothing happened or it is active.
+    Q_PROPERTY(QString attention READ attention NOTIFY attentionChanged)
+    // The panes' state for the tab icon: the ProcessKind name of the job in
+    // the last active pane (else in any pane), whether any pane runs a
+    // job, and the first OSC 9 ; 4 progress (Terminal::ProgressState, 0-100).
+    Q_PROPERTY(QString processKind READ processKind NOTIFY statusChanged)
+    Q_PROPERTY(bool busy READ busy NOTIFY statusChanged)
+    Q_PROPERTY(int progressState READ progressState NOTIFY statusChanged)
+    Q_PROPERTY(int progressValue READ progressValue NOTIFY statusChanged)
     Q_PROPERTY(QObject *rootNode READ rootNode NOTIFY layoutChanged)
 
 public:
@@ -67,8 +79,24 @@ public:
     QString title() const;
     QString customTitle() const { return m_customTitle; }
     void setCustomTitle(QString title);
-    bool alerting() const { return m_alerting != 0; }
-    void setAlerting(bool value);
+    // Attention levels, from least to most important; a higher one replaces
+    // a lower one until the workspace is activated.
+    enum class Attention : std::uint8_t { None, Activity, Success, Failure, Bell };
+
+    QString attention() const;
+    // Records `level` unless the workspace is active.
+    void raiseAttention(Attention level);
+    // New output: Activity, but not right after the workspace was left (the
+    // focus change and resize make programs redraw).
+    void markActivity();
+    // The active workspace never holds attention.
+    void setActive(bool active);
+    QString processKind() const { return processKindName(m_processKind); }
+    bool busy() const { return (m_flags & BusyFlag) != 0; }
+    int progressState() const { return m_progressState; }
+    int progressValue() const { return m_progressValue; }
+    // Recomputes the status properties from the sessions in the tree.
+    void refreshStatus();
     QObject *rootNode() const { return m_root.get(); }
     std::unique_ptr<TerminalLayoutNode> &root() { return m_root; }
     TerminalBackend *lastActiveSession() const { return m_lastActiveSession; }
@@ -78,15 +106,23 @@ public:
 signals:
     void layoutChanged();
     void titleChanged();
-    void alertingChanged();
+    void attentionChanged();
+    void statusChanged();
 
 private:
+    static constexpr unsigned char ActiveFlag = 1u;
+    static constexpr unsigned char BusyFlag = 2u;
+
     std::unique_ptr<TerminalLayoutNode> m_root;
     TerminalBackend *m_lastActiveSession{};
     QString m_title;
     QString m_customTitle;
-    // 0 / 1; pointer-sized like the members above, so the class has no padding.
-    std::size_t m_alerting{};
+    QElapsedTimer m_inactiveTimer; // since the workspace was left
+    int m_progressValue{};
+    unsigned char m_progressState{};
+    ProcessKind m_processKind{ProcessKind::None};
+    Attention m_attention{Attention::None};
+    unsigned char m_flags{};
 };
 
 class TerminalManager : public QObject

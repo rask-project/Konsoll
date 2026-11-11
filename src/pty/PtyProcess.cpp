@@ -11,12 +11,15 @@
 
 #include <array>
 #include <cerrno>
+#include <cstdint>
 #include <cstring>
 #include <fcntl.h>
 #include <iterator>
+#include <libproc.h>
 #include <ranges>
 #include <signal.h>
 #include <sys/ioctl.h>
+#include <sys/param.h>
 #include <termios.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -422,15 +425,36 @@ void PtyProcess::resumeReading()
     }
 }
 
-bool PtyProcess::hasForegroundProcess() const
+pid_t PtyProcess::foregroundGroup() const
 {
     if (m_masterFd < 0 || m_pid <= 0) {
-        return false;
+        return -1;
     }
     const pid_t foregroundGroup = ::tcgetpgrp(m_masterFd);
     const pid_t shellGroup = ::getpgid(static_cast<pid_t>(m_pid));
     const pid_t expectedShellGroup = shellGroup > 0 ? shellGroup : static_cast<pid_t>(m_pid);
-    return foregroundGroup > 0 && foregroundGroup != expectedShellGroup;
+    return foregroundGroup > 0 && foregroundGroup != expectedShellGroup ? foregroundGroup : -1;
+}
+
+QString PtyProcess::foregroundProcessName() const
+{
+    // The group leader (its pid is the group id) is the job the shell
+    // started: the first command of a pipeline, or sudo / ssh themselves.
+    const pid_t group = foregroundGroup();
+    if (group <= 0) {
+        return {};
+    }
+    std::array<char, PROC_PIDPATHINFO_MAXSIZE> path{};
+    if (::proc_pidpath(group, path.data(), static_cast<std::uint32_t>(path.size())) > 0) {
+        return QFileInfo(QString::fromUtf8(path.data())).fileName();
+    }
+    // The leader may have exited while the rest of the group runs on; any
+    // job still counts as a foreground process.
+    std::array<char, (2 * MAXCOMLEN) + 1> name{};
+    if (::proc_name(group, name.data(), static_cast<std::uint32_t>(name.size())) > 0) {
+        return QString::fromUtf8(name.data());
+    }
+    return QStringLiteral("?");
 }
 
 void PtyProcess::onReadable()

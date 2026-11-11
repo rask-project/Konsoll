@@ -2,6 +2,7 @@
 
 #include "KeyEncoder.h"
 #include "NativeKeyTracker.h"
+#include "ProcessKind.h"
 #include "screendump.h"
 #include "term/Grapheme.h"
 #include "term/Terminal.h"
@@ -829,6 +830,62 @@ void notifications(int &failures)
                   "notify: OSC 9 text and OSC 777 notify; ConEmu OSC 9;4 progress is not a notification");
 }
 
+// Tab indicators: OSC 9 ; 4 progress, BEL and the OSC 133 ; D exit status.
+void tabIndicators(int &failures)
+{
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b]9;4;1;42\x07");
+        const bool normal = term.progressState() == Terminal::ProgressNormal && term.progressValue() == 42 &&
+                            term.progressDirty();
+        term.clearProgressDirty();
+        term.write("\x1b]9;4;2\x07");
+        const bool errorKeepsValue = term.progressState() == Terminal::ProgressError && term.progressValue() == 42;
+        term.write("\x1b]9;4;1;250\x1b\\");
+        const bool clamped = term.progressValue() == 100;
+        term.write("\x1b]9;4;3;\x07");
+        const bool indeterminate = term.progressState() == Terminal::ProgressIndeterminate && term.progressValue() == 0;
+        term.write("\x1b]9;4;9;10\x07");
+        const bool badStateIgnored = term.progressState() == Terminal::ProgressIndeterminate;
+        term.write("\x1b]9;4;0;0\x07");
+        selfTestCheck(failures, normal && errorKeepsValue && clamped && indeterminate && badStateIgnored &&
+                                    term.progressState() == Terminal::ProgressNone && term.takeRequests().empty() &&
+                                    rowText(term, 0).isEmpty(),
+                      "osc 9;4: progress states, kept and clamped values, no notification or text");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b]0;title\x07" "a");
+        const bool noBellInString = !term.bellPending();
+        term.write("\x07" "b");
+        selfTestCheck(failures, noBellInString && term.bellPending() && rowText(term, 0) == QStringLiteral("ab"),
+                      "bel: rings outside strings and leaves no cell");
+    }
+    {
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b]133;C\x07\x1b]133;D;127\x07");
+        const bool failed = term.commandFinished() && term.lastExitCode() == 127 && !term.commandRunning();
+        term.write("\x1b]133;C\x07\x1b]133;D;0;aid=1\x07");
+        const bool succeeded = term.lastExitCode() == 0;
+        term.write("\x1b]133;C\x07\x1b]133;D\x07");
+        selfTestCheck(failures, failed && succeeded && term.lastExitCode() == -1,
+                      "osc 133;D: exit status, extra fields and a missing status");
+    }
+    selfTestCheck(failures, processKind(QStringLiteral("ssh")) == ProcessKind::Remote &&
+                                processKind(QStringLiteral("nvim")) == ProcessKind::Editor &&
+                                processKind(QStringLiteral("python3.12")) == ProcessKind::Repl &&
+                                processKind(QStringLiteral("Python")) == ProcessKind::Repl &&
+                                processKind(QStringLiteral("sqlite3")) == ProcessKind::Database &&
+                                processKind(QStringLiteral("k9s")) == ProcessKind::Container &&
+                                processKind(QStringLiteral("sudo")) == ProcessKind::Privileged &&
+                                processKind(QStringLiteral("zsh")) == ProcessKind::None &&
+                                processKind(QStringLiteral("42")) == ProcessKind::None &&
+                                processKind(QString{}) == ProcessKind::None &&
+                                processKindName(ProcessKind::Multiplexer) == QStringLiteral("multiplexer") &&
+                                processKindName(ProcessKind::None).isEmpty(),
+                  "process kind: executable names, version suffixes and case");
+}
+
 // Reflow keeps images and double-size lines with their text.
 void reflowAnchors(int &failures)
 {
@@ -976,6 +1033,7 @@ void runParserSelfTest(int &failures)
     reverseWraparound(failures);
     reflowAnchors(failures);
     notifications(failures);
+    tabIndicators(failures);
     itermProtocol(failures);
     kittyAnimationAndPlaceholders(failures);
     pointerAndVsCode(failures);

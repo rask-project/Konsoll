@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ProcessKind.h"
 #include "pty/PtyWorker.h"
 #include "term/Terminal.h"
 
@@ -60,6 +61,13 @@ class TerminalBackend : public QObject
     Q_PROPERTY(int keyboardFlags READ keyboardFlags NOTIFY keyboardFlagsChanged)
     Q_PROPERTY(bool mouseMotionTracking READ mouseMotionTracking NOTIFY mouseTrackingChanged)
     Q_PROPERTY(bool commandRunning READ commandRunning NOTIFY commandRunningChanged)
+    // The foreground job's executable name (empty at the shell prompt) and
+    // its ProcessKind ("remote", "editor", ...; empty when unknown).
+    Q_PROPERTY(QString foregroundProcess READ foregroundProcess NOTIFY foregroundProcessChanged)
+    Q_PROPERTY(QString processKind READ processKind NOTIFY processKindChanged)
+    // OSC 9 ; 4 progress: Terminal::ProgressState and 0-100.
+    Q_PROPERTY(int progressState READ progressState NOTIFY progressChanged)
+    Q_PROPERTY(int progressValue READ progressValue NOTIFY progressChanged)
     // OSC 22: the Qt::CursorShape the program asked for, or -1 (default).
     Q_PROPERTY(int pointerShape READ pointerShape NOTIFY pointerShapeChanged)
     Q_PROPERTY(unsigned int backgroundColor READ backgroundColor NOTIFY colorSchemeChanged)
@@ -210,7 +218,12 @@ public:
     bool mouseTracking() const { return m_terminal && m_terminal->mouseTracking(); }
     bool mouseMotionTracking() const { return m_terminal && m_terminal->mouseMotionTracking(); }
     bool commandRunning() const { return m_terminal && m_terminal->commandRunning(); }
-    bool hasForegroundProcess() const { return m_hasForeground; }
+    bool hasForegroundProcess() const { return !m_foregroundProcess.isEmpty(); }
+    QString foregroundProcess() const { return m_foregroundProcess; }
+    QString processKind() const { return processKindName(m_processKind); }
+    ProcessKind processKindValue() const { return m_processKind; }
+    int progressState() const { return m_terminal ? m_terminal->progressState() : 0; }
+    int progressValue() const { return m_terminal ? m_terminal->progressValue() : 0; }
     // The default colors, or the ones the application set (OSC 10/11/12).
     unsigned int backgroundColor() const;
     unsigned int foregroundColor() const;
@@ -236,7 +249,15 @@ signals:
     void windowOperationRequested(int operation, int first, int second);
     void commandRunningChanged();
     void quitRequested();
-    void commandFinished();
+    // OSC 133 ; D: `exitCode` is the reported status, -1 when none came.
+    void commandFinished(int exitCode);
+    void foregroundProcessChanged();
+    void processKindChanged();
+    void progressChanged();
+    // The program rang the bell (BEL).
+    void bellRang();
+    // The program wrote output.
+    void outputActivity();
     void pointerShapeChanged();
     void transferFailed(const QString &message);
 
@@ -246,7 +267,10 @@ private:
     void onExited(int code);
     void onStartFailed(const QString &error);
     void onWorkerThreadStopped();
-    void onForegroundChanged(bool hasForeground);
+    void onForegroundChanged(const QString &name);
+    void updateProcessKind();
+    // Bell, command end, progress and title changes from the last output.
+    void emitTerminalEvents();
     void onFrameTimer();
     void onAnimationTimer();
     void updateAnimationTimer();
@@ -323,6 +347,7 @@ private:
     QString m_currentDirectory;
     QString m_remoteHost;
     QString m_remoteHostToken;
+    QString m_foregroundProcess;
     AbsPos m_selAnchor{.line = -1, .col = 0};
     AbsPos m_selCurrent{.line = -1, .col = 0};
     int m_highlightStart{-1};
@@ -336,9 +361,9 @@ private:
 
     unsigned int m_defaultFg{0xffe0e0e0};
     unsigned int m_defaultBg{0xff141414};
-    bool m_hasForeground{false};
     bool m_focused{true};
     SessionState m_state{SessionState::Created};
+    ProcessKind m_processKind{ProcessKind::None};
     unsigned char m_reportedKeyboardFlags{0}; // keyboardFlags last signalled to QML
 };
 

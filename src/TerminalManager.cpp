@@ -69,7 +69,10 @@ void TerminalLayoutNode::notifyTreeChanged()
 TerminalWorkspaceModel::TerminalWorkspaceModel(QString title, std::unique_ptr<TerminalLayoutNode> root)
     : m_root(std::move(root))
     , m_title(std::move(title))
-{}
+{
+    m_inactiveTimer.start();
+    connect(this, &TerminalWorkspaceModel::layoutChanged, this, &TerminalWorkspaceModel::refreshStatus);
+}
 
 QString TerminalWorkspaceModel::title() const
 {
@@ -93,13 +96,104 @@ void TerminalWorkspaceModel::setCustomTitle(QString title)
     emit titleChanged();
 }
 
-void TerminalWorkspaceModel::setAlerting(bool value)
+QString TerminalWorkspaceModel::attention() const
 {
-    if (alerting() == value) {
+    switch (m_attention) {
+    case Attention::Activity:
+        return QStringLiteral("activity");
+    case Attention::Success:
+        return QStringLiteral("success");
+    case Attention::Failure:
+        return QStringLiteral("failure");
+    case Attention::Bell:
+        return QStringLiteral("bell");
+    case Attention::None:
+        break;
+    }
+    return {};
+}
+
+void TerminalWorkspaceModel::raiseAttention(Attention level)
+{
+    if ((m_flags & ActiveFlag) != 0 || level <= m_attention) {
         return;
     }
-    m_alerting = value ? 1 : 0;
-    emit alertingChanged();
+    m_attention = level;
+    emit attentionChanged();
+}
+
+void TerminalWorkspaceModel::markActivity()
+{
+    constexpr qint64 kRedrawGraceMs = 2000;
+    if (m_attention == Attention::None && (m_flags & ActiveFlag) == 0 &&
+        m_inactiveTimer.elapsed() >= kRedrawGraceMs) {
+        raiseAttention(Attention::Activity);
+    }
+}
+
+void TerminalWorkspaceModel::setActive(bool active)
+{
+    const bool wasActive = (m_flags & ActiveFlag) != 0;
+    if (active == wasActive) {
+        return;
+    }
+    m_flags = static_cast<unsigned char>(active ? (m_flags | ActiveFlag) : (m_flags & ~ActiveFlag));
+    if (!active) {
+        m_inactiveTimer.start();
+        return;
+    }
+    if (m_attention != Attention::None) {
+        m_attention = Attention::None;
+        emit attentionChanged();
+    }
+}
+
+void TerminalWorkspaceModel::refreshStatus()
+{
+    std::vector<TerminalBackend *> sessions;
+    std::vector<TerminalLayoutNode *> pending;
+    if (m_root) {
+        pending.push_back(m_root.get());
+    }
+    while (!pending.empty()) {
+        TerminalLayoutNode *node = pending.back();
+        pending.pop_back();
+        if (node->m_session != nullptr) {
+            sessions.push_back(node->m_session);
+        }
+        std::ranges::for_each(std::array{node->m_second.get(), node->m_first.get()}, [&pending](auto *child) {
+            if (child != nullptr) {
+                pending.push_back(child);
+            }
+        });
+    }
+    // The last active pane decides the icon; the others fill in.
+    if (const auto last = std::ranges::find(sessions, m_lastActiveSession); last != sessions.end()) {
+        std::rotate(sessions.begin(), last, std::next(last));
+    }
+
+    const auto withKind = std::ranges::find_if(sessions, [](const TerminalBackend *session) {
+        return session->processKindValue() != ProcessKind::None;
+    });
+    const auto withProgress =
+        std::ranges::find_if(sessions, [](const TerminalBackend *session) { return session->progressState() != 0; });
+    const bool busy = std::ranges::any_of(sessions, [](const TerminalBackend *session) {
+        return session->hasForegroundProcess() || session->commandRunning();
+    });
+    const ProcessKind kind = withKind == sessions.end() ? ProcessKind::None : (*withKind)->processKindValue();
+    const int progressState = withProgress == sessions.end() ? 0 : (*withProgress)->progressState();
+    const int progressValue = withProgress == sessions.end() ? 0 : (*withProgress)->progressValue();
+    const auto flags = static_cast<unsigned char>(busy ? (m_flags | BusyFlag) : (m_flags & ~BusyFlag));
+
+    if (kind == m_processKind && progressState == m_progressState && progressValue == m_progressValue &&
+        flags == m_flags) {
+        return;
+    }
+    m_processKind = kind;
+    m_progressState = static_cast<unsigned char>(progressState);
+    m_progressValue = progressValue;
+    m_flags = flags;
+    emit statusChanged();
 }
 
 void TerminalWorkspaceModel::setLastActiveSession(TerminalBackend *session)
@@ -109,6 +203,7 @@ void TerminalWorkspaceModel::setLastActiveSession(TerminalBackend *session)
     }
     m_lastActiveSession = session;
     emit titleChanged();
+    refreshStatus();
 }
 
 void TerminalWorkspaceModel::notifySessionTitleChanged(TerminalBackend *session)
@@ -265,15 +360,32 @@ void TerminalManager::connectSession(TerminalBackend *sessionPtr)
     connect(sessionPtr, &TerminalBackend::processExited, this, [scheduleClose](int) { scheduleClose(); });
     connect(sessionPtr, &TerminalBackend::startFailed, this, [scheduleClose](const QString &) { scheduleClose(); });
     connect(sessionPtr, &TerminalBackend::workerThreadStopped, this, scheduleClose);
-    connect(sessionPtr, &TerminalBackend::commandFinished, this, [this, sessionPtr]() {
-        const auto workspace = std::ranges::find_if(m_workspaces, [this, sessionPtr](const auto &item) {
-            return findLeaf(item->root().get(), sessionPtr) != nullptr;
-        });
-        if (workspace != m_workspaces.end()) {
-            const int workspaceIndex = static_cast<int>(std::distance(m_workspaces.begin(), workspace));
-            (*workspace)->setAlerting(activeWorkspaceIndex() != workspaceIndex);
+    // Tab indicators: the workspace holding the session records why it
+    // wants attention and refreshes its icon state.
+    const auto raise = [this, sessionPtr](TerminalWorkspaceModel::Attention level) {
+        if (TerminalWorkspaceModel *workspace = workspaceOf(sessionPtr)) {
+            workspace->raiseAttention(level);
+        }
+    };
+    connect(sessionPtr, &TerminalBackend::commandFinished, this, [raise](int exitCode) {
+        raise(exitCode > 0 ? TerminalWorkspaceModel::Attention::Failure : TerminalWorkspaceModel::Attention::Success);
+    });
+    connect(sessionPtr, &TerminalBackend::bellRang, this,
+            [raise]() { raise(TerminalWorkspaceModel::Attention::Bell); });
+    connect(sessionPtr, &TerminalBackend::outputActivity, this, [this, sessionPtr]() {
+        if (TerminalWorkspaceModel *workspace = workspaceOf(sessionPtr)) {
+            workspace->markActivity();
         }
     });
+    const auto refreshStatus = [this, sessionPtr]() {
+        if (TerminalWorkspaceModel *workspace = workspaceOf(sessionPtr)) {
+            workspace->refreshStatus();
+        }
+    };
+    connect(sessionPtr, &TerminalBackend::processKindChanged, this, refreshStatus);
+    connect(sessionPtr, &TerminalBackend::foregroundProcessChanged, this, refreshStatus);
+    connect(sessionPtr, &TerminalBackend::commandRunningChanged, this, refreshStatus);
+    connect(sessionPtr, &TerminalBackend::progressChanged, this, refreshStatus);
     const auto notifyWorkspaceTitle = [this, sessionPtr]() {
         std::ranges::for_each(m_workspaces, [sessionPtr](const auto &workspace) {
             workspace->notifySessionTitleChanged(sessionPtr);
@@ -360,7 +472,7 @@ void TerminalManager::adoptWorkspace(DetachedWorkspace detached, int index)
     m_workspaces.insert(m_workspaces.begin() + position, std::move(detached.workspace));
     emit workspacesChanged();
     emit activeWorkspaceChanged();
-    workspace->setAlerting(false);
+    workspace->refreshStatus();
     setActiveSession(firstValidSessionIn(workspace), true);
 }
 
@@ -756,7 +868,6 @@ void TerminalManager::setActiveWorkspace(int index)
     }
 
     auto *workspace = m_workspaces[static_cast<std::size_t>(index)].get();
-    workspace->setAlerting(false);
 
     TerminalBackend *session = firstValidSessionIn(workspace);
 
@@ -928,10 +1039,11 @@ TerminalManager::findParentSlot(std::unique_ptr<TerminalLayoutNode> &node, Termi
 void TerminalManager::setActiveSession(TerminalBackend *session, bool record)
 {
     std::ranges::for_each(m_workspaces, [this, session](const auto &workspace) {
-        if (findLeaf(workspace->root().get(), session)) {
-            workspace->setAlerting(false);
+        const bool holdsSession = session != nullptr && findLeaf(workspace->root().get(), session) != nullptr;
+        if (holdsSession) {
             workspace->setLastActiveSession(session);
         }
+        workspace->setActive(holdsSession);
     });
 
     if (m_activeSession == session) {

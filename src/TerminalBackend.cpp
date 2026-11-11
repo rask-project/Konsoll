@@ -4,6 +4,7 @@
 #include "NativeDialogs.h"
 #include "NativeKeyTracker.h"
 #include "Notifications.h"
+#include "ProcessKind.h"
 #include "term/Grapheme.h"
 #include "term/Palette.h"
 
@@ -313,10 +314,6 @@ void TerminalBackend::onData(const QByteArray &data)
         QGuiApplication::clipboard()->setText(m_terminal->clipboardText());
         m_terminal->clearClipboardTextDirty();
     }
-    if (m_terminal->commandFinished()) {
-        emit commandFinished();
-        m_terminal->clearCommandFinished();
-    }
     if (wasMouseTracking != mouseTracking() || wasMouseMotionTracking != mouseMotionTracking()) {
         emit mouseTrackingChanged();
     }
@@ -338,25 +335,7 @@ void TerminalBackend::onData(const QByteArray &data)
         emit colorSchemeChanged();
     }
 
-    if (m_terminal->titleDirty()) {
-        m_title = m_terminal->title();
-        emit titleChanged();
-        m_terminal->clearTitleDirty();
-    }
-    if (m_terminal->currentDirectoryDirty()) {
-        m_currentDirectory = m_terminal->currentDirectory();
-        emit currentDirectoryChanged();
-        m_terminal->clearCurrentDirectoryDirty();
-    }
-    if (m_terminal->remoteHostDirty()) {
-        m_remoteHost = m_terminal->remoteHost();
-        emit remoteHostChanged();
-        m_terminal->clearRemoteHostDirty();
-    }
-    if (m_terminal->pointerShapeDirty()) {
-        m_terminal->clearPointerShapeDirty();
-        emit pointerShapeChanged();
-    }
+    emitTerminalEvents();
 
     if (m_terminal->clearPending()) {
         // The screen was erased (e.g. Ctrl+L / clear); a selection over the
@@ -383,6 +362,43 @@ void TerminalBackend::onData(const QByteArray &data)
     }
 }
 
+void TerminalBackend::emitTerminalEvents()
+{
+    if (m_terminal->commandFinished()) {
+        m_terminal->clearCommandFinished();
+        emit commandFinished(m_terminal->lastExitCode());
+    }
+    if (m_terminal->bellPending()) {
+        m_terminal->clearBellPending();
+        emit bellRang();
+    }
+    if (m_terminal->progressDirty()) {
+        m_terminal->clearProgressDirty();
+        emit progressChanged();
+    }
+    if (m_terminal->titleDirty()) {
+        m_title = m_terminal->title();
+        emit titleChanged();
+        m_terminal->clearTitleDirty();
+    }
+    if (m_terminal->currentDirectoryDirty()) {
+        m_currentDirectory = m_terminal->currentDirectory();
+        emit currentDirectoryChanged();
+        m_terminal->clearCurrentDirectoryDirty();
+    }
+    if (m_terminal->remoteHostDirty()) {
+        m_remoteHost = m_terminal->remoteHost();
+        emit remoteHostChanged();
+        m_terminal->clearRemoteHostDirty();
+        updateProcessKind();
+    }
+    if (m_terminal->pointerShapeDirty()) {
+        m_terminal->clearPointerShapeDirty();
+        emit pointerShapeChanged();
+    }
+    emit outputActivity();
+}
+
 void TerminalBackend::onStarted()
 {
     m_state = SessionState::Running;
@@ -406,13 +422,28 @@ void TerminalBackend::onWorkerThreadStopped()
     emit workerThreadStopped();
 }
 
-void TerminalBackend::onForegroundChanged(bool hasForeground)
+void TerminalBackend::onForegroundChanged(const QString &name)
 {
     // The worker reports on every poll; cache only on change.
-    if (hasForeground == m_hasForeground) {
+    if (name == m_foregroundProcess) {
         return;
     }
-    m_hasForeground = hasForeground;
+    m_foregroundProcess = name;
+    emit foregroundProcessChanged();
+    updateProcessKind();
+}
+
+void TerminalBackend::updateProcessKind()
+{
+    // The shell integration reports the ssh target as the remote host while
+    // ssh runs, also when it is started through a wrapper (sudo, a script).
+    const ProcessKind kind = !m_remoteHost.isEmpty() && hasForegroundProcess()
+                                 ? ProcessKind::Remote
+                                 : konsoll::processKind(m_foregroundProcess);
+    if (kind != m_processKind) {
+        m_processKind = kind;
+        emit processKindChanged();
+    }
 }
 
 void TerminalBackend::writeToPty(const QByteArray &data)

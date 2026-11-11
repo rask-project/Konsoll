@@ -6,6 +6,21 @@ set(ICONS_SRC
     konsoll/svg/arrow-next.svg
     konsoll/svg/close.svg
     konsoll/svg/keyboard.svg
+    konsoll/svg/kind-build.svg
+    konsoll/svg/kind-container.svg
+    konsoll/svg/kind-database.svg
+    konsoll/svg/kind-editor.svg
+    konsoll/svg/kind-git.svg
+    konsoll/svg/kind-monitor.svg
+    konsoll/svg/kind-multiplexer.svg
+    konsoll/svg/kind-pager.svg
+    konsoll/svg/kind-privileged.svg
+    konsoll/svg/kind-remote.svg
+    konsoll/svg/kind-repl.svg
+    konsoll/svg/kind-shell.svg
+    konsoll/svg/status-bell.svg
+    konsoll/svg/status-failure.svg
+    konsoll/svg/status-success.svg
     konsoll/svg/security.svg
     konsoll/svg/window.svg
 )

@@ -72,6 +72,7 @@ qt_add_qml_module(konsoll
         TerminalView.qml
         controls/TerminalTabStrip.qml
         controls/TerminalTabButton.qml
+        controls/TabActivityIndicator.qml
         controls/ToolButton.qml
         controls/Menu.qml
         controls/MenuItem.qml
@@ -87,6 +88,8 @@ qt_add_qml_module(konsoll
         src/NativeKeyTracker.cpp
         src/NativeKeyTracker.h
         src/NativeDialogs.mm
+        src/ProcessKind.cpp
+        src/ProcessKind.h
         src/Notifications.h
         src/Notifications.mm
         src/TerminalBackend.cpp
