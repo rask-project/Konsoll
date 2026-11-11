@@ -364,6 +364,169 @@ void TerminalManager::adoptWorkspace(DetachedWorkspace detached, int index)
     setActiveSession(firstValidSessionIn(workspace), true);
 }
 
+bool TerminalManager::movePane(QObject *sessionObject, QObject *targetObject, QObject *targetSessionObject, int edge)
+{
+    auto *target = qobject_cast<TerminalManager *>(targetObject);
+    TerminalBackend *session = ownedSession(sessionObject);
+    TerminalBackend *targetSession = target == nullptr ? nullptr : target->ownedSession(targetSessionObject);
+    TerminalWorkspaceModel *workspace = targetSession == nullptr ? nullptr : target->workspaceOf(targetSession);
+    // Checked up front: once extracted, the pane must have somewhere to go.
+    if (session == nullptr || workspace == nullptr || session == targetSession || edge < PaneEdgeLeft ||
+        edge > PaneEdgeBottom) {
+        return false;
+    }
+    // Rearranged within one workspace, QML hears of the final tree only.
+    auto leaf = extractPane(session, workspace != workspaceOf(session));
+    if (!leaf) {
+        return false;
+    }
+    handOverSession(session, target);
+
+    // Extracting the pane can restructure its own tree, never the target leaf.
+    auto *slot = target->findNodeSlot(workspace->root(), targetSession);
+    std::unique_ptr<TerminalLayoutNode> first = std::move(*slot);
+    std::unique_ptr<TerminalLayoutNode> second = std::move(leaf);
+    if (edge == PaneEdgeLeft || edge == PaneEdgeTop) {
+        std::swap(first, second);
+    }
+    const bool sideBySide = edge == PaneEdgeLeft || edge == PaneEdgeRight;
+    *slot = std::make_unique<TerminalLayoutNode>(
+        sideBySide ? Qt::Horizontal : Qt::Vertical, std::move(first), std::move(second)
+    );
+    workspace->root()->notifyTreeChanged();
+    emit workspace->layoutChanged();
+    finishPaneMove(target, session);
+    return true;
+}
+
+bool TerminalManager::movePaneToWorkspace(QObject *sessionObject, QObject *targetObject, int index)
+{
+    auto *target = qobject_cast<TerminalManager *>(targetObject);
+    TerminalBackend *session = ownedSession(sessionObject);
+    TerminalWorkspaceModel *workspace = session == nullptr ? nullptr : workspaceOf(session);
+    if (target == nullptr || workspace == nullptr) {
+        return false;
+    }
+    if (workspace->root()->isLeaf()) {
+        // The pane already is a workspace of its own: move that, keeping its
+        // name. In place, `index` counts the workspace itself.
+        if (target == this) {
+            const auto it = std::ranges::find_if(m_workspaces, [workspace](const auto &item) {
+                return item.get() == workspace;
+            });
+            const int from = static_cast<int>(std::distance(m_workspaces.begin(), it));
+            index = index > from ? index - 1 : index;
+        }
+        return moveWorkspaceTo(workspace, target, index);
+    }
+    auto leaf = extractPane(session);
+    if (!leaf) {
+        return false;
+    }
+    handOverSession(session, target);
+    target->insertPaneWorkspace(std::move(leaf), index);
+    finishPaneMove(target, session);
+    return true;
+}
+
+TerminalBackend *TerminalManager::ownedSession(const QObject *session) const
+{
+    // By address, without qobject_cast: QML may hand over a stale pointer.
+    const auto it =
+        std::ranges::find_if(m_sessions, [session](const auto &candidate) { return candidate.get() == session; });
+    return it == m_sessions.end() ? nullptr : it->get();
+}
+
+TerminalWorkspaceModel *TerminalManager::workspaceOf(TerminalBackend *session) const
+{
+    const auto it = std::ranges::find_if(m_workspaces, [this, session](const auto &workspace) {
+        return findLeaf(workspace->root().get(), session) != nullptr;
+    });
+    return it == m_workspaces.end() ? nullptr : it->get();
+}
+
+std::unique_ptr<TerminalLayoutNode> TerminalManager::extractPane(TerminalBackend *session, bool notify)
+{
+    TerminalWorkspaceModel *workspace = workspaceOf(session);
+    if (workspace == nullptr) {
+        return nullptr;
+    }
+    auto &root = workspace->root();
+    if (root->m_session == session) {
+        // The workspace's only pane: the workspace goes with it.
+        std::unique_ptr<TerminalLayoutNode> leaf = std::move(root);
+        eraseDeferred(m_workspaces, this, [workspace](const auto &candidate) { return candidate.get() == workspace; });
+        emit workspacesChanged();
+        return leaf;
+    }
+    auto *parentSlot = findParentSlot(root, session);
+    if (parentSlot == nullptr) {
+        return nullptr;
+    }
+    // The split holding the pane collapses into the pane's sibling.
+    std::unique_ptr<TerminalLayoutNode> parent = std::move(*parentSlot);
+    const bool isFirst = parent->m_first && parent->m_first->m_session == session;
+    std::unique_ptr<TerminalLayoutNode> leaf = std::move(isFirst ? parent->m_first : parent->m_second);
+    *parentSlot = std::move(isFirst ? parent->m_second : parent->m_first);
+    // QML may still bind to the split until the layout signals below are
+    // handled, so it goes on the next event-loop turn.
+    parent.release()->deleteLater();
+
+    if (workspace->lastActiveSession() == session) {
+        workspace->setLastActiveSession(firstSession(root.get()));
+    }
+    if (notify) {
+        root->notifyTreeChanged();
+        emit workspace->layoutChanged();
+    }
+    return leaf;
+}
+
+void TerminalManager::handOverSession(TerminalBackend *session, TerminalManager *target)
+{
+    if (target == this) {
+        return;
+    }
+    const auto it =
+        std::ranges::find_if(m_sessions, [session](const auto &candidate) { return candidate.get() == session; });
+    if (it == m_sessions.end()) {
+        return;
+    }
+    std::unique_ptr<TerminalBackend> owned = std::move(*it);
+    m_sessions.erase(it);
+    disconnect(session, nullptr, this, nullptr);
+    std::erase(m_activationHistory, session);
+    m_activationHistoryCursor = 0;
+    if (m_activeSession == session) {
+        setActiveSession(nextActiveSession(nullptr), false);
+    }
+    target->connectSession(session);
+    target->m_sessions.push_back(std::move(owned));
+}
+
+void TerminalManager::insertPaneWorkspace(std::unique_ptr<TerminalLayoutNode> leaf, int index)
+{
+    auto workspace = std::make_unique<TerminalWorkspaceModel>(
+        QStringLiteral("Workspace %1").arg(m_nextWorkspaceNumber++), std::move(leaf)
+    );
+    const auto position = std::clamp(static_cast<std::ptrdiff_t>(index), std::ptrdiff_t{0},
+                                     static_cast<std::ptrdiff_t>(m_workspaces.size()));
+    m_workspaces.insert(m_workspaces.begin() + position, std::move(workspace));
+    emit workspacesChanged();
+}
+
+void TerminalManager::finishPaneMove(TerminalManager *target, TerminalBackend *session)
+{
+    emit activeWorkspaceChanged();
+    if (target != this) {
+        emit target->activeWorkspaceChanged();
+    }
+    target->setActiveSession(session, true);
+    if (target != this && m_workspaces.empty()) {
+        emit windowShouldClose();
+    }
+}
+
 void TerminalManager::splitActive(int orientation)
 {
     if ((m_activeSession == nullptr) ||
@@ -733,6 +896,32 @@ TerminalManager::findNodeSlot(std::unique_ptr<TerminalLayoutNode> &node, Termina
         }
     }
 
+    return nullptr;
+}
+
+std::unique_ptr<TerminalLayoutNode> *
+TerminalManager::findParentSlot(std::unique_ptr<TerminalLayoutNode> &node, TerminalBackend *session) const
+{
+    std::vector<std::unique_ptr<TerminalLayoutNode> *> pending;
+    if (node) {
+        pending.push_back(&node);
+    }
+    while (!pending.empty()) {
+        auto *slot = pending.back();
+        pending.pop_back();
+        auto *current = slot->get();
+        if (current == nullptr || current->isLeaf()) {
+            continue;
+        }
+        const auto holds = [session](const std::unique_ptr<TerminalLayoutNode> &child) {
+            return child && child->m_session == session;
+        };
+        if (holds(current->m_first) || holds(current->m_second)) {
+            return slot;
+        }
+        pending.push_back(&current->m_second);
+        pending.push_back(&current->m_first);
+    }
     return nullptr;
 }
 

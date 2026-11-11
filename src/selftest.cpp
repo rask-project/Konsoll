@@ -79,6 +79,66 @@ void selfTestCheck(int &failures, bool condition, const char *what)
     }
 }
 
+namespace
+{
+// Dragging a pane rearranges the splits and moves it between windows.
+void checkPaneMoves(int &failures, TerminalManager &manager)
+{
+    TerminalManager other(nullptr);
+    other.start();
+    auto *otherFirst = activeSession(other);
+    const auto rootOf = [](QObject *workspace) {
+        return static_cast<TerminalLayoutNode *>(
+            static_cast<TerminalWorkspaceModel *>(workspace)->rootNode());
+    };
+
+    manager.addWorkspace();
+    auto *a = activeSession(manager);
+    manager.splitActive(static_cast<int>(Qt::Horizontal));
+    auto *b = activeSession(manager);
+    QObject *split = manager.workspaces().last().value<QObject *>();
+    const auto workspaceCount = manager.workspaces().size();
+
+    check(failures, manager.movePane(a, &manager, b, TerminalManager::PaneEdgeBottom),
+          "move pane: below its sibling accepted");
+    const TerminalLayoutNode *stacked = rootOf(split);
+    check(failures,
+          !stacked->isLeaf() && stacked->orientation() == static_cast<int>(Qt::Vertical) &&
+              static_cast<TerminalLayoutNode *>(stacked->first())->session() == b &&
+              static_cast<TerminalLayoutNode *>(stacked->second())->session() == a &&
+              manager.activeSession() == a,
+          "move pane: side by side becomes a stack, moved pane active");
+    check(failures, !manager.movePane(a, &manager, a, TerminalManager::PaneEdgeLeft),
+          "move pane: onto itself refused");
+
+    check(failures,
+          manager.movePaneToWorkspace(a, &manager, 0) && manager.workspaces().size() == workspaceCount + 1 &&
+              rootOf(split)->isLeaf() && rootOf(split)->session() == b && manager.activeWorkspaceIndex() == 0,
+          "move pane: into a workspace of its own");
+
+    check(failures, manager.movePane(a, &other, otherFirst, TerminalManager::PaneEdgeLeft),
+          "move pane: to another window accepted");
+    const TerminalLayoutNode *joined = rootOf(other.workspaces().first().value<QObject *>());
+    check(failures,
+          !manager.hasSession(a) && other.hasSession(a) && manager.workspaces().size() == workspaceCount &&
+              joined->orientation() == static_cast<int>(Qt::Horizontal) &&
+              static_cast<TerminalLayoutNode *>(joined->first())->session() == a && other.activeSession() == a,
+          "move pane: lone pane leaves its workspace and splits the target");
+    a->writeText("echo PANE_MOVED\n");
+    check(failures, waitFor("move pane: alive", [a]() { return a->bufferText().contains("PANE_MOVED"); }, 10000),
+          "move pane: moved shell still running");
+
+    check(failures,
+          other.movePaneToWorkspace(a, &manager, 99) && manager.hasSession(a) && other.sessionCount() == 1 &&
+              manager.workspaces().size() == workspaceCount + 1 && manager.activeSession() == a &&
+              manager.activeWorkspaceIndex() == static_cast<int>(workspaceCount),
+          "move pane: back as a new workspace of the first window");
+    manager.closeSession(a);
+    manager.closeSession(b);
+}
+
+} // namespace
+
 int runSelfTest()
 {
     // Multi-session validation (docs/SESSION-THREADING-PLAN.md §8.8): the real
@@ -305,6 +365,9 @@ int runSelfTest()
         manager.closeSession(right);
         manager.closeWorkspace(original);
     }
+
+    // 5c. Dragging a pane rearranges the splits and moves it between windows.
+    checkPaneMoves(failures, manager);
 
     // 6. App shutdown while a shell is running: no orphaned process group.
     manager.addWorkspace();

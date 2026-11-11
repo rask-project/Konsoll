@@ -548,6 +548,16 @@ Window {
         return workspaceView.tabInsertionIndexAtGlobal(globalX, globalY);
     }
 
+    // Where a pane dragged to a global point lands here (see
+    // TerminalWorkspace.paneDropTarget), and its highlight.
+    function paneDropTarget(globalX, globalY, session) {
+        return workspaceView.paneDropTarget(globalX, globalY, session);
+    }
+
+    function showPaneDrop(drop) {
+        workspaceView.showPaneDrop(drop);
+    }
+
     TerminalWorkspace {
         id: workspaceView
 
@@ -567,5 +577,9 @@ Window {
         // Deferred: the move destroys the dragged tab, whose release handler
         // is still running.
         onWorkspaceDropRequested: (workspace, globalX, globalY) => Qt.callLater(() => appWindow.windowManager.dropWorkspace(workspace, appWindow, globalX, globalY))
+        onPaneDragHovered: (session, globalX, globalY) => appWindow.windowManager.hoverPane(session, appWindow, globalX, globalY)
+        onPaneDragEnded: appWindow.windowManager.clearPaneDrops()
+        // Deferred like a workspace drop: the move rebuilds the dragged pane.
+        onPaneDropRequested: (session, globalX, globalY) => Qt.callLater(() => appWindow.windowManager.dropPane(session, appWindow, globalX, globalY))
     }
 }

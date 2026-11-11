@@ -170,6 +170,16 @@ Rectangle {
         return insertion;
     }
 
+    // A thin bar where insertionIndexAtGlobal places a dropped tab or pane.
+    function insertionMarkerRect(index) {
+        if (tabs.length === 0)
+            return Qt.rect(leadingInset + 6, tabY(0), 3, 32);
+        const after = index >= tabs.length;
+        const reference = after ? tabs.length - 1 : index;
+        const x = after ? tabX(reference) + tabWidth(reference) + tabSpacing / 2 : tabX(reference) - tabSpacing / 2;
+        return Qt.rect(x - 1.5, tabY(reference), 3, 32);
+    }
+
     // Well outside the strip: the drop goes to another window.
     function isDetachPoint(point) {
         return point.y > strip.height + 40 || point.y < -8 || point.x < -8 || point.x > strip.width + 8;

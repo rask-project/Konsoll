@@ -90,6 +90,78 @@ Item {
         }
     }
 
+    // The window under a global point; `preferred` wins where windows overlap.
+    function windowAtGlobal(globalX: real, globalY: real, preferred: TerminalWindow): TerminalWindow {
+        const contains = w => w.visible && w.visibility !== Window.Minimized
+                         && globalX >= w.x && globalX < w.x + w.width
+                         && globalY >= w.y && globalY < w.y + w.height;
+        if (preferred && contains(preferred))
+            return preferred;
+        return manager.windows.find(contains) ?? null;
+    }
+
+    // Where a pane dragged out of `source` to a global point lands: a drop
+    // target of the window under it (see TerminalWorkspace.paneDropTarget).
+    function paneDropAt(session, source: TerminalWindow, globalX: real, globalY: real) {
+        const target = manager.windowAtGlobal(globalX, globalY, source);
+        let drop = target ? target.paneDropTarget(globalX, globalY, session) : null;
+        // A window's only pane already is its own workspace there.
+        if (drop && drop.kind === "tab" && target === source && source.terminalManager.sessionCount() < 2)
+            drop = null;
+        return {
+            window: target,
+            drop: drop
+        };
+    }
+
+    // Highlights the drop under a dragged pane, in whichever window it is.
+    function hoverPane(session, source: TerminalWindow, globalX: real, globalY: real) {
+        const at = manager.paneDropAt(session, source, globalX, globalY);
+        manager.windows.forEach(w => w.showPaneDrop(w === at.window ? at.drop : null));
+    }
+
+    function clearPaneDrops() {
+        manager.windows.forEach(w => w.showPaneDrop(null));
+    }
+
+    // A pane dragged out of `source` and released at a global point: beside
+    // the pane under it (in this or another window), into a tab strip as a
+    // workspace of its own, or torn off into a new window placed there.
+    function dropPane(session, source: TerminalWindow, globalX: real, globalY: real) {
+        manager.clearPaneDrops();
+        const at = manager.paneDropAt(session, source, globalX, globalY);
+        const sourceManager = source.terminalManager;
+        if (at.window) {
+            if (!at.drop)
+                return;
+            const targetManager = at.window.terminalManager;
+            const moved = at.drop.kind === "pane"
+                ? sourceManager.movePane(session, targetManager, at.drop.session, at.drop.edge)
+                : sourceManager.movePaneToWorkspace(session, targetManager, at.drop.index);
+            if (moved && at.window !== source) {
+                at.window.raise();
+                at.window.requestActivate();
+            }
+            return;
+        }
+        // A window's only pane torn off would just be its window again.
+        if (sourceManager.sessionCount() < 2)
+            return;
+        const w = manager.openWindow("", true);
+        if (!sourceManager.movePaneToWorkspace(session, w.terminalManager, 0)) {
+            w.close();
+            return;
+        }
+        if (w.visibility === Window.Windowed) {
+            w.width = source.width;
+            w.height = source.height;
+            w.x = globalX - 100;
+            w.y = globalY - 18;
+        }
+        w.raise();
+        w.requestActivate();
+    }
+
     function noteActiveWindow(w: TerminalWindow) {
         if (manager.lastActiveWindowId !== w.windowId) {
             // Only the last active window's state is kept on disk.

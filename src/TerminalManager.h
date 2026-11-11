@@ -10,6 +10,7 @@
 #include <QWindow>
 #include <QtQml>
 
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <optional>
@@ -100,6 +101,10 @@ class TerminalManager : public QObject
     Q_PROPERTY(int activeWorkspaceIndex READ activeWorkspaceIndex NOTIFY activeWorkspaceChanged)
 
 public:
+    // The side of a target pane a dragged pane lands on.
+    enum PaneEdge : std::uint8_t { PaneEdgeLeft, PaneEdgeTop, PaneEdgeRight, PaneEdgeBottom };
+    Q_ENUM(PaneEdge)
+
     explicit TerminalManager(QObject *parent = nullptr);
     ~TerminalManager() override;
 
@@ -129,6 +134,14 @@ public:
     // window, inserted at `index`; the shells keep running. A source window
     // left without workspaces emits windowShouldClose.
     Q_INVOKABLE bool moveWorkspaceTo(QObject *workspace, QObject *target, int index);
+    // Moves the pane of `session` beside the pane of `targetSession`, which
+    // may belong to another window's manager (`target`), splitting it on
+    // `edge` (a PaneEdge). The shell keeps running; a workspace left without
+    // panes goes away, and a window left without workspaces closes.
+    Q_INVOKABLE bool movePane(QObject *session, QObject *target, QObject *targetSession, int edge);
+    // Moves the pane of `session` into a workspace of its own in `target`,
+    // inserted at `index`. A workspace's only pane moves the workspace.
+    Q_INVOKABLE bool movePaneToWorkspace(QObject *session, QObject *target, int index);
     Q_INVOKABLE void closeSession(QObject *session);
     Q_INVOKABLE void activateSession(QObject *session);
     Q_INVOKABLE void setActiveWorkspace(int index);
@@ -159,6 +172,14 @@ private:
     void connectSession(TerminalBackend *session);
     std::optional<DetachedWorkspace> detachWorkspace(TerminalWorkspaceModel *workspace);
     void adoptWorkspace(DetachedWorkspace detached, int index);
+    TerminalBackend *ownedSession(const QObject *session) const;
+    TerminalWorkspaceModel *workspaceOf(TerminalBackend *session) const;
+    // Takes the pane of `session` out of its workspace's tree. `notify` false
+    // leaves the layout signals to the caller, which reshapes the same tree.
+    std::unique_ptr<TerminalLayoutNode> extractPane(TerminalBackend *session, bool notify = true);
+    void handOverSession(TerminalBackend *session, TerminalManager *target);
+    void insertPaneWorkspace(std::unique_ptr<TerminalLayoutNode> leaf, int index);
+    void finishPaneMove(TerminalManager *target, TerminalBackend *session);
     void createWorkspace(const QString &customTitle);
     TerminalLayoutNode *findLeaf(TerminalLayoutNode *node, TerminalBackend *session) const;
     TerminalBackend *firstSession(TerminalLayoutNode *node) const;
@@ -166,6 +187,9 @@ private:
     TerminalBackend *firstValidSessionIn(TerminalWorkspaceModel *workspace) const;
     TerminalBackend *nextActiveSession(TerminalBackend *fallback) const;
     std::unique_ptr<TerminalLayoutNode> *findNodeSlot(
+        std::unique_ptr<TerminalLayoutNode> &node, TerminalBackend *session) const;
+    // The slot holding the split whose direct child is the leaf of `session`.
+    std::unique_ptr<TerminalLayoutNode> *findParentSlot(
         std::unique_ptr<TerminalLayoutNode> &node, TerminalBackend *session) const;
     void setActiveSession(TerminalBackend *session, bool record);
     void recordActivation(TerminalBackend *session);

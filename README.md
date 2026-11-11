@@ -137,6 +137,12 @@ An in-house VT500-style state machine (no `libvterm`), validated against
   *Move to new window* or *Move to window ▸*, or drag the tab out of the
   strip: drop it on another window to join its tabs, or anywhere else to
   tear it off into a new window. The shells keep running.
+- **Rearrange split panes by dragging** — drag a pane by its title bar and
+  drop it on another pane: the left/right half splits side by side, the
+  top/bottom half stacks them (so two panes can swap between a horizontal
+  and a vertical split). Drop it on a tab strip to make it a workspace of
+  its own — in this window or another one — or anywhere outside the windows
+  to tear it off into a new window. The shell keeps running.
 - **iTerm2-style see-through window** — the whole window (content + title
   bar) is translucent, tinted with the terminal's background color, with an
   optional blur; the tab strip uses native Liquid Glass on macOS 26
@@ -206,7 +212,7 @@ and the multi-session tests against the real manager/backend/PTY stack.
 konsoll/
 ├── CMakeLists.txt
 ├── main.cpp
-├── Main.qml                  # app root: window list, moving workspaces
+├── Main.qml                  # app root: window list, moving workspaces/panes
 ├── TerminalWindow.qml        # window, menu bar, shortcuts, translucency
 ├── SettingsWindow.qml        # native-looking Settings window
 ├── AppSettings.qml           # persisted settings

@@ -14,7 +14,26 @@ Item {
     required property int cursorShape
     required property bool cursorBlink
 
+    // The leaves currently shown, for hit-testing a pane drag.
+    property var leaves: []
+
     signal saveBufferRequested(var session)
+    // Dragging a pane by its header; positions are global. `grabX`/`grabY`
+    // locate the pointer in the header, `headerWidth` sizes the preview.
+    signal paneDragStarted(var session, string title, real grabX, real grabY, real headerWidth)
+    signal paneDragMoved(real globalX, real globalY)
+    signal paneDragFinished(var session, real globalX, real globalY)
+    signal paneDragCanceled
+
+    // The pane leaf under a global point, or null.
+    function leafAtGlobal(globalX, globalY) {
+        return pane.leaves.find(leaf => {
+            if (!leaf.visible)
+                return false;
+            const point = leaf.mapFromGlobal(globalX, globalY);
+            return point.x >= 0 && point.y >= 0 && point.x < leaf.width && point.y < leaf.height;
+        }) ?? null;
+    }
 
     Loader {
         id: contentLoader
@@ -24,6 +43,12 @@ Item {
         anchors.fill: parent
         sourceComponent: node ? (node.leaf ? leafComponent : splitComponent) : null
         onLoaded: item.node = node
+        // A move can swap the node under a loaded item for one of the same
+        // kind (a split for a split), which keeps the component.
+        onNodeChanged: {
+            if (item)
+                item.node = node;
+        }
     }
 
     Component {
@@ -35,6 +60,14 @@ Item {
             readonly property bool active: session && session === pane.sessionManager.activeSession
             property var node: null
             property var session: node ? node.session : null
+
+            Component.onCompleted: pane.leaves = pane.leaves.concat([leafItem])
+            Component.onDestruction: {
+                pane.leaves = pane.leaves.filter(leaf => leaf !== leafItem);
+                // The pane went away mid-drag (its shell exited).
+                if (headerDrag.dragging)
+                    pane.paneDragCanceled();
+            }
 
             SystemPalette {
                 id: systemPalette
@@ -57,10 +90,59 @@ Item {
                     border.width: 1
                     border.color: leafItem.active ? systemPalette.accent : Qt.rgba(systemPalette.windowText.r, systemPalette.windowText.g, systemPalette.windowText.b, 0.15)
                     radius: height / 2
+                    opacity: headerDrag.dragging ? 0.45 : 1
 
-                    TapHandler {
+                    // A click activates the pane; dragging the header moves
+                    // it beside another pane, to a tab strip or a new window.
+                    MouseArea {
+                        id: headerDrag
+
+                        property real pressX: 0
+                        property real pressY: 0
+                        property bool dragging: false
+
+                        anchors.fill: parent
                         enabled: leafItem.session !== null
-                        onTapped: pane.sessionManager.activateSession(leafItem.session)
+                        acceptedButtons: Qt.LeftButton
+                        preventStealing: true
+                        cursorShape: dragging ? Qt.ClosedHandCursor : Qt.ArrowCursor
+
+                        onPressed: mouse => {
+                            pressX = mouse.x;
+                            pressY = mouse.y;
+                            dragging = false;
+                        }
+
+                        onPositionChanged: mouse => {
+                            if (!pressed)
+                                return;
+                            if (!dragging) {
+                                if (Math.hypot(mouse.x - pressX, mouse.y - pressY) < Application.styleHints.startDragDistance)
+                                    return;
+                                dragging = true;
+                                pane.sessionManager.activateSession(leafItem.session);
+                                pane.paneDragStarted(leafItem.session, headerTitle.text, pressX, pressY, sessionHeader.width);
+                            }
+                            const point = headerDrag.mapToGlobal(mouse.x, mouse.y);
+                            pane.paneDragMoved(point.x, point.y);
+                        }
+
+                        onReleased: mouse => {
+                            if (!dragging) {
+                                pane.sessionManager.activateSession(leafItem.session);
+                                return;
+                            }
+                            dragging = false;
+                            const point = headerDrag.mapToGlobal(mouse.x, mouse.y);
+                            pane.paneDragFinished(leafItem.session, point.x, point.y);
+                        }
+
+                        onCanceled: {
+                            if (!dragging)
+                                return;
+                            dragging = false;
+                            pane.paneDragCanceled();
+                        }
                     }
 
                     Controls.Menu {
@@ -135,6 +217,8 @@ Item {
                         }
 
                         Text {
+                            id: headerTitle
+
                             width: Math.max(0, parent.width - 36)
                             height: parent.height
 
@@ -209,6 +293,10 @@ Item {
 
                 sourceComponent: node ? (node.leaf ? leafComponent : splitComponent) : null
                 onLoaded: item.node = node
+                onNodeChanged: {
+                    if (item)
+                        item.node = node;
+                }
 
                 SplitView.minimumWidth: 120
                 SplitView.minimumHeight: 80
@@ -223,6 +311,10 @@ Item {
 
                 sourceComponent: node ? (node.leaf ? leafComponent : splitComponent) : null
                 onLoaded: item.node = node
+                onNodeChanged: {
+                    if (item)
+                        item.node = node;
+                }
 
                 SplitView.minimumWidth: 120
                 SplitView.minimumHeight: 80
