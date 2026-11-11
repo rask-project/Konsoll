@@ -1,5 +1,8 @@
 _KONSOLL_COMMAND_ACTIVE=0
 _KONSOLL_CAPTURED_STATUS=0
+_KONSOLL_AT_PROMPT=0
+_KONSOLL_HISTORY_CHECK=0
+_KONSOLL_LAST_HISTORY=''
 _KONSOLL_PROMPT_MARKER='\[\e]133;B\a\]'
 
 # Meta-. inserts the previous command's last argument; repeated presses walk
@@ -29,6 +32,14 @@ _konsoll_prompt_command() {
     encoded_path=${encoded_path// /%20}
     encoded_path=${encoded_path//#/%23}
     encoded_path=${encoded_path//\?/%3F}
+    if (( _KONSOLL_HISTORY_CHECK )); then
+        # The DEBUG trap misses a command line that is only a subshell,
+        # "( ... )"; a new history entry still shows that one ran.
+        local history_number
+        history_number=$(_konsoll_history_number)
+        [[ "$history_number" != "$_KONSOLL_LAST_HISTORY" ]] && _KONSOLL_COMMAND_ACTIVE=1
+        _KONSOLL_LAST_HISTORY=$history_number
+    fi
     if (( _KONSOLL_COMMAND_ACTIVE )); then
         printf '\e]133;D;%d\a' "$_KONSOLL_CAPTURED_STATUS"
     fi
@@ -39,6 +50,27 @@ _konsoll_prompt_command() {
         PS1+=$_KONSOLL_PROMPT_MARKER
     fi
     _KONSOLL_COMMAND_ACTIVE=0
+    _KONSOLL_AT_PROMPT=1
+}
+
+# The number of the newest history entry.
+_konsoll_history_number() {
+    local entry
+    entry=$(builtin history 1)
+    entry=${entry#"${entry%%[![:space:]]*}"}
+    printf '%s' "${entry%%[![:digit:]]*}"
+}
+
+# A command line is about to run: mark the command output (OSC 133;C) and
+# report its exit status at the next prompt (OSC 133;D).
+_konsoll_preexec() {
+    (( _KONSOLL_AT_PROMPT )) || return 0
+    _KONSOLL_AT_PROMPT=0
+    # An empty command line (or Ctrl+C at the prompt) runs only
+    # PROMPT_COMMAND, which starts with this assignment.
+    [[ "$BASH_COMMAND" == _KONSOLL_CAPTURED_STATUS=* ]] && return 0
+    _KONSOLL_COMMAND_ACTIVE=1
+    printf '\e]133;C\a'
 }
 
 # Remember a direct SSH destination so image and file drops can be uploaded
@@ -72,5 +104,16 @@ if [[ "$(type -t ssh)" != function ]]; then
   }
 fi
 
-PS0="${PS0-}\[\e]133;C\a\]"
+if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then
+    # PS0 is expanded in the shell itself right before a command line runs;
+    # the array subscript sets the flag and expands to nothing.
+    PS0='${_KONSOLL_PS0_HOOK[(_KONSOLL_COMMAND_ACTIVE=1, _KONSOLL_AT_PROMPT=0)]}'"${PS0-}"$'\e]133;C\a'
+elif [[ -z "$(trap -p DEBUG)" ]]; then
+    # bash before 4.4 (macOS /bin/bash is 3.2) has no PS0: the DEBUG trap
+    # runs before every simple command, so _konsoll_preexec acts on the
+    # first one after a prompt. A DEBUG trap of the user's is left alone.
+    trap '_konsoll_preexec' DEBUG
+    _KONSOLL_HISTORY_CHECK=1
+    _KONSOLL_LAST_HISTORY=$(_konsoll_history_number)
+fi
 PROMPT_COMMAND="_KONSOLL_CAPTURED_STATUS=\$?;${PROMPT_COMMAND:+${PROMPT_COMMAND};}_konsoll_prompt_command"

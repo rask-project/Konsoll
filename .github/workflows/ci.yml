@@ -47,8 +47,8 @@ jobs:
         run: cmake --build build/ci
 
       - name: Use zsh as the login shell
-        # Sessions start the passwd shell; the self-test expects zsh (the
-        # macOS default), while the runner account uses bash.
+        # Sessions start the passwd shell. The runner account uses bash; the
+        # session self-tests are written against zsh, the macOS default.
         run: |
           dscl . -read "/Users/$USER" UserShell
           sudo dscl . -create "/Users/$USER" UserShell /bin/zsh
