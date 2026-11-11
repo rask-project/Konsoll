@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.21.1)
 set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "macOS target architecture")
 set(CMAKE_OSX_DEPLOYMENT_TARGET "14.4" CACHE STRING "Minimum supported macOS version")
 
-project(RaskKonsoll VERSION 3.4.0 LANGUAGES CXX OBJCXX)
+project(RaskKonsoll VERSION 3.4.1 LANGUAGES CXX OBJCXX)
 
 execute_process(
     COMMAND git rev-parse --short=7 HEAD
