@@ -1,6 +1,7 @@
 #import <AppKit/AppKit.h>
 
 #include "AppQuitGuard.h"
+#include "BackgroundJobs.h"
 #include "NativeDialogs.h"
 #include "WindowRegistry.h"
 #include "WindowStateStore.h"
@@ -24,9 +25,12 @@
     // Same rule as closing a window, across every window: ask when quitting
     // would terminate more than one session or interrupt a running command.
     // A single idle tab in a single window quits without prompting.
+    // Commands running in the background count as sessions too.
     const auto &registry = konsoll::WindowRegistry::instance();
-    const int sessions = registry.totalSessionCount();
-    if (sessions <= 1 && !registry.anySessionHasRunningCommand()) {
+    const konsoll::BackgroundJobs *background = konsoll::BackgroundJobs::instance();
+    const int backgroundRunning = background != nullptr ? background->runningCount() : 0;
+    const int sessions = registry.totalSessionCount() + backgroundRunning;
+    if (sessions <= 1 && !registry.anySessionHasRunningCommand() && backgroundRunning == 0) {
         konsoll::WindowStateStore::setTerminating(true);
         return NSTerminateNow;
     }

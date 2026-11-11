@@ -12,7 +12,7 @@ namespace konsoll
 PtyWorker::PtyWorker() : QObject() {}
 
 void PtyWorker::start(const QString &shellPath, int columns, int rows, const QString &workingDirectory,
-                      const QString &remoteHostToken)
+                      const QString &remoteHostToken, const QString &command)
 {
     if (m_pty) {
         return; // Already started.
@@ -21,7 +21,7 @@ void PtyWorker::start(const QString &shellPath, int columns, int rows, const QSt
     m_pty = std::make_unique<PtyProcess>(this);
     connect(m_pty.get(), &PtyProcess::dataReceived, this, &PtyWorker::onOutput);
     connect(m_pty.get(), &PtyProcess::eofReached, this, &PtyWorker::onEof);
-    if (!m_pty->start(shellPath, columns, rows, workingDirectory, remoteHostToken)) {
+    if (!m_pty->start(shellPath, columns, rows, workingDirectory, remoteHostToken, command)) {
         m_pty.reset();
         emit startFailed(QStringLiteral("The PTY could not be started"));
         return;

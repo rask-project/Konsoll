@@ -192,6 +192,18 @@ public:
     // inserted at `index`. A workspace's only pane moves the workspace.
     Q_INVOKABLE bool movePaneToWorkspace(QObject *session, QObject *target, int index);
     Q_INVOKABLE void closeSession(QObject *session);
+    // The sessions of `workspace`'s panes, in layout order.
+    Q_INVOKABLE QVariantList workspaceSessions(QObject *workspace) const;
+    // Takes the pane of `session` out of this window, still running, for the
+    // background commands (BackgroundJobs). A window left without workspaces
+    // gets a fresh one instead of closing. Null when it is not owned here.
+    std::unique_ptr<TerminalBackend> releaseSession(QObject *session);
+    // Takes every session of `workspace` out of this window, like
+    // releaseSession; `title` receives the workspace's custom name.
+    std::vector<std::unique_ptr<TerminalBackend>> releaseWorkspace(QObject *workspace, QString &title);
+    // Shows a running session (from the background) as a new workspace at the
+    // end of the tabs, named `title` when not empty, and activates it.
+    void adoptSession(std::unique_ptr<TerminalBackend> session, const QString &title);
     Q_INVOKABLE void activateSession(QObject *session);
     Q_INVOKABLE void setActiveWorkspace(int index);
     Q_INVOKABLE void splitActive(int orientation);
@@ -229,6 +241,8 @@ private:
     void handOverSession(TerminalBackend *session, TerminalManager *target);
     void insertPaneWorkspace(std::unique_ptr<TerminalLayoutNode> leaf, int index);
     void finishPaneMove(TerminalManager *target, TerminalBackend *session);
+    // Drops a session that left this window from the activation history.
+    void forgetSession(TerminalBackend *session);
     void createWorkspace(const QString &customTitle);
     TerminalLayoutNode *findLeaf(TerminalLayoutNode *node, TerminalBackend *session) const;
     TerminalBackend *firstSession(TerminalLayoutNode *node) const;

@@ -1,4 +1,24 @@
+# Functions defined in Konsoll (Background Commands > Functions): loaded
+# now, and again at a prompt after Konsoll rewrote them.
+set -g _konsoll_functions_dir (string replace -r '/[^/]*$' '' -- $KONSOLL_FISH_INTEGRATION)
+set -g _konsoll_functions_loaded ''
+
+function _konsoll_load_functions
+    set -l serial_file $_konsoll_functions_dir/functions.serial
+    test -r $serial_file; or return 0
+    read -l serial < $serial_file
+    test "$serial" = "$_konsoll_functions_loaded"; and return 0
+    set -g _konsoll_functions_loaded $serial
+    if test -r $_konsoll_functions_dir/functions.fish
+        source $_konsoll_functions_dir/functions.fish
+    end
+    return 0
+end
+
+_konsoll_load_functions
+
 function _konsoll_prompt --on-event fish_prompt
+    _konsoll_load_functions
     set -l encoded_path (string escape --style=url -- "$PWD")
     printf '\e]7;file://localhost%s\a' "$encoded_path"
     printf '\e]1337;RemoteHost=%s;\a' "$KONSOLL_REMOTE_HOST_TOKEN"

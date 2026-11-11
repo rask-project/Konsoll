@@ -52,7 +52,10 @@ Window {
         // or when its single session is blocked by a running command. A lone
         // idle tab closes without prompting. Only this (active) window's
         // manager is consulted, so the other windows are left untouched.
-        const needsConfirm = sessionManager.sessionCount() > 1 || sessionManager.anySessionHasRunningCommand();
+        // Closing the last window quits, which also stops the commands
+        // running in the background.
+        const lastWithBackground = appWindow.windowManager.windows.length === 1 && BackgroundJobs.runningCount > 0;
+        const needsConfirm = sessionManager.sessionCount() > 1 || sessionManager.anySessionHasRunningCommand() || lastWithBackground;
         if (!WindowStateStore.terminating() && needsConfirm && !NativeDialogs.confirmClose()) {
             close.accepted = false;
             return;
@@ -287,6 +290,27 @@ Window {
     }
 
     Action {
+        id: moveToBackgroundAction
+
+        enabled: sessionManager.activeSession !== null
+
+        text: qsTr("Move Session to Background")
+        // Deferred: the move destroys the session's view.
+        onTriggered: {
+            const session = sessionManager.activeSession;
+            Qt.callLater(() => BackgroundJobs.sendSession(sessionManager, session));
+        }
+    }
+
+    Action {
+        id: backgroundCommandsAction
+
+        text: qsTr("Background Commands")
+        shortcut: "Ctrl+Shift+B"
+        onTriggered: appWindow.windowManager.backgroundWindow.present()
+    }
+
+    Action {
         id: clearScreenAction
 
         text: qsTr("Clear")
@@ -430,6 +454,12 @@ Window {
             MenuSeparator {}
 
             MenuItem {
+                action: moveToBackgroundAction
+            }
+
+            MenuSeparator {}
+
+            MenuItem {
                 action: closeSessionAction
             }
 
@@ -471,8 +501,9 @@ Window {
         Menu {
             id: windowMenu
 
-            // Items above the window list (New Window, Close Window, separator).
-            readonly property int windowListOffset: 3
+            // Items above the window list (New Window, Close Window,
+            // Background Commands, separator).
+            readonly property int windowListOffset: 4
 
             title: qsTr("Window")
 
@@ -482,6 +513,10 @@ Window {
 
             MenuItem {
                 action: closeWindowAction
+            }
+
+            MenuItem {
+                action: backgroundCommandsAction
             }
 
             MenuSeparator {}

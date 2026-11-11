@@ -6,7 +6,25 @@ _KONSOLL_PROMPT_MARKER='\[\e]133;B\a\]'
 # backward through command history, matching the terminal's Alt+. sequence.
 bind '"\e.": yank-last-arg'
 
+# Functions defined in Konsoll (Background Commands > Functions): loaded
+# now, and again at a prompt after Konsoll rewrote them.
+_KONSOLL_FUNCTIONS_DIR=${KONSOLL_SHELL_INTEGRATION%/*}
+_KONSOLL_FUNCTIONS_LOADED=''
+
+_konsoll_load_functions() {
+    local serial_file="$_KONSOLL_FUNCTIONS_DIR/functions.serial" serial=''
+    [[ -r "$serial_file" ]] || return 0
+    read -r serial < "$serial_file"
+    [[ "$serial" == "$_KONSOLL_FUNCTIONS_LOADED" ]] && return 0
+    _KONSOLL_FUNCTIONS_LOADED=$serial
+    [[ -r "$_KONSOLL_FUNCTIONS_DIR/functions.bash" ]] && source "$_KONSOLL_FUNCTIONS_DIR/functions.bash"
+    return 0
+}
+
+_konsoll_load_functions
+
 _konsoll_prompt_command() {
+    _konsoll_load_functions
     local encoded_path=${PWD//%/%25}
     encoded_path=${encoded_path// /%20}
     encoded_path=${encoded_path//#/%23}

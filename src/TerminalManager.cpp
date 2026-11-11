@@ -814,6 +814,117 @@ void TerminalManager::closeSession(QObject *sessionObject)
     }
 }
 
+QVariantList TerminalManager::workspaceSessions(QObject *workspaceObject) const
+{
+    auto *workspace = qobject_cast<TerminalWorkspaceModel *>(workspaceObject);
+    const bool owned = std::ranges::any_of(m_workspaces, [workspace](const auto &item) { return item.get() == workspace; });
+    QVariantList list;
+    if (!owned || workspace->root() == nullptr) {
+        return list;
+    }
+    // Depth-first, first child before second: the panes' on-screen order.
+    std::vector<const TerminalLayoutNode *> pending{workspace->root().get()};
+    while (!pending.empty()) {
+        const TerminalLayoutNode *node = pending.back();
+        pending.pop_back();
+        if (node->m_session != nullptr) {
+            list.append(QVariant::fromValue(static_cast<QObject *>(node->m_session)));
+        }
+        if (node->m_second) {
+            pending.push_back(node->m_second.get());
+        }
+        if (node->m_first) {
+            pending.push_back(node->m_first.get());
+        }
+    }
+    return list;
+}
+
+void TerminalManager::forgetSession(TerminalBackend *session)
+{
+    disconnect(session, nullptr, this, nullptr);
+    std::erase(m_activationHistory, session);
+    m_activationHistoryCursor = 0;
+}
+
+std::unique_ptr<TerminalBackend> TerminalManager::releaseSession(QObject *sessionObject)
+{
+    TerminalBackend *session = ownedSession(sessionObject);
+    if (session == nullptr) {
+        return nullptr;
+    }
+    std::unique_ptr<TerminalLayoutNode> leaf = extractPane(session);
+    if (!leaf) {
+        return nullptr;
+    }
+    // The pane's view may still bind to its node until the layout signals
+    // are handled.
+    leaf.release()->deleteLater();
+    const auto it =
+        std::ranges::find_if(m_sessions, [session](const auto &candidate) { return candidate.get() == session; });
+    std::unique_ptr<TerminalBackend> owned = std::move(*it);
+    m_sessions.erase(it);
+    forgetSession(session);
+    if (m_activeSession == session) {
+        setActiveSession(nextActiveSession(nullptr), false);
+    }
+    emit activeWorkspaceChanged();
+    if (m_workspaces.empty()) {
+        addWorkspace();
+    }
+    return owned;
+}
+
+std::vector<std::unique_ptr<TerminalBackend>> TerminalManager::releaseWorkspace(QObject *workspaceObject,
+                                                                                QString &title)
+{
+    auto *workspace = qobject_cast<TerminalWorkspaceModel *>(workspaceObject);
+    const bool owned = std::ranges::any_of(m_workspaces, [workspace](const auto &item) { return item.get() == workspace; });
+    if (!owned) {
+        return {};
+    }
+    // detachWorkspace returns the sessions in creation order; keep the
+    // panes' order instead.
+    const QVariantList order = workspaceSessions(workspace);
+    auto detached = detachWorkspace(workspace);
+    if (!detached) {
+        return {};
+    }
+    title = detached->workspace->customTitle();
+    detached->workspace.release()->deleteLater();
+    std::vector<std::unique_ptr<TerminalBackend>> sessions;
+    sessions.reserve(detached->sessions.size());
+    std::ranges::for_each(order, [&detached, &sessions](const QVariant &entry) {
+        const QObject *session = entry.value<QObject *>();
+        const auto it = std::ranges::find_if(detached->sessions, [session](const auto &candidate) {
+            return candidate.get() == session;
+        });
+        if (it != detached->sessions.end() && *it) {
+            sessions.push_back(std::move(*it));
+        }
+    });
+    if (m_workspaces.empty()) {
+        addWorkspace();
+    }
+    return sessions;
+}
+
+void TerminalManager::adoptSession(std::unique_ptr<TerminalBackend> session, const QString &title)
+{
+    if (!session) {
+        return;
+    }
+    TerminalBackend *sessionPtr = session.get();
+    connectSession(sessionPtr);
+    m_sessions.push_back(std::move(session));
+    insertPaneWorkspace(std::make_unique<TerminalLayoutNode>(sessionPtr), static_cast<int>(m_workspaces.size()));
+    TerminalWorkspaceModel *workspace = m_workspaces.back().get();
+    workspace->setCustomTitle(title);
+    workspace->refreshStatus();
+    emit activeWorkspaceChanged();
+    setActiveSession(sessionPtr, true);
+}
+
 TerminalBackend *TerminalManager::firstValidSessionIn(TerminalWorkspaceModel *workspace) const
 {
     if (workspace == nullptr || workspace->root() == nullptr) {

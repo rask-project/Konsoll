@@ -1,6 +1,7 @@
 #include "PtyProcess.h"
 
 #include "ProcessKind.h"
+#include "ShellFunctions.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -279,14 +280,13 @@ PtyProcess::~PtyProcess()
 }
 
 bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QString &workingDirectory,
-                       const QString &remoteHostToken)
+                       const QString &remoteHostToken, const QString &command)
 {
     const QString shellName = QFileInfo(shellPath).fileName();
     const bool isZsh = shellName == QStringLiteral("zsh");
     const bool isBash = shellName == QStringLiteral("bash");
     const bool isFish = shellName == QStringLiteral("fish");
-    const QString supportDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) +
-                               QStringLiteral("/shell-integration");
+    const QString supportDir = shellIntegrationDirectory();
     const bool supportDirReady = QDir().mkpath(supportDir);
     ShellIntegration integration;
     if (supportDirReady) {
@@ -314,6 +314,13 @@ bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QStri
     QByteArray initialDirectory = workingDirectory.toLocal8Bit();
     if (initialDirectory.isEmpty() || !QDir(workingDirectory).exists()) {
         initialDirectory = homePath;
+    }
+    if (!command.isEmpty()) {
+        // Interactive, so the user's rc files set PATH, aliases and functions
+        // up as they would at a prompt.
+        integration.shellArgs.emplace_back("-i");
+        integration.shellArgs.emplace_back("-c");
+        integration.shellArgs.push_back(command.toUtf8());
     }
     std::vector<char *> argv;
     argv.reserve(integration.shellArgs.size() + 2);

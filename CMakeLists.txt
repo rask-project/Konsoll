@@ -67,6 +67,7 @@ qt_add_qml_module(konsoll
         TerminalWindow.qml
         SaveTextDialog.qml
         SettingsWindow.qml
+        BackgroundWindow.qml
         TerminalWorkspace.qml
         TerminalPaneLayout.qml
         TerminalView.qml
@@ -74,6 +75,9 @@ qt_add_qml_module(konsoll
         controls/TerminalTabButton.qml
         controls/TabActivityIndicator.qml
         controls/ToolButton.qml
+        controls/SettingsSidebarItem.qml
+        controls/FormGroup.qml
+        controls/FormRow.qml
         controls/Menu.qml
         controls/MenuItem.qml
         controls/SearchBar.qml
@@ -82,6 +86,8 @@ qt_add_qml_module(konsoll
         src/AboutDialog.mm
         src/AppQuitGuard.h
         src/AppQuitGuard.mm
+        src/BackgroundJobs.cpp
+        src/BackgroundJobs.h
         src/KeyEncoder.cpp
         src/KeyEncoder.h
         src/NativeDialogs.h
@@ -90,6 +96,8 @@ qt_add_qml_module(konsoll
         src/NativeDialogs.mm
         src/ProcessKind.cpp
         src/ProcessKind.h
+        src/ShellFunctions.cpp
+        src/ShellFunctions.h
         src/Notifications.h
         src/Notifications.mm
         src/TerminalBackend.cpp

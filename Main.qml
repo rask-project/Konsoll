@@ -13,6 +13,11 @@ Item {
         windowManager: manager
         preferences: manager.settings
     }
+    // Commands running without a tab, saved commands and open sessions.
+    readonly property BackgroundWindow backgroundWindow: BackgroundWindow {
+        windowManager: manager
+        preferences: manager.settings
+    }
 
     property var windows: []
     property TerminalWindow createdWindow: null
@@ -201,9 +206,10 @@ Item {
         // closing during termination must not overwrite that choice.
         if (!WindowStateStore.terminating()) {
             if (manager.windows.length === 0) {
-                // Settings would otherwise keep the app alive (quit on last
-                // window closed) with no terminal left.
+                // Settings and Background Commands would otherwise keep the
+                // app alive (quit on last window closed) with no terminal left.
                 manager.settingsWindow.close();
+                manager.backgroundWindow.close();
                 // Closing the last window ends the app: it is the window to
                 // restore on the next launch, so save it instead of dropping it.
                 manager.lastActiveWindowId = w.windowId;

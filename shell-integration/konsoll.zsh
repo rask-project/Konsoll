@@ -4,11 +4,29 @@ autoload -Uz add-zsh-hook
 bindkey -M emacs '^[.' insert-last-word
 bindkey -M viins '^[.' insert-last-word
 
+# Functions defined in Konsoll (Background Commands > Functions): loaded
+# now, and again at a prompt after Konsoll rewrote them.
+typeset -g _KONSOLL_FUNCTIONS_DIR=${KONSOLL_SHELL_INTEGRATION:h}
+typeset -g _KONSOLL_FUNCTIONS_LOADED=''
+
+function _konsoll_load_functions() {
+    local serial_file=$_KONSOLL_FUNCTIONS_DIR/functions.serial
+    [[ -r $serial_file ]] || return 0
+    local serial=$(<$serial_file)
+    [[ $serial == $_KONSOLL_FUNCTIONS_LOADED ]] && return 0
+    _KONSOLL_FUNCTIONS_LOADED=$serial
+    [[ -r $_KONSOLL_FUNCTIONS_DIR/functions.zsh ]] && source $_KONSOLL_FUNCTIONS_DIR/functions.zsh
+    return 0
+}
+
+_konsoll_load_functions
+
 typeset -g _KONSOLL_PROMPT_MARKER=$'%{\e]133;B\a%}'
 typeset -g _KONSOLL_COMMAND_ACTIVE=0
 
 function _konsoll_precmd() {
     local command_status=$?
+    _konsoll_load_functions
     local encoded_path=${PWD//\%/%25}
     encoded_path=${encoded_path// /%20}
     encoded_path=${encoded_path//#/%23}

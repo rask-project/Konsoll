@@ -7,9 +7,62 @@ Guidance for AI agents working in this repository.
 - Konsoll — a native macOS terminal built in QML (Qt Quick).
 - Toolchain: C++23, Qt 6.12, CMake.
 - Target platform: macOS (Apple Silicon).
-- MVP scope and phases: `docs/PLAN.md`. Do not add post-MVP features
-  (tabs, splits, search, mouse reporting, selection) to the MVP — see its
-  §14 backlog.
+- The README's feature list is the current scope: multiple windows, tabs
+  (workspaces), split panes, selection and search, mouse reporting, image
+  protocols, shell integration, Settings and Background Commands. New
+  features build on that; `docs/RELEASE.md` covers signing and notarization.
+- Implement only what real programs use: obsolete VT features (page memory,
+  DECDLD soft fonts, ReGIS) are deliberately left out.
+- Open backlog: color profiles/themes, font ligatures and a configurable line
+  height, QML tests (`qmltestrunner`) for `TerminalView`.
+
+## Architecture
+
+- **One `TerminalManager` per window** (`TerminalWindow.qml`) owns that
+  window's sessions (`TerminalBackend`) and workspaces (a binary split tree
+  of `TerminalLayoutNode`s). `WindowRegistry` tracks the live managers for
+  app-wide questions (quit guard, closing a session whose workspace moved).
+  `Main.qml` is the app root: the window list, moving workspaces and panes
+  between windows, and the app-wide Settings and Background Commands windows.
+- **Moving sessions keeps them running.** Workspaces and panes move between
+  managers (`moveWorkspaceTo`, `movePane`, `movePaneToWorkspace`) and to the
+  background (`releaseSession` / `releaseWorkspace`, back with
+  `adoptSession`) by handing over the `std::unique_ptr<TerminalBackend>`;
+  the PTY and its thread are untouched.
+- **Background Commands** (`BackgroundJobs`, a QML singleton owned by
+  `main()`): `BackgroundJob`s own sessions shown without a tab — commands run
+  as `$SHELL -i -c` (status = the command's exit code) or tab shells sent
+  there — plus the saved commands (QSettings `BackgroundCommands/saved`).
+  `BackgroundWindow.qml` is its UI.
+- **Shell functions** (`ShellFunctions`, QML singleton): functions defined in
+  Konsoll are kept in QSettings and written as `functions.{zsh,bash,fish}` +
+  `functions.serial` in `shellIntegrationDirectory()`. The integration
+  scripts (`shell-integration/`) source them at startup and re-source at a
+  prompt when the serial changes, so open tabs and `-i -c` background
+  commands see them. `main()` rewrites them before the first shell starts.
+- **Threading:** each session has a `PtyWorker` on its own `QThread` that
+  alone touches the PTY descriptor, its notifier and the child process. PTY
+  writes, resizes and shutdown go to it as queued calls; output comes back as
+  signals with backpressure (reads pause above 1 MiB undelivered). Parsing
+  and the `Terminal`/`Screen` model stay on the GUI thread — never share
+  mutable `Terminal` or `Screen` state across threads.
+- **Session lifecycle:** `Created → Starting → Running → Stopping → Stopped`
+  (or `Failed`). Close is bounded: close the master fd, SIGHUP the process
+  group, 1.5 s grace, SIGKILL, reap; the GUI waits at most 3 s for the thread
+  and otherwise keeps the objects and retries when it finishes. Objects that
+  queued signals or QML may still reference are destroyed with
+  `deleteLater()`, and QML-supplied session pointers are matched by address
+  (they may dangle), never `qobject_cast`.
+- **Fork/exec:** the child environment is built before `forkpty`; only
+  async-signal-safe calls run between fork and exec.
+- **State on relaunch:** only the last active window's geometry is restored,
+  into one window with fresh sessions.
+
+## QML
+
+- System Settings-style windows (Settings, Background Commands) share
+  `controls/SettingsSidebarItem.qml`, `controls/FormGroup.qml` and
+  `controls/FormRow.qml`; reuse them for new panes of that style.
 
 ## C++ rules
 

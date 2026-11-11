@@ -243,6 +243,23 @@ void TerminalBackend::flushResponses()
 
 void TerminalBackend::start(const QString &workingDirectory)
 {
+    startWorker(workingDirectory, QString{});
+}
+
+void TerminalBackend::startCommand(const QString &command, const QString &workingDirectory)
+{
+    startWorker(workingDirectory, command);
+}
+
+void TerminalBackend::interrupt()
+{
+    if (m_worker) {
+        writeToPty(QByteArrayLiteral("\x03"));
+    }
+}
+
+void TerminalBackend::startWorker(const QString &workingDirectory, const QString &command)
+{
     if (m_state != SessionState::Created) {
         return; // Already started or closed.
     }
@@ -263,7 +280,7 @@ void TerminalBackend::start(const QString &workingDirectory)
     m_thread->start();
     const QString shell = detectDefaultShell();
     QMetaObject::invokeMethod(m_worker.get(), &PtyWorker::start, Qt::QueuedConnection, shell, m_cols, m_rows,
-                              workingDirectory, m_remoteHostToken);
+                              workingDirectory, m_remoteHostToken, command);
     m_state = SessionState::Starting;
 }
 

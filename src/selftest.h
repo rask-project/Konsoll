@@ -3,7 +3,7 @@
 namespace konsoll
 {
 
-// Headless multi-session validation (docs/SESSION-THREADING-PLAN.md §8.8).
+// Headless validation: parser checks, fixtures and multi-session tests.
 // Runs the real manager/backend/worker stack and returns the process exit code.
 int runSelfTest();
 

@@ -2,9 +2,10 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.impl
 import QtQuick.Dialogs
 import QtQuick.Layouts
+
+import "controls" as Controls
 
 // App-wide settings window laid out after macOS System Settings: a full-height
 // translucent sidebar (the native blur from WindowTranslucency) under the
@@ -40,7 +41,6 @@ Window {
     readonly property bool dark: Qt.styleHints.colorScheme === Qt.ColorScheme.Dark
     readonly property int sidebarWidth: 210
     readonly property color contentColor: palette.window
-    readonly property color groupColor: dark ? Qt.rgba(1, 1, 1, 0.05) : "#ffffff"
     readonly property color separatorColor: dark ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(0, 0, 0, 0.1)
     readonly property color secondaryTextColor: dark ? Qt.rgba(1, 1, 1, 0.55) : Qt.rgba(0, 0, 0, 0.5)
 
@@ -182,7 +182,15 @@ Window {
             Repeater {
                 model: control.sections
 
-                delegate: SidebarItem {}
+                delegate: Controls.SettingsSidebarItem {
+                    required property int index
+                    required property var modelData
+
+                    title: modelData.title
+                    iconName: modelData.iconName
+                    selected: control.selectedSection === index
+                    onClicked: control.selectedSection = index
+                }
             }
 
             Item {
@@ -223,8 +231,8 @@ Window {
                 ColumnLayout {
                     spacing: 6
 
-                    FormGroup {
-                        FormRow {
+                    Controls.FormGroup {
+                        Controls.FormRow {
                             label: qsTr("Font")
                             detail: `${control.preferences.fontFamily} ${control.preferences.fontPointSize} pt`
                             showSeparator: false
@@ -244,8 +252,8 @@ Window {
                         }
                     }
 
-                    FormGroup {
-                        FormRow {
+                    Controls.FormGroup {
+                        Controls.FormRow {
                             label: qsTr("Cursor style")
                             showSeparator: false
 
@@ -258,7 +266,7 @@ Window {
                             }
                         }
 
-                        FormRow {
+                        Controls.FormRow {
                             label: qsTr("Blinking cursor")
 
                             Switch {
@@ -287,8 +295,8 @@ Window {
                 ColumnLayout {
                     spacing: 6
 
-                    FormGroup {
-                        FormRow {
+                    Controls.FormGroup {
+                        Controls.FormRow {
                             label: qsTr("Background blur")
                             showSeparator: false
 
@@ -298,7 +306,7 @@ Window {
                             }
                         }
 
-                        FormRow {
+                        Controls.FormRow {
                             label: qsTr("Background opacity")
 
                             Slider {
@@ -344,8 +352,8 @@ Window {
                 ColumnLayout {
                     spacing: 6
 
-                    FormGroup {
-                        FormRow {
+                    Controls.FormGroup {
+                        Controls.FormRow {
                             label: qsTr("Use Option as Meta key")
                             detail: qsTr("Option+key sends Esc+key instead of typing special characters")
                             showSeparator: false
@@ -377,8 +385,8 @@ Window {
                 ColumnLayout {
                     spacing: 6
 
-                    FormGroup {
-                        FormRow {
+                    Controls.FormGroup {
+                        Controls.FormRow {
                             label: qsTr("Read the clipboard")
                             detail: qsTr("OSC 52 paste requests")
                             showSeparator: false
@@ -392,7 +400,7 @@ Window {
                             }
                         }
 
-                        FormRow {
+                        Controls.FormRow {
                             label: qsTr("Read the window title")
                             detail: qsTr("Title reports (CSI 20 t / 21 t)")
 
@@ -402,7 +410,7 @@ Window {
                             }
                         }
 
-                        FormRow {
+                        Controls.FormRow {
                             label: qsTr("Show notifications")
                             detail: qsTr("Desktop notifications (OSC 9 / OSC 777)")
 
@@ -412,7 +420,7 @@ Window {
                             }
                         }
 
-                        FormRow {
+                        Controls.FormRow {
                             label: qsTr("Move and resize the window")
                             detail: qsTr("Window operations (CSI t)")
 
@@ -438,136 +446,6 @@ Window {
                         Layout.fillHeight: true
                     }
                 }
-            }
-        }
-    }
-
-    // Sidebar row: themed icon badge + 13 pt title; accent pill when selected.
-    component SidebarItem: ItemDelegate {
-        id: sidebarItem
-
-        required property int index
-        required property var modelData
-
-        readonly property bool selected: control.selectedSection === index
-
-        Layout.fillWidth: true
-
-        implicitHeight: 30
-        leftPadding: 6
-        rightPadding: 8
-        spacing: 8
-
-        onClicked: control.selectedSection = index
-
-        // The theme SVGs carry their own badge colors, so the icon is not tinted.
-        contentItem: IconLabel {
-            spacing: sidebarItem.spacing
-            display: AbstractButton.TextBesideIcon
-            alignment: Qt.AlignLeft | Qt.AlignVCenter
-
-            icon.name: sidebarItem.modelData.iconName
-            icon.width: 20
-            icon.height: 20
-
-            text: sidebarItem.modelData.title
-            font: sidebarItem.font
-            color: sidebarItem.selected ? "white" : sidebarItem.palette.text
-        }
-
-        background: Rectangle {
-            radius: 7
-            // Read the delegate's palette explicitly: it is the item-view palette
-            // (selectedContentBackgroundColor). An unqualified `palette` here can
-            // resolve to the generic one (selectedControlColor, a duller blue).
-            color: sidebarItem.selected ? sidebarItem.palette.highlight : sidebarItem.down ? control.separatorColor : "transparent"
-            border.width: Qt.styleHints.accessibility.contrastPreference === Qt.HighContrast ? 1 : 0
-            border.color: sidebarItem.palette.text
-        }
-    }
-
-    // Rounded "inset grouped" box holding a column of FormRows.
-    component FormGroup: Rectangle {
-        default property alias rows: rowColumn.data
-
-        Layout.fillWidth: true
-        implicitHeight: rowColumn.implicitHeight
-
-        radius: 10
-        color: control.groupColor
-        border.width: 1
-        border.color: control.separatorColor
-
-        ColumnLayout {
-            id: rowColumn
-
-            anchors.left: parent.left
-            anchors.right: parent.right
-            spacing: 0
-        }
-    }
-
-    // Title (and optional secondary detail) on the left, controls on the right,
-    // with a hairline separator above unless it is the group's first row.
-    component FormRow: Item {
-        id: formRow
-
-        property string label
-        property string detail
-        property bool showSeparator: true
-        default property alias trailing: trailingRow.data
-
-        Layout.fillWidth: true
-        implicitHeight: Math.max(40, rowLayout.implicitHeight + 16)
-
-        Rectangle {
-            visible: formRow.showSeparator
-
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.leftMargin: 12
-            anchors.rightMargin: 12
-            height: 1
-
-            color: control.separatorColor
-        }
-
-        RowLayout {
-            id: rowLayout
-
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.leftMargin: 12
-            anchors.rightMargin: 12
-
-            spacing: 12
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 1
-
-                Label {
-                    Layout.fillWidth: true
-                    text: formRow.label
-                    elide: Text.ElideRight
-                }
-
-                Label {
-                    Layout.fillWidth: true
-                    visible: formRow.detail !== ""
-                    text: formRow.detail
-                    font.pointSize: 11
-                    color: control.secondaryTextColor
-                    elide: Text.ElideRight
-                }
-            }
-
-            RowLayout {
-                id: trailingRow
-
-                spacing: 8
             }
         }
     }

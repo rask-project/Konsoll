@@ -4,6 +4,10 @@ set(ICONS_SRC
     konsoll/svg/appearance.svg
     konsoll/svg/arrow-prev.svg
     konsoll/svg/arrow-next.svg
+    konsoll/svg/background-functions.svg
+    konsoll/svg/background-running.svg
+    konsoll/svg/background-saved.svg
+    konsoll/svg/background-sessions.svg
     konsoll/svg/close.svg
     konsoll/svg/keyboard.svg
     konsoll/svg/kind-agent.svg

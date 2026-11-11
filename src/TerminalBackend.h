@@ -33,7 +33,7 @@ class TerminalBackend : public QObject
 {
     Q_OBJECT
 
-    // Session lifecycle (docs/SESSION-THREADING-PLAN.md §7).
+    // Session lifecycle (see "Session lifecycle" in AGENTS.md).
     enum class SessionState : std::uint8_t
     {
         Created,
@@ -82,6 +82,11 @@ public:
 
     // Start the terminal with the detected default shell.
     Q_INVOKABLE void start(const QString &workingDirectory = {});
+    // Start the terminal running `command` in the default shell (`-i -c`):
+    // the session ends with the command, processExited carrying its status.
+    void startCommand(const QString &command, const QString &workingDirectory = {});
+    // Ctrl+C to the foreground job (the tty's interrupt character).
+    void interrupt();
     // A session without a PTY that just shows `bytes` (render-dump harness).
     void startReplay(int cols, int rows, const QByteArray &bytes);
     // Request session shutdown. Returns false if the worker thread has not
@@ -280,6 +285,7 @@ private:
     void onAnimationTimer();
     void updateAnimationTimer();
     void scheduleFrame();
+    void startWorker(const QString &workingDirectory, const QString &command);
     // Write the terminal's pending query replies and reports to the PTY.
     void flushResponses();
     // Clipboard reads, title reports and window operations, by the user's

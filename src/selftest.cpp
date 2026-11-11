@@ -1,11 +1,14 @@
 #include "selftest.h"
 
+#include "BackgroundJobs.h"
+#include "ShellFunctions.h"
 #include "TerminalManager.h"
 #include "term/Terminal.h"
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QProcess>
+#include <QSettings>
 #include <QThread>
 
 #include <algorithm>
@@ -53,6 +56,8 @@ int pgrepCount(const char *pattern)
     return 1 + static_cast<int>(lines);
 }
 
+using konsoll::BackgroundJob;
+using konsoll::BackgroundJobs;
 using konsoll::Cell;
 using konsoll::Screen;
 using konsoll::Terminal;
@@ -211,13 +216,125 @@ void checkPaneMoves(int &failures, TerminalManager &manager)
     manager.closeSession(b);
 }
 
+// Background commands: a command's status and exit code, Ctrl+C and Stop,
+// and sessions moving between a window and the background.
+void checkBackgroundJobs(int &failures, TerminalManager &manager)
+{
+    BackgroundJobs jobs;
+    const auto *ok = static_cast<BackgroundJob *>(jobs.run(QStringLiteral("echo BG_OK; exit 0")));
+    const auto *failed = static_cast<BackgroundJob *>(jobs.run(QStringLiteral("echo BG_FAIL; exit 3"), QStringLiteral("~")));
+    check(failures, ok != nullptr && failed != nullptr && jobs.jobCount() == 2, "background: commands started");
+    check(failures, waitFor("background: ok ends", [ok]() { return !ok->running(); }, 20000) &&
+                        ok->state() == QStringLiteral("finished") && ok->exitCode() == 0 &&
+                        ok->backend()->bufferText().contains("BG_OK"),
+          "background: exit 0 finishes, output kept");
+    check(failures, waitFor("background: fail ends", [failed]() { return !failed->running(); }, 20000) &&
+                        failed->state() == QStringLiteral("failed") && failed->exitCode() == 3,
+          "background: non-zero exit fails with its status");
+
+    auto *sleeper = static_cast<BackgroundJob *>(jobs.run(QStringLiteral("sleep 31338")));
+    check(failures, waitFor("background: sleep spawned", []() { return pgrepCount("sleep 31338") > 0; }, 15000) &&
+                        jobs.runningCount() == 1,
+          "background: long command running");
+    jobs.interrupt(sleeper);
+    check(failures, waitFor("background: interrupted", [sleeper]() { return !sleeper->running(); }, 10000) &&
+                        pgrepCount("sleep 31338") == 0,
+          "background: Ctrl+C ends it");
+    auto *stopped = static_cast<BackgroundJob *>(jobs.run(QStringLiteral("sleep 31339")));
+    waitFor("background: second sleep", []() { return pgrepCount("sleep 31339") > 0; }, 15000);
+    jobs.stop(stopped);
+    check(failures, stopped->state() == QStringLiteral("stopped") &&
+                        waitFor("background: stopped", []() { return pgrepCount("sleep 31339") == 0; }, 5000),
+          "background: Stop ends it, no orphan");
+    jobs.removeEnded();
+    check(failures, jobs.jobCount() == 0 && jobs.runningCount() == 0, "background: ended jobs removed");
+
+    manager.addWorkspace();
+    auto *shell = activeSession(manager);
+    waitFor("background: tab shell", [shell]() { return !shell->bufferText().isEmpty(); }, 15000);
+    const int sessionsBefore = manager.sessionCount();
+    check(failures, jobs.sendSession(&manager, shell) && !manager.hasSession(shell) &&
+                        manager.sessionCount() == sessionsBefore - 1 && jobs.runningCount() == 1,
+          "background: tab session moves there");
+    shell->writeText("echo BG_ALIVE\n");
+    check(failures, waitFor("background: alive", [shell]() { return shell->bufferText().contains("BG_ALIVE"); }, 10000),
+          "background: moved shell still running");
+    QObject *job = jobs.jobs().first().value<QObject *>();
+    check(failures, jobs.openInWindow(job, &manager) && manager.hasSession(shell) && manager.activeSession() == shell &&
+                        jobs.jobCount() == 0,
+          "background: opens again as the active tab");
+    manager.closeSession(shell);
+
+    // A window's only workspace leaves a fresh one behind.
+    TerminalManager lone(nullptr);
+    lone.start();
+    auto *loneShell = activeSession(lone);
+    QObject *loneWorkspace = lone.workspaces().first().value<QObject *>();
+    check(failures, jobs.sendWorkspace(&lone, loneWorkspace) && lone.sessionCount() == 1 &&
+                        !lone.hasSession(loneShell) && lone.activeSession() != nullptr,
+          "background: last tab out leaves a new one");
+}
+
+// Functions defined in Konsoll reach background commands at start and open
+// tabs at their next prompt; multi-line commands run whole. The user's own
+// functions are restored afterwards.
+void checkShellFunctions(int &failures, TerminalManager &manager)
+{
+    const QString key = QStringLiteral("ShellFunctions/functions");
+    const QVariant saved = QSettings().value(key);
+    {
+        manager.addWorkspace();
+        auto *shell = activeSession(manager);
+        waitFor("functions: tab shell", [shell]() { return !shell->bufferText().isEmpty(); }, 15000);
+
+        konsoll::ShellFunctions functions;
+        check(failures, !functions.validate(-1, QStringLiteral("9bad")).isEmpty() &&
+                            !functions.validate(-1, QStringLiteral("_konsoll_x")).isEmpty(),
+              "functions: invalid names refused");
+        const QString error = functions.saveFunction(-1, QStringLiteral("konsoll_selftest_fn"), QString{},
+                                                     QStringLiteral("echo \"FN_OUT:$1\"\necho FN_SECOND_LINE"));
+        check(failures, error.isEmpty() && !functions.validate(-1, QStringLiteral("konsoll_selftest_fn")).isEmpty(),
+              "functions: saved, name now taken");
+
+        BackgroundJobs jobs;
+        const auto *job = static_cast<BackgroundJob *>(jobs.run(QStringLiteral("konsoll_selftest_fn arg1")));
+        check(failures, waitFor("functions: job ends", [job]() { return !job->running(); }, 20000) &&
+                            job->exitCode() == 0 && job->backend()->bufferText().contains("FN_OUT:arg1") &&
+                            job->backend()->bufferText().contains("FN_SECOND_LINE"),
+              "functions: callable from a background command");
+
+        shell->writeText("konsoll_selftest_fn tab\n");
+        check(failures, waitFor("functions: tab", [shell]() { return shell->bufferText().contains("FN_OUT:tab"); }, 10000),
+              "functions: an open tab picks them up at its next prompt");
+
+        const auto *multi = static_cast<BackgroundJob *>(
+            jobs.run(QStringLiteral("echo MULTI_ONE\nfor i in 1 2; do\n  echo MULTI_$i\ndone\nexit 4")));
+        check(failures, waitFor("multi-line: ends", [multi]() { return !multi->running(); }, 20000) &&
+                            multi->exitCode() == 4 && multi->backend()->bufferText().contains("MULTI_ONE") &&
+                            multi->backend()->bufferText().contains("MULTI_2") &&
+                            multi->title() == QStringLiteral("echo MULTI_ONE …"),
+              "multi-line: the whole script runs, listed by its first line");
+
+        functions.removeFunction(0);
+        shell->writeText("konsoll_selftest_fn gone || echo FN_REMOVED\n");
+        check(failures, waitFor("functions: removed", [shell]() { return shell->bufferText().contains("FN_REMOVED"); }, 10000),
+              "functions: a removed function goes away");
+        manager.closeSession(shell);
+    }
+    if (saved.isValid()) {
+        QSettings().setValue(key, saved);
+    } else {
+        QSettings().remove(key);
+    }
+    check(failures, konsoll::ShellFunctions::installScripts().has_value(), "functions: user's functions restored");
+}
+
 } // namespace
 
 int runSelfTest()
 {
-    // Multi-session validation (docs/SESSION-THREADING-PLAN.md §8.8): the real
-    // manager/backend/worker stack.
-    std::println(std::cout, "Konsoll selftest (session threading §8.8)");
+    // Multi-session validation: the real manager/backend/worker stack.
+    std::println(std::cout, "Konsoll selftest");
     TerminalManager manager(nullptr);
     manager.start();
     int failures = 0;
@@ -442,6 +559,10 @@ int runSelfTest()
 
     // 5c. Dragging a pane rearranges the splits and moves it between windows.
     checkPaneMoves(failures, manager);
+
+    // 5d. Commands in the background.
+    checkBackgroundJobs(failures, manager);
+    checkShellFunctions(failures, manager);
 
     // 6. App shutdown while a shell is running: no orphaned process group.
     manager.addWorkspace();

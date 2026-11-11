@@ -108,6 +108,16 @@ TabButton {
             }
         }
 
+        Controls.MenuItem {
+            text: qsTr("Move to background")
+            // Deferred like moveToWindow: the move destroys this tab.
+            onTriggered: {
+                const workspace = tab.workspace;
+                const manager = tab.sessionManager;
+                Qt.callLater(() => BackgroundJobs.sendWorkspace(manager, workspace));
+            }
+        }
+
         MenuSeparator {}
 
         Controls.MenuItem {

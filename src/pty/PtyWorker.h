@@ -26,9 +26,10 @@ public:
     PtyWorker();
 
     // Create and start the PTY in this worker's thread. Emits started on
-    // success and startFailed on launch failure.
+    // success and startFailed on launch failure. A non-empty `command` runs
+    // instead of an interactive shell (see PtyProcess::start).
     Q_INVOKABLE void start(const QString &shellPath, int columns, int rows, const QString &workingDirectory,
-                           const QString &remoteHostToken);
+                           const QString &remoteHostToken, const QString &command);
     // Send a byte block to the PTY master.
     Q_INVOKABLE void write(const QByteArray &data);
     // Apply a new window size to the PTY.

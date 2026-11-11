@@ -23,9 +23,11 @@ public:
     explicit PtyProcess(QObject *parent = nullptr);
     ~PtyProcess() override;
 
-    // Launch `shellPath` in a fresh PTY sized `cols`x`rows`.
+    // Launch `shellPath` in a fresh PTY sized `cols`x`rows`. A non-empty
+    // `command` runs in an interactive login shell (`-i -c command`), which
+    // exits with the command's status, instead of an interactive prompt.
     bool start(const QString &shellPath, int cols, int rows, const QString &workingDirectory = {},
-               const QString &remoteHostToken = {});
+               const QString &remoteHostToken = {}, const QString &command = {});
 
     void write(const QByteArray &data) const;
     void resize(int cols, int rows) const;

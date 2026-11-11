@@ -170,6 +170,23 @@ An in-house VT500-style state machine (no `libvterm`), validated against
 - Scrollback search (literal or regular expression, next/previous match)
 - Native macOS menu bar (App / Shell / Edit / Window) and About dialog
 
+### Background Commands
+
+A Settings-style window (`Cmd+Shift+B`, *Window ▸ Background Commands*)
+runs commands without a tab:
+
+- **Running** — start a command, see each job's state, elapsed time and exit
+  status, and its live output; Interrupt (⌃C), Stop, Run Again, save the
+  output to a file, or open it as a tab. A notification tells when a command ends on its own.
+- **Saved Commands** — name, command (one or more lines) and directory,
+  ready to run with one click.
+- **Functions** — shell functions defined in Konsoll instead of your rc file:
+  every tab can call them (open ones from their next prompt), and so can
+  background and saved commands.
+- **Sessions** — every pane of every window: bring one forward or send it to
+  the background. A tab's menu (*Move to background*) and *Shell ▸ Move
+  Session to Background* do the same; the shells keep running.
+
 ### Settings
 
 A native-looking Settings window (`Cmd+,`) configures the font (family,
@@ -226,25 +243,25 @@ konsoll/
 ├── Main.qml                  # app root: window list, moving workspaces/panes
 ├── TerminalWindow.qml        # window, menu bar, shortcuts, translucency
 ├── SettingsWindow.qml        # native-looking Settings window
+├── BackgroundWindow.qml      # Background Commands window
 ├── AppSettings.qml           # persisted settings
 ├── TerminalWorkspace.qml     # per-tab workspace (split tree) + tab strip
 ├── TerminalPaneLayout.qml    # binary split layout for a workspace
 ├── TerminalView.qml          # hosts TerminalRenderer + keyboard capture
-├── controls/                 # tab strip, menu, search bar, tool buttons
+├── controls/                 # tab strip, menu, search bar, form/sidebar rows
 ├── shell-integration/        # OSC 133 snippets (zsh/bash/fish)
 ├── tests/fixtures/           # recorded regression fixtures
 ├── tools/                    # vtdrive.py, regress.py
 ├── resources/icons/          # SVG icon theme (add, arrows, close)
 ├── assets/                   # app icon (icns/png)
 ├── docs/
-│   ├── PLAN.md               # MVP scope, architecture, phases
-│   ├── MULTI-WINDOW-PLAN.md  # per-window session managers
-│   ├── SESSION-THREADING-*.md# PTY worker threads
 │   └── RELEASE.md            # signing, notarization, packaging
 └── src/
     ├── TerminalBackend.h/.cpp   # QML<->C++ bridge per session
     ├── TerminalManager.h/.cpp   # a window's workspaces, splits and sessions
     ├── WindowRegistry.h/.cpp    # the open windows' managers
+    ├── BackgroundJobs.h/.cpp    # background commands and saved commands
+    ├── ShellFunctions.h/.cpp    # shell functions defined in Konsoll
     ├── TerminalRenderer.h/.cpp  # scene-graph renderer for the cell grid
     ├── KeyEncoder.h/.cpp        # xterm / kitty key encoding
     ├── ProcessKind.h/.cpp       # foreground program -> tab icon kind
@@ -273,11 +290,9 @@ konsoll/
 
 ## Scope
 
-The MVP scope, architecture, and phases are defined in
-[`docs/PLAN.md`](docs/PLAN.md). Windows, tabs, split panes, selection and
-clipboard, scrollback search, the terminal emulation and image protocols
-above, and shell integration are implemented on top of the MVP. The
-remaining post-MVP backlog (color profiles/themes, ligatures and line
-height, Figma design-system integration, QML tests) is in PLAN §16.
+Windows, tabs, split panes, background commands, selection and clipboard,
+scrollback search, the terminal emulation and image protocols above, and
+shell integration are implemented. Still open: color profiles/themes,
+ligatures and a configurable line height, and QML tests.
 Obsolete VT features with no real-world use (VT320+ page memory, DECDLD
 soft fonts, ReGIS) are deliberately left out.

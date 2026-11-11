@@ -3,11 +3,15 @@
 #include <QQmlApplicationEngine>
 #include <QTimer>
 
+#include <memory>
 #include <span>
 #include <string_view>
 
 #include "AppQuitGuard.h"
+#include "BackgroundJobs.h"
 #include "NativeKeyTracker.h"
+#include "Notifications.h"
+#include "ShellFunctions.h"
 #include "renderdump.h"
 #include "screendump.h"
 #include "selftest.h"
@@ -27,7 +31,7 @@ int main(int argc, char *argv[])
         return konsoll::runScreenDump(std::span(argv, static_cast<std::size_t>(argc)));
     }
 
-    // Headless multi-session validation (docs/SESSION-THREADING-PLAN.md §8.8).
+    // Headless multi-session validation (konsoll --selftest).
     bool selfTest = false;
     for (int i = 1; i < argc; ++i) {
         if (std::string_view(argv[i]) == "--selftest") {
@@ -54,6 +58,19 @@ int main(int argc, char *argv[])
     konsoll::NativeKeyTracker keyTracker;
     QGuiApplication::instance()->installEventFilter(&keyTracker);
 
+    // The functions defined in Konsoll, for the shells about to start.
+    if (const auto installed = konsoll::ShellFunctions::installScripts(); !installed) {
+        qWarning("Konsoll: %s", qUtf8Printable(installed.error()));
+    }
+
+    // Declared before the engine so it outlives every QML view of its jobs.
+    const auto backgroundJobs = std::make_unique<konsoll::BackgroundJobs>();
+    QObject::connect(backgroundJobs.get(), &konsoll::BackgroundJobs::jobEnded,
+                     [](const QString &title, const QString &message, bool succeeded) {
+                         konsoll::postNotification(succeeded ? QObject::tr("Background command finished")
+                                                             : QObject::tr("Background command failed"),
+                                                   QStringLiteral("%1 — %2").arg(title, message));
+                     });
     QQmlApplicationEngine engine;
 
     QObject::connect(
