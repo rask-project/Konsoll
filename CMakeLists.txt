@@ -213,6 +213,11 @@ if(APPLE)
         DEPLOY_TOOL_OPTIONS ${deploy_tool_options_arg}
     )
     install(SCRIPT ${deploy_script})
+    install(CODE "
+        set(APP_BUNDLE \"\${CMAKE_INSTALL_PREFIX}/konsoll.app\")
+        set(CODESIGN_IDENTITY \"${KONSOLL_CODESIGN_IDENTITY}\")
+        include(\"${CMAKE_CURRENT_SOURCE_DIR}/cmake/PruneBundle.cmake\")
+    ")
 
     add_custom_target(package-macos
         COMMAND ${CMAKE_COMMAND} --install ${CMAKE_BINARY_DIR} --config $<CONFIG>

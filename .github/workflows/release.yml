@@ -61,9 +61,8 @@ jobs:
         run: |
           cmake --build build/release --target package-macos
           APP=build/release/dist/konsoll.app
-          # macdeployqt ad-hoc signs the bundle; re-sign it as a whole so
-          # every nested framework and plugin is covered, then verify.
-          codesign --force --deep --sign - "$APP"
+          # The install step prunes unused Qt parts and ad-hoc signs the
+          # bundle (cmake/PruneBundle.cmake).
           codesign --verify --deep --strict --verbose=2 "$APP"
 
           VERSION=${GITHUB_REF_NAME#v}

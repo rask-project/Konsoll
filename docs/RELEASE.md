@@ -65,6 +65,14 @@ otool -L "$APP_BUNDLE/Contents/MacOS/konsoll"
 The Qt library entries from `otool` should point inside the app bundle using
 `@loader_path/../Frameworks`, not to the Qt installation used to build it.
 
+After Qt's deployment, `cmake/PruneBundle.cmake` removes what the app never
+loads and signs the bundle again (with `KONSOLL_CODESIGN_IDENTITY`, or
+ad-hoc without it): the Quick Controls styles other than macOS, Fusion and
+Basic (the QML import scanner deploys every style, since `QtQuick.Controls`
+lists them all as optional imports), `QtWidgets` with the widget style
+plugin, and the TLS and network-information plugins. If a new feature needs
+one of these, take it off the list there.
+
 ## 2. Save notarization credentials in Keychain
 
 Create an app-specific password in the Apple ID account, then store it in the
