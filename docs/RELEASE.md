@@ -8,7 +8,7 @@ creates an archive for distribution.
 
 - macOS with Xcode Command Line Tools and `xcrun`.
 - CMake 3.21.1+, Ninja, and the Qt 6.12 macOS arm64 kit, including Qt Quick,
-  CanvasPainter, Quick Controls, and Quick Dialogs.
+  Quick Controls, Quick Dialogs, and Qt SVG.
 - For public distribution: an Apple Developer Program account and a
   **Developer ID Application** certificate installed in the login keychain.
 - For notarization: an app-specific password for an Apple ID associated with
@@ -153,3 +153,26 @@ hdiutil create \
 If distributing the DMG, submit that DMG to `notarytool` as well, then run
 `xcrun stapler staple` and `xcrun stapler validate` on the DMG before publishing
 it. The ZIP workflow above staples the app and then recreates the ZIP.
+
+## CI/CD (GitHub Actions)
+
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request
+on an Apple Silicon runner (`macos-26`): it installs Qt 6.12 with
+[install-qt-action](https://github.com/jurplel/install-qt-action) (aqtinstall),
+checks formatting, builds Release, runs
+`konsoll --selftest` with `QT_QPA_PLATFORM=offscreen` and uploads an unsigned
+`.app` ZIP as a workflow artifact.
+
+`.github/workflows/release.yml` runs when a `v*` tag is pushed: it builds the
+Release bundle, runs the self-test, ad-hoc signs it (`codesign --sign -`),
+and publishes a GitHub Release with a ZIP, a DMG and `SHA256SUMS.txt`. It
+does not use a Developer ID, so the app is not notarized and users clear the
+quarantine flag once (README, "Install"). Steps 1–4 above remain the manual
+path for a Developer ID-signed, notarized build.
+
+Release:
+
+```sh
+git tag v3.5.0
+git push origin v3.5.0
+```

@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test (macOS arm64)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git describe --tags for the display version
+
+      - name: Install Qt 6.12
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.12.0"
+          host: mac
+          target: desktop
+          arch: clang_64
+          aqtversion: "==3.3.*"
+          cache: true
+
+      - name: Install tools
+        run: |
+          brew install ninja
+          pipx install clang-format==19.1.6
+
+      - name: Check formatting
+        run: QMLFORMAT="$QT_ROOT_DIR/bin/qmlformat" tools/format-code.sh --check
+
+      - name: Configure
+        run: |
+          cmake -S . -B build/ci -G Ninja \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64
+
+      - name: Build
+        run: cmake --build build/ci
+
+      - name: Self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: build/ci/konsoll.app/Contents/MacOS/konsoll --selftest
+
+      - name: Package (unsigned)
+        run: |
+          cmake --build build/ci --target package-macos
+          ditto -c -k --sequesterRsrc --keepParent build/ci/dist/konsoll.app \
+            build/ci/Konsoll-${GITHUB_SHA::7}-arm64-unsigned.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Konsoll-unsigned-arm64
+          path: build/ci/Konsoll-*-unsigned.zip
+          retention-days: 14

@@ -12,10 +12,26 @@ with a native Qt Quick scene-graph renderer, emulates a VT500-class terminal
 with the modern xterm, kitty and iTerm2 extensions, and offers an
 iTerm2-style see-through window with native Liquid Glass.
 
+## Install
+
+Download `Konsoll-VERSION-arm64.dmg` (or `.zip`) from the
+[Releases](https://github.com/rask-project/Konsoll/releases) page and move
+`konsoll.app` to `/Applications`. Requires macOS 14.4+ on Apple Silicon.
+
+The app is ad-hoc signed but not notarized by Apple, so Gatekeeper blocks the
+first launch. Clear the quarantine flag once:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/konsoll.app
+```
+
+or open it, then choose **System Settings → Privacy & Security → Open
+Anyway**.
+
 ## Requirements
 
 - macOS (Apple Silicon)
-- Qt 6.12 (Qt Quick, Qt CanvasPainter, Qt Quick Controls, Qt Quick Dialogs)
+- Qt 6.12 (Qt Quick, Qt Quick Controls, Qt Quick Dialogs, Qt SVG)
 - CMake 3.21.1+
 - A C++23 compiler (AppleClang / Xcode command-line tools)
 

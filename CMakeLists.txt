@@ -37,7 +37,7 @@ endif()
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.12 REQUIRED COMPONENTS Quick CanvasPainter QuickControls2 QuickDialogs2 Svg)
+find_package(Qt6 6.12 REQUIRED COMPONENTS Quick QuickControls2 QuickDialogs2 Svg)
 
 qt_standard_project_setup(REQUIRES 6.12)
 
@@ -186,7 +186,7 @@ target_compile_definitions(konsoll PRIVATE
 )
 
 target_link_libraries(konsoll
-    PRIVATE Qt6::Quick Qt6::CanvasPainter Qt6::QuickControls2 Qt6::QuickDialogs2 Qt6::Svg
+    PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::QuickDialogs2 Qt6::Svg
     "-framework QuartzCore"
     "-framework UserNotifications"
     z
