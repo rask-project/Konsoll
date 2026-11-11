@@ -19,6 +19,9 @@ namespace konsoll
 // -1 when unknown.
 int pointerCursorShape(const QByteArray &name);
 
+// KONSOLL_VERSION as the DA2 firmware version: "1.2.3" is 10203.
+int reportedVersionNumber();
+
 // ANSI/VT100/xterm parser that drives a Screen. Consumes raw PTY bytes and
 // maintains the SGR style state, OSC title and DA-reply bookkeeping.
 // A request the terminal cannot answer itself: it needs the clipboard, the

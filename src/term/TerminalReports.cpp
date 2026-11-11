@@ -26,14 +26,6 @@ QByteArray number(int value)
     return QByteArray::number(value);
 }
 
-// KONSOLL_VERSION "3.4.2" as the DA2 firmware version 30402.
-int versionNumber()
-{
-    const QList<QByteArray> parts = QByteArray(KONSOLL_VERSION).split('.');
-    const auto part = [&parts](qsizetype index) { return index < parts.size() ? parts[index].toInt() : 0; };
-    return (part(0) * 10000) + (part(1) * 100) + part(2);
-}
-
 // An OSC 10/11/12 / OSC 4 color reply value: rgb:rrrr/gggg/bbbb.
 QByteArray rgbSpec(unsigned int argb)
 {
@@ -104,6 +96,13 @@ constexpr std::array kTermCaps{
 
 } // namespace
 
+int reportedVersionNumber()
+{
+    const QList<QByteArray> parts = QByteArray(KONSOLL_VERSION).split('.');
+    const auto part = [&parts](qsizetype index) { return index < parts.size() ? parts[index].toInt() : 0; };
+    return (part(0) * 10000) + (part(1) * 100) + part(2);
+}
+
 void Terminal::setDefaultColors(unsigned int foreground, unsigned int background)
 {
     m_defaultFg = foreground;
@@ -134,7 +133,7 @@ void Terminal::handleDeviceAttributes(char prefix, int param)
         // scrolling (21), ANSI color (22) and rectangular editing (28).
         reply("\x1b[?64;4;6;21;22;28c");
     } else if (prefix == '>') {
-        reply("\x1b[>41;" + number(versionNumber()) + ";0c"); // DA2: VT420, firmware version
+        reply("\x1b[>41;" + number(reportedVersionNumber()) + ";0c"); // DA2: VT420, firmware version
     } else if (prefix == '=') {
         reply("\x1bP!|00000000\x1b\\"); // DA3: unit id
     }

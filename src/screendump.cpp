@@ -61,6 +61,15 @@ QByteArray printable(const QByteArray &bytes)
     return out;
 }
 
+// The replies that carry Konsoll's version (DA2 firmware, XTVERSION), with
+// the version replaced by VERSION, so the fixtures don't change on a release.
+QByteArray versionNeutral(QByteArray responses)
+{
+    responses.replace("\x1b[>41;" + QByteArray::number(reportedVersionNumber()) + ";0c", "\x1b[>41;VERSION;0c");
+    responses.replace(QByteArray("\x1bP>|Konsoll ") + KONSOLL_VERSION + "\x1b\\", "\x1bP>|Konsoll VERSION\x1b\\");
+    return responses;
+}
+
 } // namespace
 
 QByteArray dumpTerminal(Terminal &term, bool attrs)
@@ -96,7 +105,7 @@ QByteArray dumpTerminal(Terminal &term, bool attrs)
                " col=" + QByteArray::number(p.column) + " size=" + QByteArray::number(p.columns) + "x" +
                QByteArray::number(p.rows) + "\n";
     });
-    out += "--responses " + printable(term.takeResponses()) + "\n";
+    out += "--responses " + printable(versionNeutral(term.takeResponses())) + "\n";
     return out;
 }
 
