@@ -68,6 +68,17 @@ Rectangle {
         colorGroup: SystemPalette.Active
     }
 
+    // The strip covers AppKit's title bar, so its double-click never gets
+    // there: empty strip space does the system action (zoom by default).
+    // Tabs and buttons take their own presses and never reach this handler.
+    TapHandler {
+        acceptedButtons: Qt.LeftButton
+        onDoubleTapped: {
+            if (strip.windowTranslucency && strip.dragSourceIndex < 0)
+                strip.windowTranslucency.titleBarDoubleClicked();
+        }
+    }
+
     function tabRow(index) {
         if (index < firstRowCapacity)
             return 0;

@@ -1153,8 +1153,19 @@ void Terminal::setAltScreenMode(int mode, bool set)
         saveCursorState();
     }
     if (set) {
+        // The alternate screen starts with an empty keyboard stack.
+        if (!m_screen.inAltScreen()) {
+            m_mainKittyStack = m_kittyStack;
+            m_mainKittyDepth = m_kittyDepth;
+            m_kittyStack = {};
+            m_kittyDepth = 0;
+        }
         m_screen.enterAltScreen();
         return;
+    }
+    if (m_screen.inAltScreen()) {
+        m_kittyStack = m_mainKittyStack;
+        m_kittyDepth = m_mainKittyDepth;
     }
     // Leaving 1049 restores the main screen's DECSC cursor before the main
     // screen re-wraps; the pen and charsets follow. Alternate-screen images
@@ -1197,6 +1208,8 @@ void Terminal::fullReset()
     m_mouseModes = 0;
     m_kittyStack = {};
     m_kittyDepth = 0;
+    m_mainKittyStack = {};
+    m_mainKittyDepth = 0;
     m_cursorStyle = 0;
     m_titleStack.clear();
     if (!m_pointerShapes.isEmpty()) {

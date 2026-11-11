@@ -222,7 +222,7 @@ Item {
                             width: Math.max(0, parent.width - 36)
                             height: parent.height
 
-                            text: leafItem.session ? (leafItem.session.currentDirectory !== "" ? leafItem.session.currentDirectory : leafItem.session.title) : ""
+                            text: leafItem.session ? leafItem.session.displayTitle : ""
                             color: systemPalette.windowText
 
                             verticalAlignment: Text.AlignVCenter

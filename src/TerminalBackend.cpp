@@ -379,11 +379,13 @@ void TerminalBackend::emitTerminalEvents()
     if (m_terminal->titleDirty()) {
         m_title = m_terminal->title();
         emit titleChanged();
+        emit displayTitleChanged();
         m_terminal->clearTitleDirty();
     }
     if (m_terminal->currentDirectoryDirty()) {
         m_currentDirectory = m_terminal->currentDirectory();
         emit currentDirectoryChanged();
+        emit displayTitleChanged();
         m_terminal->clearCurrentDirectoryDirty();
     }
     if (m_terminal->remoteHostDirty()) {
@@ -430,7 +432,17 @@ void TerminalBackend::onForegroundChanged(const QString &name)
     }
     m_foregroundProcess = name;
     emit foregroundProcessChanged();
+    emit displayTitleChanged();
     updateProcessKind();
+}
+
+QString TerminalBackend::displayTitle() const
+{
+    // "?" is a job whose name could not be read.
+    if (hasForegroundProcess() && m_foregroundProcess != QStringLiteral("?")) {
+        return m_foregroundProcess;
+    }
+    return m_currentDirectory.isEmpty() ? m_title : m_currentDirectory;
 }
 
 void TerminalBackend::updateProcessKind()

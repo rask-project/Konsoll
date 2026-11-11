@@ -82,8 +82,7 @@ QString TerminalWorkspaceModel::title() const
     if (m_lastActiveSession == nullptr) {
         return m_title;
     }
-    const QString directory = m_lastActiveSession->currentDirectory();
-    return directory.isEmpty() ? m_lastActiveSession->title() : directory;
+    return m_lastActiveSession->displayTitle();
 }
 
 void TerminalWorkspaceModel::setCustomTitle(QString title)
@@ -167,22 +166,15 @@ void TerminalWorkspaceModel::refreshStatus()
             }
         });
     }
-    // The last active pane decides the icon; the others fill in.
-    if (const auto last = std::ranges::find(sessions, m_lastActiveSession); last != sessions.end()) {
-        std::rotate(sessions.begin(), last, std::next(last));
-    }
-
-    const auto withKind = std::ranges::find_if(sessions, [](const TerminalBackend *session) {
-        return session->processKindValue() != ProcessKind::None;
-    });
-    const auto withProgress =
-        std::ranges::find_if(sessions, [](const TerminalBackend *session) { return session->progressState() != 0; });
-    const bool busy = std::ranges::any_of(sessions, [](const TerminalBackend *session) {
-        return session->hasForegroundProcess() || session->commandRunning();
-    });
-    const ProcessKind kind = withKind == sessions.end() ? ProcessKind::None : (*withKind)->processKindValue();
-    const int progressState = withProgress == sessions.end() ? 0 : (*withProgress)->progressState();
-    const int progressValue = withProgress == sessions.end() ? 0 : (*withProgress)->progressValue();
+    // The icon follows the pane the user worked in last (else the first):
+    // switching panes switches the icon.
+    const auto last = std::ranges::find(sessions, m_lastActiveSession);
+    const TerminalBackend *session =
+        last != sessions.end() ? *last : (sessions.empty() ? nullptr : sessions.front());
+    const bool busy = session != nullptr && (session->hasForegroundProcess() || session->commandRunning());
+    const ProcessKind kind = session != nullptr ? session->processKindValue() : ProcessKind::None;
+    const int progressState = session != nullptr ? session->progressState() : 0;
+    const int progressValue = session != nullptr ? session->progressValue() : 0;
     const auto flags = static_cast<unsigned char>(busy ? (m_flags | BusyFlag) : (m_flags & ~BusyFlag));
 
     if (kind == m_processKind && progressState == m_progressState && progressValue == m_progressValue &&
@@ -391,8 +383,7 @@ void TerminalManager::connectSession(TerminalBackend *sessionPtr)
             workspace->notifySessionTitleChanged(sessionPtr);
         });
     };
-    connect(sessionPtr, &TerminalBackend::titleChanged, this, notifyWorkspaceTitle);
-    connect(sessionPtr, &TerminalBackend::currentDirectoryChanged, this, notifyWorkspaceTitle);
+    connect(sessionPtr, &TerminalBackend::displayTitleChanged, this, notifyWorkspaceTitle);
 }
 
 bool TerminalManager::moveWorkspaceTo(QObject *workspaceObject, QObject *targetObject, int index)

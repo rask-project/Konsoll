@@ -6,6 +6,7 @@ set(ICONS_SRC
     konsoll/svg/arrow-next.svg
     konsoll/svg/close.svg
     konsoll/svg/keyboard.svg
+    konsoll/svg/kind-agent.svg
     konsoll/svg/kind-build.svg
     konsoll/svg/kind-container.svg
     konsoll/svg/kind-database.svg

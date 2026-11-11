@@ -279,6 +279,20 @@ void queryReplies(int &failures)
                       "kitty: keyboard flags are a push/pop stack");
     }
     {
+        // qwen-code: a push on the main screen, another on the alternate
+        // screen, then a single pop after leaving it. The screens keep
+        // separate stacks, so the shell gets its legacy keys back.
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b[>1u\x1b[?1049h\x1b[?u");
+        const QByteArray freshAlt = term.takeResponses();
+        term.write("\x1b[>1u\x1b[>4u\x1b[?1049l\x1b[?u");
+        const QByteArray mainAgain = term.takeResponses();
+        term.write("\x1b[<u");
+        selfTestCheck(failures,
+                      freshAlt == "\x1b[?0u" && mainAgain == "\x1b[?1u" && term.kittyKeyboardFlags() == 0,
+                      "kitty: main and alternate screens keep separate stacks");
+    }
+    {
         Terminal term(4, 10, QStringLiteral("selftest"));
         term.write("\x1b[?1000h\x1b[?1006h");
         const QByteArray sgr = term.mouseReport(0, 1, 2, 0, 0);
@@ -881,9 +895,27 @@ void tabIndicators(int &failures)
                                 processKind(QStringLiteral("zsh")) == ProcessKind::None &&
                                 processKind(QStringLiteral("42")) == ProcessKind::None &&
                                 processKind(QString{}) == ProcessKind::None &&
+                                processKind(QStringLiteral("claude")) == ProcessKind::Agent &&
                                 processKindName(ProcessKind::Multiplexer) == QStringLiteral("multiplexer") &&
                                 processKindName(ProcessKind::None).isEmpty(),
                   "process kind: executable names, version suffixes and case");
+    selfTestCheck(
+        failures,
+        programName(QStringLiteral("/opt/homebrew/bin/nvim")) == QStringLiteral("nvim") &&
+            programName(QStringLiteral("/Users/u/.local/share/claude/versions/2.1.322")) == QStringLiteral("claude") &&
+            programName(QStringLiteral("/usr/local/bin/node"),
+                        {QStringLiteral("node"), QStringLiteral("--no-warnings"), QStringLiteral("/u/bin/codex")}) ==
+                QStringLiteral("codex") &&
+            programName(QStringLiteral("/usr/local/bin/node"), {QStringLiteral("node"), QStringLiteral("cli.mjs")}) ==
+                QStringLiteral("cli") &&
+            programName(QStringLiteral("/usr/local/bin/node"), {QStringLiteral("node")}) == QStringLiteral("node") &&
+            programName(QStringLiteral("/usr/bin/python3"),
+                        {QStringLiteral("python3"), QStringLiteral("-c"), QStringLiteral("import x")}) ==
+                QStringLiteral("python3") &&
+            programName(QStringLiteral("/usr/bin/python3.12"),
+                        {QStringLiteral("python3.12"), QStringLiteral("/u/bin/aider")}) == QStringLiteral("aider") &&
+            !isScriptInterpreter(QStringLiteral("zsh")),
+        "program name: versioned installs and interpreter scripts");
 }
 
 // Reflow keeps images and double-size lines with their text.

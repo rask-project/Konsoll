@@ -131,11 +131,15 @@ An in-house VT500-style state machine (no `libvterm`), validated against
   (`Cmd+T` / `Cmd+W`, named with `Cmd+Shift+T`, `Cmd+Tab` /
   `Cmd+Shift+Tab` to move through activation history); press and hold a tab
   to reorder it
-- **Tab indicators** — an icon for the program running in the tab (ssh and
-  mosh, editors, system monitors, containers, REPLs, database clients,
-  sudo, pagers, git, build tools, tmux), a plain shell icon at the prompt,
+- **Tab indicators** — an icon for the program running in the tab's last
+  active pane (ssh and mosh, editors, system monitors, containers, REPLs,
+  database clients, sudo, pagers, git, build tools, tmux, AI agents such as
+  Claude Code, Codex and Qwen Code), a plain shell icon at the prompt,
   a spinner while a job runs, and an
-  `OSC 9;4` progress ring. A background tab shows why it wants a look: new
+  `OSC 9;4` progress ring. Next to it the tab (and the pane header) shows
+  the running command's name, else the shell's directory. Double-clicking
+  empty tab-strip space zooms the window (or follows the system's
+  title-bar double-click setting). A background tab shows why it wants a look: new
   output, a finished (✓) or failed (✗) command (`OSC 133;D` exit status), or
   the bell
 - Nested horizontal/vertical split panes (`Cmd+D` / `Cmd+Shift+D`), each

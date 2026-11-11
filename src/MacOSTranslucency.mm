@@ -158,6 +158,25 @@ void setNativeWindowMovable(WId winId, bool movable)
     }
 }
 
+void performTitleBarDoubleClick(WId winId)
+{
+    NSWindow *const nsWindow = windowFromId(winId);
+    if (nsWindow == nil || ([nsWindow styleMask] & NSWindowStyleMaskFullScreen) != 0) {
+        return;
+    }
+    // AppleActionOnDoubleClick: "Maximize" / "Fill" (zoom), "Minimize" or
+    // "None"; older systems only set AppleMiniaturizeOnDoubleClick.
+    NSUserDefaults *const defaults = [NSUserDefaults standardUserDefaults];
+    NSString *const action = [defaults stringForKey:@"AppleActionOnDoubleClick"];
+    const bool minimize = action != nil ? [action isEqualToString:@"Minimize"]
+                                        : [defaults boolForKey:@"AppleMiniaturizeOnDoubleClick"];
+    if (minimize) {
+        [nsWindow performMiniaturize:nil];
+    } else if (![action isEqualToString:@"None"]) {
+        [nsWindow performZoom:nil];
+    }
+}
+
 void installEmptyWindowToolbar(WId winId, bool visible)
 {
     NSWindow *const nsWindow = windowFromId(winId);

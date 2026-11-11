@@ -423,10 +423,16 @@ private:
     unsigned char m_singleShift = 0;
     bool m_commandRunning = false;
     unsigned char m_mouseModes = 0;
-    // Kitty keyboard flags stack: [depth] holds the current flags, the
-    // entries below it the levels CSI > u pushed (at most 9).
-    std::array<unsigned char, 10> m_kittyStack{};
-    unsigned char m_kittyDepth = 0;
+    // Kitty keyboard flags stack of the screen in use: [depth] holds the
+    // current flags, the entries below it the levels CSI > u pushed (at
+    // most 8). The main and alternate screens keep separate stacks, as the
+    // protocol requires: the main screen's waits here while the alternate
+    // screen is up, so pushes left on the alternate screen go with it. The
+    // two depths (0-8) share a byte.
+    std::array<unsigned char, 9> m_kittyStack{};
+    std::array<unsigned char, 9> m_mainKittyStack{};
+    unsigned char m_kittyDepth : 4 = 0;
+    unsigned char m_mainKittyDepth : 4 = 0;
     unsigned char m_cursorStyle = 0;
 };
 

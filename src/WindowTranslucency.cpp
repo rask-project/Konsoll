@@ -83,6 +83,15 @@ void WindowTranslucency::setWindowMovable(bool movable)
     setNativeWindowMovable(window->winId(), movable);
 }
 
+void WindowTranslucency::titleBarDoubleClicked()
+{
+    auto const *window = qobject_cast<QWindow *>(m_window);
+    if (window == nullptr || (window->winId() == 0U)) {
+        return;
+    }
+    performTitleBarDoubleClick(window->winId());
+}
+
 void WindowTranslucency::apply() const
 {
     auto const *w = qobject_cast<QWindow *>(m_window);

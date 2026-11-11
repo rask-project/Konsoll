@@ -44,8 +44,9 @@ public:
     // Pause / resume notifier-driven reads (output backpressure).
     void pauseReading();
     void resumeReading();
-    // File name of the foreground job's executable ("nvim", "ssh"), "?" when
-    // it cannot be read, or empty while the shell itself is in the foreground.
+    // The program the foreground job runs (programName(): "nvim", "ssh",
+    // "claude", the script node runs), "?" when it cannot be read, or empty
+    // while the shell itself is in the foreground.
     QString foregroundProcessName() const;
 
     int pid() const { return m_pid; }

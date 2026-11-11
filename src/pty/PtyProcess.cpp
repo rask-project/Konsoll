@@ -1,5 +1,7 @@
 #include "PtyProcess.h"
 
+#include "ProcessKind.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QDebug>
@@ -9,6 +11,7 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cstdint>
@@ -20,6 +23,7 @@
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/param.h>
+#include <sys/sysctl.h>
 #include <termios.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -209,6 +213,34 @@ void execShellInChild(const QByteArray &shellBytes, const std::vector<char *> &a
     envPtrs.push_back(nullptr);
     ::execve(shellBytes.constData(), argv.data(), envPtrs.data());
     ::_exit(127);
+}
+
+// The arguments `pid` was started with (argv, including argv[0]); empty
+// when they cannot be read. KERN_PROCARGS2 holds argc, the executable path,
+// NUL padding, then argv and the environment, all NUL-terminated.
+QStringList processArguments(pid_t pid)
+{
+    int argumentMax = 0;
+    std::size_t length = sizeof(argumentMax);
+    std::array<int, 2> argMaxMib{CTL_KERN, KERN_ARGMAX};
+    if (::sysctl(argMaxMib.data(), argMaxMib.size(), &argumentMax, &length, nullptr, 0) != 0 || argumentMax <= 0) {
+        return {};
+    }
+    QByteArray buffer(argumentMax, '\0');
+    std::size_t size = buffer.size();
+    std::array<int, 3> mib{CTL_KERN, KERN_PROCARGS2, static_cast<int>(pid)};
+    int argc = 0;
+    if (::sysctl(mib.data(), mib.size(), buffer.data(), &size, nullptr, 0) != 0 || size <= sizeof(argc)) {
+        return {};
+    }
+    std::memcpy(&argc, buffer.constData(), sizeof(argc));
+    const QList<QByteArray> fields = buffer.first(static_cast<qsizetype>(size)).sliced(sizeof(argc)).split('\0');
+    QStringList arguments;
+    std::ranges::transform(fields | std::views::drop(1) |
+                               std::views::drop_while([](const QByteArray &field) { return field.isEmpty(); }) |
+                               std::views::take(std::max(argc, 0)),
+                           std::back_inserter(arguments), [](const QByteArray &field) { return QString::fromUtf8(field); });
+    return arguments;
 }
 
 } // namespace
@@ -446,7 +478,12 @@ QString PtyProcess::foregroundProcessName() const
     }
     std::array<char, PROC_PIDPATHINFO_MAXSIZE> path{};
     if (::proc_pidpath(group, path.data(), static_cast<std::uint32_t>(path.size())) > 0) {
-        return QFileInfo(QString::fromUtf8(path.data())).fileName();
+        // Scripts run by an interpreter are named by the script ("node
+        // .../bin/codex" -> "codex"), so their arguments are read too.
+        const QString executable = QString::fromUtf8(path.data());
+        return programName(executable, isScriptInterpreter(QFileInfo(executable).fileName())
+                                           ? processArguments(group)
+                                           : QStringList{});
     }
     // The leader may have exited while the rest of the group runs on; any
     // job still counts as a foreground process.

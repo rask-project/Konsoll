@@ -96,15 +96,47 @@ void checkTabIndicators(int &failures, TerminalManager &manager, TerminalBackend
     check(failures,
           waitFor("indicators: pager", [u, uWorkspace]() {
               return u->foregroundProcess() == QStringLiteral("less") && uWorkspace->processKind() == QStringLiteral("pager") &&
-                     uWorkspace->busy();
+                     uWorkspace->busy() && u->displayTitle() == QStringLiteral("less") &&
+                     uWorkspace->title() == QStringLiteral("less");
           }, 10000),
-          "indicators: foreground job name and kind reach the workspace");
+          "indicators: foreground job name, kind and title reach the workspace");
     u->writeText("q");
     check(failures,
           waitFor("indicators: back at the prompt", [u, uWorkspace]() {
-              return u->foregroundProcess().isEmpty() && uWorkspace->processKind().isEmpty();
+              return u->foregroundProcess().isEmpty() && uWorkspace->processKind().isEmpty() &&
+                     uWorkspace->title() != QStringLiteral("less");
           }, 10000),
           "indicators: kind cleared at the prompt");
+    // An interpreter's script names the program (agents installed with npm
+    // run as "node .../bin/codex").
+    u->writeText("printf 'sleep 30\\n' > \"${TMPDIR:-/tmp}/codex.pl\"; perl \"${TMPDIR:-/tmp}/codex.pl\"\n");
+    check(failures,
+          waitFor("indicators: agent script", [u, uWorkspace]() {
+              return u->foregroundProcess() == QStringLiteral("codex") && uWorkspace->processKind() == QStringLiteral("agent");
+          }, 10000),
+          "indicators: interpreter script names the program");
+    u->writeText("\x03");
+    check(failures,
+          waitFor("indicators: agent ended", [u]() { return u->foregroundProcess().isEmpty(); }, 10000),
+          "indicators: agent script interrupted");
+    // The icon follows the pane worked in last.
+    u->writeText("less /etc/hosts\n");
+    check(failures,
+          waitFor("indicators: pager before split",
+                  [uWorkspace]() { return uWorkspace->processKind() == QStringLiteral("pager"); }, 10000),
+          "indicators: pager in the first pane");
+    manager.splitActive(static_cast<int>(Qt::Horizontal));
+    auto *v = activeSession(manager);
+    check(failures,
+          v != u && waitFor("indicators: split pane at the prompt", [uWorkspace]() {
+              return uWorkspace->processKind().isEmpty() && !uWorkspace->busy();
+          }, 10000),
+          "indicators: the new pane's prompt replaces the pager icon");
+    manager.activateSession(u);
+    check(failures, uWorkspace->processKind() == QStringLiteral("pager"),
+          "indicators: activating the pager pane brings its icon back");
+    u->writeText("q");
+    manager.closeSession(v);
     manager.activateSession(other);
     u->writeText("printf '\\e]9;4;1;30\\a'; false\n");
     check(failures,

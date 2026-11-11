@@ -12,6 +12,10 @@
 void makeWindowTranslucent(WId winId, const QColor &color, qreal alpha);
 void setWindowBlurEnabled(WId winId, bool enabled, qreal alpha);
 void setNativeWindowMovable(WId winId, bool movable);
+// What a double-click on the title bar does, per System Settings (Desktop &
+// Dock): zoom (the default), minimize, or nothing. QML calls it from the
+// tab strip, which covers AppKit's own title bar and so its handling.
+void performTitleBarDoubleClick(WId winId);
 void installEmptyWindowToolbar(WId winId, bool visible);
 
 // Liquid Glass (macOS 26+): native NSGlassEffectViews placed behind the Qt

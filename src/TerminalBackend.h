@@ -46,6 +46,9 @@ class TerminalBackend : public QObject
 
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
     Q_PROPERTY(QString currentDirectory READ currentDirectory NOTIFY currentDirectoryChanged)
+    // What the tab and pane header show: the running command's name, else
+    // the shell's directory, else the program's title.
+    Q_PROPERTY(QString displayTitle READ displayTitle NOTIFY displayTitleChanged)
     Q_PROPERTY(QString remoteHost READ remoteHost NOTIFY remoteHostChanged)
     Q_PROPERTY(int rows READ rows NOTIFY sizeChanged)
     Q_PROPERTY(int cols READ cols NOTIFY sizeChanged)
@@ -209,6 +212,7 @@ public:
 
     QString title() const { return m_title; }
     QString currentDirectory() const { return m_currentDirectory; }
+    QString displayTitle() const;
     QString remoteHost() const { return m_remoteHost; }
     int rows() const { return m_rows; }
     int cols() const { return m_cols; }
@@ -233,6 +237,7 @@ signals:
     void frameReady();
     void titleChanged();
     void currentDirectoryChanged();
+    void displayTitleChanged();
     void remoteHostChanged();
     void colorSchemeChanged();
     void processExited(int code);

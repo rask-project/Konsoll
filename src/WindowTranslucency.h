@@ -33,6 +33,9 @@ public:
     void setFullScreen(bool fullScreen);
 
     Q_INVOKABLE void setWindowMovable(bool movable);
+    // A double-click on empty title-bar space: the system's action (zoom,
+    // minimize or nothing).
+    Q_INVOKABLE void titleBarDoubleClicked();
 
 signals:
     void windowChanged();

@@ -31,9 +31,11 @@ class TerminalLayoutNode final : public QObject
 
 public:
     explicit TerminalLayoutNode(TerminalBackend *session);
-    TerminalLayoutNode(Qt::Orientation orientation,
-                       std::unique_ptr<TerminalLayoutNode> first,
-                       std::unique_ptr<TerminalLayoutNode> second);
+    TerminalLayoutNode(
+        Qt::Orientation orientation,
+        std::unique_ptr<TerminalLayoutNode> first,
+        std::unique_ptr<TerminalLayoutNode> second
+    );
 
     bool isLeaf() const { return m_session != nullptr; }
     int orientation() const { return static_cast<int>(m_orientation); }
@@ -64,9 +66,9 @@ class TerminalWorkspaceModel final : public QObject
     // (new output), "success" / "failure" (a command finished with that
     // exit status) or "bell"; empty when nothing happened or it is active.
     Q_PROPERTY(QString attention READ attention NOTIFY attentionChanged)
-    // The panes' state for the tab icon: the ProcessKind name of the job in
-    // the last active pane (else in any pane), whether any pane runs a
-    // job, and the first OSC 9 ; 4 progress (Terminal::ProgressState, 0-100).
+    // The last active pane's state for the tab icon: the ProcessKind name of
+    // its job, whether it runs one, and its OSC 9 ; 4 progress
+    // (Terminal::ProgressState, 0-100).
     Q_PROPERTY(QString processKind READ processKind NOTIFY statusChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY statusChanged)
     Q_PROPERTY(int progressState READ progressState NOTIFY statusChanged)
@@ -81,7 +83,13 @@ public:
     void setCustomTitle(QString title);
     // Attention levels, from least to most important; a higher one replaces
     // a lower one until the workspace is activated.
-    enum class Attention : std::uint8_t { None, Activity, Success, Failure, Bell };
+    enum class Attention : std::uint8_t {
+        None,
+        Activity,
+        Success,
+        Failure,
+        Bell
+    };
 
     QString attention() const;
     // Records `level` unless the workspace is active.
@@ -129,7 +137,7 @@ class TerminalManager : public QObject
 {
     Q_OBJECT
 
-    QML_ELEMENT
+    QML_NAMED_ELEMENT(TerminalManager)
 
     Q_PROPERTY(QObject *window READ window WRITE setWindow NOTIFY windowChanged)
     Q_PROPERTY(QVariantList workspaces READ workspaces NOTIFY workspacesChanged)
@@ -138,7 +146,12 @@ class TerminalManager : public QObject
 
 public:
     // The side of a target pane a dragged pane lands on.
-    enum PaneEdge : std::uint8_t { PaneEdgeLeft, PaneEdgeTop, PaneEdgeRight, PaneEdgeBottom };
+    enum PaneEdge : quint8 {
+        PaneEdgeLeft,
+        PaneEdgeTop,
+        PaneEdgeRight,
+        PaneEdgeBottom
+    };
     Q_ENUM(PaneEdge)
 
     explicit TerminalManager(QObject *parent = nullptr);
@@ -222,11 +235,11 @@ private:
     TerminalBackend *mostRecentlyActiveSession() const;
     TerminalBackend *firstValidSessionIn(TerminalWorkspaceModel *workspace) const;
     TerminalBackend *nextActiveSession(TerminalBackend *fallback) const;
-    std::unique_ptr<TerminalLayoutNode> *findNodeSlot(
-        std::unique_ptr<TerminalLayoutNode> &node, TerminalBackend *session) const;
+    std::unique_ptr<TerminalLayoutNode> *
+    findNodeSlot(std::unique_ptr<TerminalLayoutNode> &node, TerminalBackend *session) const;
     // The slot holding the split whose direct child is the leaf of `session`.
-    std::unique_ptr<TerminalLayoutNode> *findParentSlot(
-        std::unique_ptr<TerminalLayoutNode> &node, TerminalBackend *session) const;
+    std::unique_ptr<TerminalLayoutNode> *
+    findParentSlot(std::unique_ptr<TerminalLayoutNode> &node, TerminalBackend *session) const;
     void setActiveSession(TerminalBackend *session, bool record);
     void recordActivation(TerminalBackend *session);
     void pruneSession(TerminalBackend *session);

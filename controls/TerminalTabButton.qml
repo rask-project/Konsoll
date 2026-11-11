@@ -21,7 +21,8 @@ TabButton {
     readonly property string tabTitle: tab.workspace ? (tab.workspace.title || "Konsoll") : "Konsoll"
     readonly property color systemAccent: systemPalette.accent
 
-    // Tab indicators (TerminalWorkspaceModel): the leading slot shows OSC 9;4
+    // Tab indicators (TerminalWorkspaceModel), from the workspace's last
+    // active pane: the leading slot shows OSC 9;4
     // progress, else the kind of program running, else a spinner while a job
     // runs, else a plain shell icon at the prompt; the trailing badge says
     // why a background tab wants a look.
@@ -48,7 +49,8 @@ TabButton {
             pager: qsTr("Pager"),
             git: qsTr("Git"),
             build: qsTr("Build"),
-            multiplexer: qsTr("Terminal multiplexer")
+            multiplexer: qsTr("Terminal multiplexer"),
+            agent: qsTr("AI agent")
         })
     readonly property var attentionNames: ({
             activity: qsTr("New output"),

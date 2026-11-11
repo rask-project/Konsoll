@@ -1,5 +1,8 @@
 #include "ProcessKind.h"
 
+#include <QDir>
+#include <QFileInfo>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -30,35 +33,97 @@ constexpr auto kGit = std::to_array({"git"sv, "gitui"sv, "lazygit"sv, "tig"sv});
 constexpr auto kBuild = std::to_array({"cargo"sv, "cmake"sv, "ctest"sv, "go"sv, "gradle"sv, "make"sv, "mvn"sv, "ninja"sv,
                                        "npm"sv, "pnpm"sv, "swift"sv, "xcodebuild"sv, "yarn"sv});
 constexpr auto kMultiplexer = std::to_array({"screen"sv, "tmux"sv, "zellij"sv});
+constexpr auto kAgent = std::to_array({"aider"sv, "amp"sv, "claude"sv, "codex"sv, "copilot"sv, "crush"sv,
+                                       "cursor-agent"sv, "gemini"sv, "goose"sv, "opencode"sv, "qwen"sv});
+
+// Interpreters whose script argument names the program.
+constexpr auto kInterpreters = std::to_array({"bun"sv, "node"sv, "perl"sv, "python"sv, "ruby"sv});
+// Options after which the interpreter runs inline code, not a script.
+constexpr auto kInlineCodeOptions = std::to_array({"-c"sv, "-e"sv, "-p"sv, "--eval"sv, "--print"sv});
+// Script extensions dropped from the program name ("codex.js" -> "codex").
+constexpr auto kScriptSuffixes = std::to_array({"cjs"sv, "js"sv, "mjs"sv, "pl"sv, "py"sv, "rb"sv, "ts"sv});
 
 // The executables of each kind, indexed by ProcessKind.
 constexpr auto kExecutables = std::to_array<std::span<const std::string_view>>(
-    {{}, kRemote, kEditor, kMonitor, kContainer, kRepl, kDatabase, kPrivileged, kPager, kGit, kBuild, kMultiplexer});
+    {{}, kRemote, kEditor, kMonitor, kContainer, kRepl, kDatabase, kPrivileged, kPager, kGit, kBuild, kMultiplexer, kAgent});
 
 // processKindName(), indexed by ProcessKind.
 constexpr auto kKindNames = std::to_array({""sv, "remote"sv, "editor"sv, "monitor"sv, "container"sv, "repl"sv,
                                            "database"sv, "privileged"sv, "pager"sv, "git"sv, "build"sv,
-                                           "multiplexer"sv});
+                                           "multiplexer"sv, "agent"sv});
 
-constexpr std::size_t kKindCount = static_cast<std::size_t>(ProcessKind::Multiplexer) + 1;
+constexpr std::size_t kKindCount = static_cast<std::size_t>(ProcessKind::Agent) + 1;
 static_assert(kExecutables.size() == kKindCount && kKindNames.size() == kKindCount);
+
+// `name` lowered and without a version suffix: "Python3.12" -> "python";
+// empty when it is only a version ("2.1.3").
+QByteArray baseName(const QString &name)
+{
+    QByteArray lowered = name.toLower().toUtf8();
+    const std::string_view view{lowered.constData(), static_cast<std::size_t>(lowered.size())};
+    const auto versionStart = view.find_last_not_of("0123456789.");
+    lowered.truncate(versionStart == std::string_view::npos ? 0 : static_cast<qsizetype>(versionStart + 1));
+    return lowered;
+}
+
+std::string_view toView(const QByteArray &bytes)
+{
+    return {bytes.constData(), static_cast<std::size_t>(bytes.size())};
+}
+
+// The program a script path names: its file name without a script
+// extension.
+QString scriptName(const QString &path)
+{
+    const QFileInfo info(path);
+    const QByteArray suffix = info.suffix().toLower().toUtf8();
+    return std::ranges::contains(kScriptSuffixes, toView(suffix)) ? info.completeBaseName() : info.fileName();
+}
 
 } // namespace
 
 ProcessKind processKind(const QString &executableName)
 {
     // "python3.12" / "sqlite3" -> base name; "Python" (framework) -> python.
-    const QByteArray lowered = executableName.toLower().toUtf8();
-    std::string_view name{lowered.constData(), static_cast<std::size_t>(lowered.size())};
-    const auto versionStart = name.find_last_not_of("0123456789.");
-    name = versionStart == std::string_view::npos ? std::string_view{} : name.substr(0, versionStart + 1);
-    if (name.empty()) {
+    const QByteArray name = baseName(executableName);
+    if (name.isEmpty()) {
         return ProcessKind::None;
     }
     const auto kinds = std::views::iota(std::size_t{1}, kKindCount);
     const auto match = std::ranges::find_if(
-        kinds, [name](std::size_t kind) { return std::ranges::contains(kExecutables.at(kind), name); });
+        kinds, [&name](std::size_t kind) { return std::ranges::contains(kExecutables.at(kind), toView(name)); });
     return match == kinds.end() ? ProcessKind::None : static_cast<ProcessKind>(*match);
+}
+
+bool isScriptInterpreter(const QString &executableName)
+{
+    return std::ranges::contains(kInterpreters, toView(baseName(executableName)));
+}
+
+QString programName(const QString &executablePath, const QStringList &arguments)
+{
+    const QFileInfo executable(executablePath);
+    const QString name = executable.fileName();
+    if (!name.isEmpty() && baseName(name).isEmpty()) {
+        // A binary named by its version: ".../claude/versions/2.1.3".
+        const QDir directory = executable.dir();
+        const QString parent = directory.dirName();
+        return parent.compare(QStringLiteral("versions"), Qt::CaseInsensitive) == 0
+                   ? QFileInfo(directory.absolutePath()).dir().dirName()
+                   : parent;
+    }
+    if (!isScriptInterpreter(name)) {
+        return name;
+    }
+    // The first argument after the interpreter's options is the script;
+    // without one (or with inline code: "python -c ...") the interpreter
+    // names the program.
+    const auto afterInterpreter = arguments | std::views::drop(1);
+    const auto script = std::ranges::find_if(afterInterpreter, [](const QString &argument) {
+        const QByteArray option = argument.toUtf8();
+        return !argument.startsWith(u'-') || std::ranges::contains(kInlineCodeOptions, toView(option));
+    });
+    return script == afterInterpreter.end() || script->startsWith(u'-') ? name : scriptName(*script);
 }
 
 QString processKindName(ProcessKind kind)
