@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/konsoll.png" alt="Konsoll icon" width="128">
+</p>
+
 # Konsoll
 
 A native terminal for macOS, built in QML (Qt Quick) on top of Qt 6.12.
