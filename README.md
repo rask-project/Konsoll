@@ -12,6 +12,8 @@ with a native Qt Quick scene-graph renderer, emulates a VT500-class terminal
 with the modern xterm, kitty and iTerm2 extensions, and offers an
 iTerm2-style see-through window with native Liquid Glass.
 
+> Konsoll is Norwegian for "console".
+
 ## Install
 
 Download `Konsoll-VERSION-arm64.dmg` (or `.zip`) from the
