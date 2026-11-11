@@ -51,8 +51,13 @@ public:
         Stopped
     };
 
-    BackgroundJob(std::unique_ptr<TerminalBackend> session, int number, QString title, QString command,
-                  QString directory);
+    BackgroundJob(
+        std::unique_ptr<TerminalBackend> session,
+        int number,
+        QString title,
+        QString command,
+        QString directory
+    );
     ~BackgroundJob() override;
     Q_DISABLE_COPY_MOVE(BackgroundJob)
 
@@ -147,8 +152,8 @@ public:
     Q_INVOKABLE bool openInWindow(QObject *job, QObject *manager);
 
     Q_INVOKABLE void saveCommand(const QString &name, const QString &command, const QString &directory);
-    Q_INVOKABLE void updateSavedCommand(int index, const QString &name, const QString &command,
-                                        const QString &directory);
+    Q_INVOKABLE void
+    updateSavedCommand(int index, const QString &name, const QString &command, const QString &directory);
     Q_INVOKABLE void removeSavedCommand(int index);
     Q_INVOKABLE void moveSavedCommand(int from, int to);
 
@@ -165,8 +170,12 @@ signals:
 
 private:
     BackgroundJob *ownedJob(const QObject *job) const;
-    BackgroundJob *addJob(std::unique_ptr<TerminalBackend> session, const QString &title, const QString &command,
-                          const QString &directory);
+    BackgroundJob *addJob(
+        std::unique_ptr<TerminalBackend> session,
+        const QString &title,
+        const QString &command,
+        const QString &directory
+    );
     void eraseJob(BackgroundJob *job);
     void notifyRunningCount();
     void loadSaved();

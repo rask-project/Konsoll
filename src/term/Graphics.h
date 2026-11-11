@@ -60,10 +60,10 @@ struct GraphicsImage {
     std::uint64_t serial{0}; // unique per decoded frame, for texture caches
     std::uint64_t number{0}; // kitty image number (I=)
     std::vector<GraphicsFrame> frames;
-    std::int64_t current{0};  // index of the frame shown
-    std::int64_t elapsed{0};  // ms the current frame has shown
-    std::int64_t running{0};  // 1 while the animation plays (a=a,s=3 / s=2)
-    std::int64_t loops{0};    // loops left; 0 = forever
+    std::int64_t current{0}; // index of the frame shown
+    std::int64_t elapsed{0}; // ms the current frame has shown
+    std::int64_t running{0}; // 1 while the animation plays (a=a,s=3 / s=2)
+    std::int64_t loops{0};   // loops left; 0 = forever
 };
 
 // The result of a kitty graphics command: the reply for the PTY and how far
@@ -96,8 +96,13 @@ public:
     // iTerm2 OSC 1337 File= (and MultipartFile / FilePart / FileEnd): `args`
     // are the File= key=value pairs, `base64` the file. Only inline=1 files
     // are shown. `screenColumns` / `screenRows` size the N% dimensions.
-    ItermResult placeItermFile(const QByteArray &args, const QByteArray &base64, const GraphicsContext &context,
-                               int screenColumns, int screenRows);
+    ItermResult placeItermFile(
+        const QByteArray &args,
+        const QByteArray &base64,
+        const GraphicsContext &context,
+        int screenColumns,
+        int screenRows
+    );
 
     // Deletes placements whose top row is in [first, last] on the main
     // (alternate = 0) or alternate screen.
@@ -127,8 +132,8 @@ private:
     };
 
     KittyResult runKitty(const QByteArray &control, const QByteArray &payload, const GraphicsContext &context);
-    KittyResult transmit(const QByteArray &control, const QByteArray &payload, const GraphicsContext &context,
-                         bool display);
+    KittyResult
+    transmit(const QByteArray &control, const QByteArray &payload, const GraphicsContext &context, bool display);
     KittyResult place(const QByteArray &control, std::uint32_t imageId, const GraphicsContext &context);
     KittyResult addFrame(const QByteArray &control, const QByteArray &payload);
     void controlAnimation(const QByteArray &control);

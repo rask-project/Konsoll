@@ -34,8 +34,7 @@ class TerminalBackend : public QObject
     Q_OBJECT
 
     // Session lifecycle (see "Session lifecycle" in AGENTS.md).
-    enum class SessionState : std::uint8_t
-    {
+    enum class SessionState : std::uint8_t {
         Created,
         Starting,
         Running,
@@ -205,8 +204,9 @@ public:
     std::vector<VisibleImage> visibleImages() const;
     // Images shown through kitty Unicode placeholders on the visible rows.
     void appendPlaceholderImages(std::vector<VisibleImage> &out) const;
-    std::optional<VisibleImage> placeholderSlice(std::uint32_t imageId, std::uint32_t placementId, int imageRow,
-                                                 int imageColumn, int row, int col) const;
+    std::optional<VisibleImage>
+    placeholderSlice(std::uint32_t imageId, std::uint32_t placementId, int imageRow, int imageColumn, int row, int col)
+        const;
     // DEC line size of a visible row (Screen::SingleLine ... DoubleHeightBottom).
     Q_INVOKABLE int visibleRowSize(int row) const;
 

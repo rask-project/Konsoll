@@ -10,7 +10,8 @@
 
 #include <cstdint>
 
-namespace konsoll {
+namespace konsoll
+{
 
 // A QML item backed by a native Liquid Glass view (NSGlassEffectView, macOS
 // 26+). The native view lives behind the Qt content view and follows this
@@ -18,7 +19,8 @@ namespace konsoll {
 // frame, so QML content drawn over the item appears on top of real glass.
 // Where `supported` is false nothing native is created and QML should fall
 // back to its own background.
-class GlassEffect : public QQuickItem {
+class GlassEffect : public QQuickItem
+{
     Q_OBJECT
     QML_ELEMENT
 

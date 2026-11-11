@@ -52,10 +52,8 @@ class TerminalRenderer : public QQuickItem
     // The user's cursor style (Settings > Appearance), used until a program
     // picks one with DECSCUSR (and again after CSI 0 SP q): 0 block,
     // 1 underline, 2 bar, 3 hollow block.
-    Q_PROPERTY(int defaultCursorShape READ defaultCursorShape WRITE setDefaultCursorShape NOTIFY
-                   defaultCursorChanged)
-    Q_PROPERTY(bool defaultCursorBlink READ defaultCursorBlink WRITE setDefaultCursorBlink NOTIFY
-                   defaultCursorChanged)
+    Q_PROPERTY(int defaultCursorShape READ defaultCursorShape WRITE setDefaultCursorShape NOTIFY defaultCursorChanged)
+    Q_PROPERTY(bool defaultCursorBlink READ defaultCursorBlink WRITE setDefaultCursorBlink NOTIFY defaultCursorChanged)
 
 public:
     explicit TerminalRenderer(QQuickItem *parent = nullptr);
@@ -158,7 +156,7 @@ private:
     // Members ordered heaviest-first for -Wpadded (see AGENTS.md).
     std::vector<Row> m_rows;
     std::vector<TerminalBackend::VisibleImage> m_images; // kitty / sixel images on screen
-    std::vector<unsigned char> m_dirty; // per row: text node needs rebuild
+    std::vector<unsigned char> m_dirty;                  // per row: text node needs rebuild
     QPointer<TerminalBackend> m_session;
     QFont m_baseFont;
     QFont m_font;
@@ -166,8 +164,8 @@ private:
     QFont m_italicFont;
     QFont m_boldItalicFont;
     std::unordered_map<char32_t, bool> m_coverage; // code point -> in m_font
-    QRawFont m_rawFont; // primary family only, for coverage checks
-    QTimer m_blinkTimer; // runs only while blinking cells or a blinking cursor are shown
+    QRawFont m_rawFont;                            // primary family only, for coverage checks
+    QTimer m_blinkTimer;                           // runs only while blinking cells or a blinking cursor are shown
     qreal m_cellWidth{8.0};
     qreal m_cellHeight{16.0};
     QColor m_accent{0x0a, 0x84, 0xff};

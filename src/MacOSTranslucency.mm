@@ -168,8 +168,8 @@ void performTitleBarDoubleClick(WId winId)
     // "None"; older systems only set AppleMiniaturizeOnDoubleClick.
     NSUserDefaults *const defaults = [NSUserDefaults standardUserDefaults];
     NSString *const action = [defaults stringForKey:@"AppleActionOnDoubleClick"];
-    const bool minimize = action != nil ? [action isEqualToString:@"Minimize"]
-                                        : [defaults boolForKey:@"AppleMiniaturizeOnDoubleClick"];
+    const bool minimize =
+        action != nil ? [action isEqualToString:@"Minimize"] : [defaults boolForKey:@"AppleMiniaturizeOnDoubleClick"];
     if (minimize) {
         [nsWindow performMiniaturize:nil];
     } else if (![action isEqualToString:@"None"]) {

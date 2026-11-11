@@ -9,13 +9,15 @@
 
 #include <memory>
 
-namespace konsoll {
+namespace konsoll
+{
 
 // Owns a pseudo-terminal running the user's shell. All descriptor and
 // child-process operations run in the owning thread (the session worker
 // thread): the master fd is read there via a QSocketNotifier and writes go
 // straight to the master fd from that thread.
-class PtyProcess : public QObject {
+class PtyProcess : public QObject
+{
     Q_OBJECT
     Q_DISABLE_COPY_MOVE(PtyProcess)
 
@@ -26,8 +28,14 @@ public:
     // Launch `shellPath` in a fresh PTY sized `cols`x`rows`. A non-empty
     // `command` runs in an interactive login shell (`-i -c command`), which
     // exits with the command's status, instead of an interactive prompt.
-    bool start(const QString &shellPath, int cols, int rows, const QString &workingDirectory = {},
-               const QString &remoteHostToken = {}, const QString &command = {});
+    bool start(
+        const QString &shellPath,
+        int cols,
+        int rows,
+        const QString &workingDirectory = {},
+        const QString &remoteHostToken = {},
+        const QString &command = {}
+    );
 
     void write(const QByteArray &data) const;
     void resize(int cols, int rows) const;

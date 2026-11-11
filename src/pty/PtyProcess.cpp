@@ -4,8 +4,8 @@
 #include "ShellFunctions.h"
 
 #include <QCoreApplication>
-#include <QDir>
 #include <QDebug>
+#include <QDir>
 #include <QFileInfo>
 #include <QLoggingCategory>
 #include <QProcessEnvironment>
@@ -25,8 +25,8 @@
 #include <sys/ioctl.h>
 #include <sys/param.h>
 #include <sys/sysctl.h>
-#include <termios.h>
 #include <sys/wait.h>
+#include <termios.h>
 #include <unistd.h>
 #include <util.h>
 
@@ -68,22 +68,20 @@ void prepareZshIntegration(const QString &supportDir, ShellIntegration &integrat
     }
     QDir().mkpath(integration.startupDir);
     installResource(QStringLiteral(":/shell-integration/konsoll.zsh"), integration.integrationFile);
-    const QByteArray sourceHelper =
-        "typeset -g _KONSOLL_WRAPPER_ZDOTDIR=\"$ZDOTDIR\"\n"
-        "typeset -g _KONSOLL_USER_ZDOTDIR=\"${KONSOLL_USER_ZDOTDIR:-$HOME}\"\n"
-        "function _konsoll_source_startup_file() {\n"
-        "  local file=\"$1\"\n"
-        "  local startup_path=\"$_KONSOLL_USER_ZDOTDIR/$file\"\n"
-        "  if [[ -r \"$startup_path\" ]]; then\n"
-        "    ZDOTDIR=\"$_KONSOLL_USER_ZDOTDIR\"\n"
-        "    source \"$startup_path\"\n"
-        "    _KONSOLL_USER_ZDOTDIR=\"${ZDOTDIR:-$_KONSOLL_USER_ZDOTDIR}\"\n"
-        "  fi\n"
-        "  ZDOTDIR=\"$_KONSOLL_WRAPPER_ZDOTDIR\"\n"
-        "}\n";
+    const QByteArray sourceHelper = "typeset -g _KONSOLL_WRAPPER_ZDOTDIR=\"$ZDOTDIR\"\n"
+                                    "typeset -g _KONSOLL_USER_ZDOTDIR=\"${KONSOLL_USER_ZDOTDIR:-$HOME}\"\n"
+                                    "function _konsoll_source_startup_file() {\n"
+                                    "  local file=\"$1\"\n"
+                                    "  local startup_path=\"$_KONSOLL_USER_ZDOTDIR/$file\"\n"
+                                    "  if [[ -r \"$startup_path\" ]]; then\n"
+                                    "    ZDOTDIR=\"$_KONSOLL_USER_ZDOTDIR\"\n"
+                                    "    source \"$startup_path\"\n"
+                                    "    _KONSOLL_USER_ZDOTDIR=\"${ZDOTDIR:-$_KONSOLL_USER_ZDOTDIR}\"\n"
+                                    "  fi\n"
+                                    "  ZDOTDIR=\"$_KONSOLL_WRAPPER_ZDOTDIR\"\n"
+                                    "}\n";
     const std::array<std::pair<QString, QByteArray>, 3> startupFiles{{
-        {QStringLiteral(".zshenv"),
-         sourceHelper + "_konsoll_source_startup_file .zshenv\n"},
+        {QStringLiteral(".zshenv"), sourceHelper + "_konsoll_source_startup_file .zshenv\n"},
         {QStringLiteral(".zprofile"), "_konsoll_source_startup_file .zprofile\n"},
         {QStringLiteral(".zshrc"),
          "_konsoll_source_startup_file .zshrc\n"
@@ -115,15 +113,14 @@ void prepareBashIntegration(const QString &supportDir, ShellIntegration &integra
     installResource(QStringLiteral(":/shell-integration/konsoll.bash"), integration.integrationFile);
     QSaveFile profile(integration.startupDir + QStringLiteral("/.bash_profile"));
     if (profile.open(QIODevice::WriteOnly)) {
-        profile.write(
-            "export HOME=\"$KONSOLL_ORIGINAL_HOME\"\n"
-            "for _konsoll_profile in .bash_profile .bash_login .profile; do\n"
-            "  if [[ -r \"$HOME/$_konsoll_profile\" ]]; then\n"
-            "    source \"$HOME/$_konsoll_profile\"\n"
-            "    break\n"
-            "  fi\n"
-            "done\n"
-            "source \"$KONSOLL_SHELL_INTEGRATION\"\n");
+        profile.write("export HOME=\"$KONSOLL_ORIGINAL_HOME\"\n"
+                      "for _konsoll_profile in .bash_profile .bash_login .profile; do\n"
+                      "  if [[ -r \"$HOME/$_konsoll_profile\" ]]; then\n"
+                      "    source \"$HOME/$_konsoll_profile\"\n"
+                      "    break\n"
+                      "  fi\n"
+                      "done\n"
+                      "source \"$KONSOLL_SHELL_INTEGRATION\"\n");
         profile.commit();
     }
 }
@@ -135,9 +132,15 @@ void prepareFishIntegration(const QString &supportDir, ShellIntegration &integra
     integration.shellArgs = {"--init-command", "source $KONSOLL_FISH_INTEGRATION"};
 }
 
-std::vector<QByteArray>
-buildPtyEnvironment(const ShellIntegration &integration, bool isZsh, bool isBash, bool isFish, int cols, int rows,
-                     const QString &remoteHostToken)
+std::vector<QByteArray> buildPtyEnvironment(
+    const ShellIntegration &integration,
+    bool isZsh,
+    bool isBash,
+    bool isFish,
+    int cols,
+    int rows,
+    const QString &remoteHostToken
+)
 {
     // Build the full environment in the parent (before fork) so the child runs
     // only async-signal-safe calls between fork() and exec(). setenv()
@@ -187,14 +190,19 @@ buildPtyEnvironment(const ShellIntegration &integration, bool isZsh, bool isBash
     return envp;
 }
 
-void execShellInChild(const QByteArray &shellBytes, const std::vector<char *> &argv, std::vector<QByteArray> &envp,
-                       const QByteArray &initialDirectory, const QByteArray &homePath)
+void execShellInChild(
+    const QByteArray &shellBytes,
+    const std::vector<char *> &argv,
+    std::vector<QByteArray> &envp,
+    const QByteArray &initialDirectory,
+    const QByteArray &homePath
+)
 {
     // Child: exec the shell as a login shell (argv[0] = "-<name>").
     // forkpty leaves software flow control enabled by default. Disable
     // it on the slave before the shell starts, so Ctrl+Q reaches Neovim
     // instead of being consumed by the tty line discipline.
-    struct termios terminalSettings {};
+    struct termios terminalSettings{};
     if (::tcgetattr(STDIN_FILENO, &terminalSettings) == 0) {
         terminalSettings.c_iflag &= static_cast<tcflag_t>(~(IXON | IXOFF));
         ::tcsetattr(STDIN_FILENO, TCSANOW, &terminalSettings);
@@ -237,10 +245,12 @@ QStringList processArguments(pid_t pid)
     std::memcpy(&argc, buffer.constData(), sizeof(argc));
     const QList<QByteArray> fields = buffer.first(static_cast<qsizetype>(size)).sliced(sizeof(argc)).split('\0');
     QStringList arguments;
-    std::ranges::transform(fields | std::views::drop(1) |
-                               std::views::drop_while([](const QByteArray &field) { return field.isEmpty(); }) |
-                               std::views::take(std::max(argc, 0)),
-                           std::back_inserter(arguments), [](const QByteArray &field) { return QString::fromUtf8(field); });
+    std::ranges::transform(
+        fields | std::views::drop(1) | std::views::drop_while([](const QByteArray &field) { return field.isEmpty(); }) |
+            std::views::take(std::max(argc, 0)),
+        std::back_inserter(arguments),
+        [](const QByteArray &field) { return QString::fromUtf8(field); }
+    );
     return arguments;
 }
 
@@ -279,8 +289,14 @@ PtyProcess::~PtyProcess()
     }
 }
 
-bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QString &workingDirectory,
-                       const QString &remoteHostToken, const QString &command)
+bool PtyProcess::start(
+    const QString &shellPath,
+    int cols,
+    int rows,
+    const QString &workingDirectory,
+    const QString &remoteHostToken,
+    const QString &command
+)
 {
     const QString shellName = QFileInfo(shellPath).fileName();
     const bool isZsh = shellName == QStringLiteral("zsh");
@@ -325,12 +341,10 @@ bool PtyProcess::start(const QString &shellPath, int cols, int rows, const QStri
     std::vector<char *> argv;
     argv.reserve(integration.shellArgs.size() + 2);
     argv.push_back(argv0.data());
-    std::ranges::transform(integration.shellArgs, std::back_inserter(argv),
-                           [](QByteArray &arg) { return arg.data(); });
+    std::ranges::transform(integration.shellArgs, std::back_inserter(argv), [](QByteArray &arg) { return arg.data(); });
     argv.push_back(nullptr);
 
-    std::vector<QByteArray> envp =
-        buildPtyEnvironment(integration, isZsh, isBash, isFish, cols, rows, remoteHostToken);
+    std::vector<QByteArray> envp = buildPtyEnvironment(integration, isZsh, isBash, isFish, cols, rows, remoteHostToken);
 
     int master = 0;
     // Let forkpty configure the slave's normal terminal defaults. Passing a
@@ -488,9 +502,10 @@ QString PtyProcess::foregroundProcessName() const
         // Scripts run by an interpreter are named by the script ("node
         // .../bin/codex" -> "codex"), so their arguments are read too.
         const QString executable = QString::fromUtf8(path.data());
-        return programName(executable, isScriptInterpreter(QFileInfo(executable).fileName())
-                                           ? processArguments(group)
-                                           : QStringList{});
+        return programName(
+            executable,
+            isScriptInterpreter(QFileInfo(executable).fileName()) ? processArguments(group) : QStringList{}
+        );
     }
     // The leader may have exited while the rest of the group runs on; any
     // job still counts as a foreground process.

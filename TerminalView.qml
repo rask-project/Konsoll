@@ -36,7 +36,7 @@ Item {
 
     onColsChanged: scheduleSessionResize()
     onRowsChanged: scheduleSessionResize()
-        onSessionChanged: {
+    onSessionChanged: {
         if (session) {
             syncSessionSize();
             applySystemColors();
@@ -310,8 +310,7 @@ Item {
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         hoverEnabled: true
         // A link under Cmd wins; then the program's OSC 22 pointer.
-        cursorShape: _linkModifierDown && _hoverRow >= 0 ? Qt.PointingHandCursor
-                   : (view.session && view.session.pointerShape >= 0 ? view.session.pointerShape : Qt.IBeamCursor)
+        cursorShape: _linkModifierDown && _hoverRow >= 0 ? Qt.PointingHandCursor : (view.session && view.session.pointerShape >= 0 ? view.session.pointerShape : Qt.IBeamCursor)
 
         anchors.top: renderer.top
         anchors.left: renderer.left

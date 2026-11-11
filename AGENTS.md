@@ -92,6 +92,17 @@ Guidance for AI agents working in this repository.
   be packed, not given a full field each. Debug builds enable `-Wpadded` to
   flag any layout that still wastes padding — keep it clean.
 
+## Formatting
+
+- **Run `tools/format-code.sh` after every change**, before building or
+  committing. It formats C++ and Objective-C++ (`.cpp`, `.h`, `.mm`) with
+  clang-format (`.clang-format`) and QML with qmlformat (`.qmlformat.ini`).
+- `tools/format-code.sh --check` changes nothing and exits 1 listing the files
+  that need formatting; `--changed` limits it to files changed against HEAD.
+- QML follows qmlformat's defaults (the QML Coding Conventions, as Qt
+  Creator formats it): 4-space indent, no line wrapping, attribute order kept.
+  Don't hand-wrap long bindings — qmlformat joins them back.
+
 ## clang-tidy
 
 - **Follow the clang-tidy rules proactively.** Before writing or changing C++,

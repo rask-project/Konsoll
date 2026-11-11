@@ -4,9 +4,11 @@
 #include <QString>
 #include <QtQml/qqmlregistration.h>
 
-namespace konsoll {
+namespace konsoll
+{
 
-class WindowScreen : public QObject {
+class WindowScreen : public QObject
+{
     Q_OBJECT
     QML_ELEMENT
 

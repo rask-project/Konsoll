@@ -3,9 +3,11 @@
 #include <QObject>
 #include <QtQml>
 
-namespace konsoll {
+namespace konsoll
+{
 
-class WindowTranslucency : public QObject {
+class WindowTranslucency : public QObject
+{
     Q_OBJECT
     QML_ELEMENT
     Q_PROPERTY(QObject *window READ window WRITE setWindow NOTIFY windowChanged)

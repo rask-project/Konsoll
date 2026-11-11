@@ -12,10 +12,8 @@ namespace
 
 // DEC Special Graphics (ESC ( 0) for 0x5f..0x7e: line drawing and symbols.
 constexpr std::array<char16_t, 32> kDecSpecialGraphics{
-    u' ', u'◆', u'▒', u'␉', u'␌', u'␍', u'␊', u'°',
-    u'±', u'␤', u'␋', u'┘', u'┐', u'┌', u'└', u'┼',
-    u'⎺', u'⎻', u'─', u'⎼', u'⎽', u'├', u'┤', u'┴',
-    u'┬', u'│', u'≤', u'≥', u'π', u'≠', u'£', u'·',
+    u' ', u'◆', u'▒', u'␉', u'␌', u'␍', u'␊', u'°', u'±', u'␤', u'␋', u'┘', u'┐', u'┌', u'└', u'┼',
+    u'⎺', u'⎻', u'─', u'⎼', u'⎽', u'├', u'┤', u'┴', u'┬', u'│', u'≤', u'≥', u'π', u'≠', u'£', u'·',
 };
 
 // National Replacement Character sets: replacements for the 12 positions
@@ -28,28 +26,50 @@ struct NrcSet {
 };
 
 constexpr std::array kNrcSets{
-    NrcSet{.finals = "4", // Dutch
-           .map = {u'£', u'¾', u'ĳ', u'½', u'|', 0, 0, 0, u'¨', u'ƒ', u'¼', u'´'}},
-    NrcSet{.finals = "C5", // Finnish
-           .map = {0, 0, u'Ä', u'Ö', u'Å', u'Ü', 0, u'é', u'ä', u'ö', u'å', u'ü'}},
-    NrcSet{.finals = "Rf", // French
-           .map = {u'£', u'à', u'°', u'ç', u'§', 0, 0, 0, u'é', u'ù', u'è', u'¨'}},
-    NrcSet{.finals = "Q9", // French Canadian
-           .map = {0, u'à', u'â', u'ç', u'ê', u'î', 0, u'ô', u'é', u'ù', u'è', u'û'}},
-    NrcSet{.finals = "K", // German
-           .map = {0, u'§', u'Ä', u'Ö', u'Ü', 0, 0, 0, u'ä', u'ö', u'ü', u'ß'}},
-    NrcSet{.finals = "Y", // Italian
-           .map = {u'£', u'§', u'°', u'ç', u'é', 0, 0, u'ù', u'à', u'ò', u'è', u'ì'}},
-    NrcSet{.finals = "E6`", // Norwegian / Danish
-           .map = {0, u'Ä', u'Æ', u'Ø', u'Å', u'Ü', 0, u'ä', u'æ', u'ø', u'å', u'ü'}},
-    NrcSet{.finals = "P", // Portuguese (ESC ( % 6, mapped to Charset::Portuguese)
-           .map = {0, 0, u'Ã', u'Ç', u'Õ', 0, 0, 0, u'ã', u'ç', u'õ', 0}},
-    NrcSet{.finals = "Z", // Spanish
-           .map = {u'£', u'§', u'¡', u'Ñ', u'¿', 0, 0, 0, u'°', u'ñ', u'ç', 0}},
-    NrcSet{.finals = "H7", // Swedish
-           .map = {0, u'É', u'Ä', u'Ö', u'Å', u'Ü', 0, u'é', u'ä', u'ö', u'å', u'ü'}},
-    NrcSet{.finals = "=", // Swiss
-           .map = {u'ù', u'à', u'é', u'ç', u'ê', u'î', u'è', u'ô', u'ä', u'ö', u'ü', u'û'}},
+    NrcSet{
+        .finals = "4", // Dutch
+        .map = {u'£', u'¾', u'ĳ', u'½', u'|', 0, 0, 0, u'¨', u'ƒ', u'¼', u'´'}
+    },
+    NrcSet{
+        .finals = "C5", // Finnish
+        .map = {0, 0, u'Ä', u'Ö', u'Å', u'Ü', 0, u'é', u'ä', u'ö', u'å', u'ü'}
+    },
+    NrcSet{
+        .finals = "Rf", // French
+        .map = {u'£', u'à', u'°', u'ç', u'§', 0, 0, 0, u'é', u'ù', u'è', u'¨'}
+    },
+    NrcSet{
+        .finals = "Q9", // French Canadian
+        .map = {0, u'à', u'â', u'ç', u'ê', u'î', 0, u'ô', u'é', u'ù', u'è', u'û'}
+    },
+    NrcSet{
+        .finals = "K", // German
+        .map = {0, u'§', u'Ä', u'Ö', u'Ü', 0, 0, 0, u'ä', u'ö', u'ü', u'ß'}
+    },
+    NrcSet{
+        .finals = "Y", // Italian
+        .map = {u'£', u'§', u'°', u'ç', u'é', 0, 0, u'ù', u'à', u'ò', u'è', u'ì'}
+    },
+    NrcSet{
+        .finals = "E6`", // Norwegian / Danish
+        .map = {0, u'Ä', u'Æ', u'Ø', u'Å', u'Ü', 0, u'ä', u'æ', u'ø', u'å', u'ü'}
+    },
+    NrcSet{
+        .finals = "P", // Portuguese (ESC ( % 6, mapped to Charset::Portuguese)
+        .map = {0, 0, u'Ã', u'Ç', u'Õ', 0, 0, 0, u'ã', u'ç', u'õ', 0}
+    },
+    NrcSet{
+        .finals = "Z", // Spanish
+        .map = {u'£', u'§', u'¡', u'Ñ', u'¿', 0, 0, 0, u'°', u'ñ', u'ç', 0}
+    },
+    NrcSet{
+        .finals = "H7", // Swedish
+        .map = {0, u'É', u'Ä', u'Ö', u'Å', u'Ü', 0, u'é', u'ä', u'ö', u'å', u'ü'}
+    },
+    NrcSet{
+        .finals = "=", // Swiss
+        .map = {u'ù', u'à', u'é', u'ç', u'ê', u'î', u'è', u'ô', u'ä', u'ö', u'ü', u'û'}
+    },
 };
 
 // DEC Supplemental Graphics: the upper half of Latin-1, with the DEC
@@ -74,8 +94,9 @@ unsigned int decSupplemental(unsigned char c)
 
 unsigned int nationalReplacement(char charset, unsigned char c)
 {
-    const auto *const set = std::ranges::find_if(
-        kNrcSets, [charset](const NrcSet &nrc) { return nrc.finals.find(charset) != std::string_view::npos; });
+    const auto *const set = std::ranges::find_if(kNrcSets, [charset](const NrcSet &nrc) {
+        return nrc.finals.find(charset) != std::string_view::npos;
+    });
     const std::size_t position = kNrcPositions.find(static_cast<char>(c));
     if (set == kNrcSets.end() || position == std::string_view::npos || set->map[position] == 0) {
         return c;

@@ -76,9 +76,7 @@ Item {
     // A tab dragged out of `source` and released at a global point joins the
     // window under it, or tears off into a new window placed there.
     function dropWorkspace(workspace, source: TerminalWindow, globalX: real, globalY: real) {
-        const target = manager.windows.find(w => w !== source && w.visible && w.visibility !== Window.Minimized
-                                            && globalX >= w.x && globalX < w.x + w.width
-                                            && globalY >= w.y && globalY < w.y + w.height) ?? null;
+        const target = manager.windows.find(w => w !== source && w.visible && w.visibility !== Window.Minimized && globalX >= w.x && globalX < w.x + w.width && globalY >= w.y && globalY < w.y + w.height) ?? null;
         if (target) {
             manager.moveWorkspace(workspace, source, target, target.workspaceDropIndex(globalX, globalY));
             return;
@@ -97,9 +95,7 @@ Item {
 
     // The window under a global point; `preferred` wins where windows overlap.
     function windowAtGlobal(globalX: real, globalY: real, preferred: TerminalWindow): TerminalWindow {
-        const contains = w => w.visible && w.visibility !== Window.Minimized
-                         && globalX >= w.x && globalX < w.x + w.width
-                         && globalY >= w.y && globalY < w.y + w.height;
+        const contains = w => w.visible && w.visibility !== Window.Minimized && globalX >= w.x && globalX < w.x + w.width && globalY >= w.y && globalY < w.y + w.height;
         if (preferred && contains(preferred))
             return preferred;
         return manager.windows.find(contains) ?? null;
@@ -140,9 +136,7 @@ Item {
             if (!at.drop)
                 return;
             const targetManager = at.window.terminalManager;
-            const moved = at.drop.kind === "pane"
-                ? sourceManager.movePane(session, targetManager, at.drop.session, at.drop.edge)
-                : sourceManager.movePaneToWorkspace(session, targetManager, at.drop.index);
+            const moved = at.drop.kind === "pane" ? sourceManager.movePane(session, targetManager, at.drop.session, at.drop.edge) : sourceManager.movePaneToWorkspace(session, targetManager, at.drop.index);
             if (moved && at.window !== source) {
                 at.window.raise();
                 at.window.requestActivate();

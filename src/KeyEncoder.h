@@ -12,7 +12,7 @@ namespace KeyMod
 inline constexpr unsigned int Shift = 1u << 0;
 inline constexpr unsigned int Alt = 1u << 1; // Option
 inline constexpr unsigned int Control = 1u << 2;
-}
+} // namespace KeyMod
 
 // Key event types (kitty keyboard protocol flag 2 reports repeat/release).
 namespace KeyEventType
@@ -20,7 +20,7 @@ namespace KeyEventType
 inline constexpr int Press = 1;
 inline constexpr int Repeat = 2;
 inline constexpr int Release = 3;
-}
+} // namespace KeyEventType
 
 // Terminal input modes and key origin that change the encoding.
 namespace KeyMode
@@ -34,7 +34,7 @@ inline constexpr unsigned int OtherKeys1 = 1u << 5;        // xterm modifyOtherK
 inline constexpr unsigned int OtherKeys2 = 1u << 6;        // xterm modifyOtherKeys 2
 inline constexpr unsigned int OtherKeysCsiU = 1u << 7;     // formatOtherKeys 1: CSI k ; m u
 inline constexpr unsigned int OptionMeta = 1u << 8;        // Option is Meta: ESC + key, no composition
-}
+} // namespace KeyMode
 
 // Encodes a key event for the PTY, as xterm does: control bytes, cursor and
 // function keys with modifier parameters (CSI 1;5A, CSI 15;2~) and the
@@ -45,7 +45,14 @@ inline constexpr unsigned int OptionMeta = 1u << 8;        // Option is Meta: ES
 // with no terminal meaning (releases outside kitty flag 2, ...).
 // `baseKey` is the US-layout character at the key's physical position (0 =
 // unknown), reported as the kitty base layout key under flag 4.
-QByteArray encodeKey(int key, const QString &text, unsigned int mods, unsigned int modes, unsigned int kittyFlags,
-                     int eventType = KeyEventType::Press, int baseKey = 0);
+QByteArray encodeKey(
+    int key,
+    const QString &text,
+    unsigned int mods,
+    unsigned int modes,
+    unsigned int kittyFlags,
+    int eventType = KeyEventType::Press,
+    int baseKey = 0
+);
 
 } // namespace konsoll

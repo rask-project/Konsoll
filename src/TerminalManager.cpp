@@ -124,8 +124,7 @@ void TerminalWorkspaceModel::raiseAttention(Attention level)
 void TerminalWorkspaceModel::markActivity()
 {
     constexpr qint64 kRedrawGraceMs = 2000;
-    if (m_attention == Attention::None && (m_flags & ActiveFlag) == 0 &&
-        m_inactiveTimer.elapsed() >= kRedrawGraceMs) {
+    if (m_attention == Attention::None && (m_flags & ActiveFlag) == 0 && m_inactiveTimer.elapsed() >= kRedrawGraceMs) {
         raiseAttention(Attention::Activity);
     }
 }
@@ -169,8 +168,7 @@ void TerminalWorkspaceModel::refreshStatus()
     // The icon follows the pane the user worked in last (else the first):
     // switching panes switches the icon.
     const auto last = std::ranges::find(sessions, m_lastActiveSession);
-    const TerminalBackend *session =
-        last != sessions.end() ? *last : (sessions.empty() ? nullptr : sessions.front());
+    const TerminalBackend *session = last != sessions.end() ? *last : (sessions.empty() ? nullptr : sessions.front());
     const bool busy = session != nullptr && (session->hasForegroundProcess() || session->commandRunning());
     const ProcessKind kind = session != nullptr ? session->processKindValue() : ProcessKind::None;
     const int progressState = session != nullptr ? session->progressState() : 0;
@@ -362,8 +360,9 @@ void TerminalManager::connectSession(TerminalBackend *sessionPtr)
     connect(sessionPtr, &TerminalBackend::commandFinished, this, [raise](int exitCode) {
         raise(exitCode > 0 ? TerminalWorkspaceModel::Attention::Failure : TerminalWorkspaceModel::Attention::Success);
     });
-    connect(sessionPtr, &TerminalBackend::bellRang, this,
-            [raise]() { raise(TerminalWorkspaceModel::Attention::Bell); });
+    connect(sessionPtr, &TerminalBackend::bellRang, this, [raise]() {
+        raise(TerminalWorkspaceModel::Attention::Bell);
+    });
     connect(sessionPtr, &TerminalBackend::outputActivity, this, [this, sessionPtr]() {
         if (TerminalWorkspaceModel *workspace = workspaceOf(sessionPtr)) {
             workspace->markActivity();
@@ -394,9 +393,8 @@ bool TerminalManager::moveWorkspaceTo(QObject *workspaceObject, QObject *targetO
         return false;
     }
     if (target == this) {
-        const auto it = std::ranges::find_if(m_workspaces, [workspace](const auto &item) {
-            return item.get() == workspace;
-        });
+        const auto it =
+            std::ranges::find_if(m_workspaces, [workspace](const auto &item) { return item.get() == workspace; });
         if (it == m_workspaces.end()) {
             return false;
         }
@@ -458,8 +456,11 @@ void TerminalManager::adoptWorkspace(DetachedWorkspace detached, int index)
         m_sessions.push_back(std::move(session));
     });
     auto *workspace = detached.workspace.get();
-    const auto position = std::clamp(static_cast<std::ptrdiff_t>(index), std::ptrdiff_t{0},
-                                     static_cast<std::ptrdiff_t>(m_workspaces.size()));
+    const auto position = std::clamp(
+        static_cast<std::ptrdiff_t>(index),
+        std::ptrdiff_t{0},
+        static_cast<std::ptrdiff_t>(m_workspaces.size())
+    );
     m_workspaces.insert(m_workspaces.begin() + position, std::move(detached.workspace));
     emit workspacesChanged();
     emit activeWorkspaceChanged();
@@ -494,7 +495,9 @@ bool TerminalManager::movePane(QObject *sessionObject, QObject *targetObject, QO
     }
     const bool sideBySide = edge == PaneEdgeLeft || edge == PaneEdgeRight;
     *slot = std::make_unique<TerminalLayoutNode>(
-        sideBySide ? Qt::Horizontal : Qt::Vertical, std::move(first), std::move(second)
+        sideBySide ? Qt::Horizontal : Qt::Vertical,
+        std::move(first),
+        std::move(second)
     );
     workspace->root()->notifyTreeChanged();
     emit workspace->layoutChanged();
@@ -514,9 +517,8 @@ bool TerminalManager::movePaneToWorkspace(QObject *sessionObject, QObject *targe
         // The pane already is a workspace of its own: move that, keeping its
         // name. In place, `index` counts the workspace itself.
         if (target == this) {
-            const auto it = std::ranges::find_if(m_workspaces, [workspace](const auto &item) {
-                return item.get() == workspace;
-            });
+            const auto it =
+                std::ranges::find_if(m_workspaces, [workspace](const auto &item) { return item.get() == workspace; });
             const int from = static_cast<int>(std::distance(m_workspaces.begin(), it));
             index = index > from ? index - 1 : index;
         }
@@ -610,10 +612,14 @@ void TerminalManager::handOverSession(TerminalBackend *session, TerminalManager 
 void TerminalManager::insertPaneWorkspace(std::unique_ptr<TerminalLayoutNode> leaf, int index)
 {
     auto workspace = std::make_unique<TerminalWorkspaceModel>(
-        QStringLiteral("Workspace %1").arg(m_nextWorkspaceNumber++), std::move(leaf)
+        QStringLiteral("Workspace %1").arg(m_nextWorkspaceNumber++),
+        std::move(leaf)
     );
-    const auto position = std::clamp(static_cast<std::ptrdiff_t>(index), std::ptrdiff_t{0},
-                                     static_cast<std::ptrdiff_t>(m_workspaces.size()));
+    const auto position = std::clamp(
+        static_cast<std::ptrdiff_t>(index),
+        std::ptrdiff_t{0},
+        static_cast<std::ptrdiff_t>(m_workspaces.size())
+    );
     m_workspaces.insert(m_workspaces.begin() + position, std::move(workspace));
     emit workspacesChanged();
 }
@@ -817,7 +823,8 @@ void TerminalManager::closeSession(QObject *sessionObject)
 QVariantList TerminalManager::workspaceSessions(QObject *workspaceObject) const
 {
     auto *workspace = qobject_cast<TerminalWorkspaceModel *>(workspaceObject);
-    const bool owned = std::ranges::any_of(m_workspaces, [workspace](const auto &item) { return item.get() == workspace; });
+    const bool owned =
+        std::ranges::any_of(m_workspaces, [workspace](const auto &item) { return item.get() == workspace; });
     QVariantList list;
     if (!owned || workspace->root() == nullptr) {
         return list;
@@ -875,11 +882,12 @@ std::unique_ptr<TerminalBackend> TerminalManager::releaseSession(QObject *sessio
     return owned;
 }
 
-std::vector<std::unique_ptr<TerminalBackend>> TerminalManager::releaseWorkspace(QObject *workspaceObject,
-                                                                                QString &title)
+std::vector<std::unique_ptr<TerminalBackend>>
+TerminalManager::releaseWorkspace(QObject *workspaceObject, QString &title)
 {
     auto *workspace = qobject_cast<TerminalWorkspaceModel *>(workspaceObject);
-    const bool owned = std::ranges::any_of(m_workspaces, [workspace](const auto &item) { return item.get() == workspace; });
+    const bool owned =
+        std::ranges::any_of(m_workspaces, [workspace](const auto &item) { return item.get() == workspace; });
     if (!owned) {
         return {};
     }

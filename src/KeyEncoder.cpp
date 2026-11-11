@@ -16,9 +16,9 @@ namespace
 constexpr int kNoNumber = 0;
 
 // How a cursor/function key is sent.
-constexpr int kCursorKey = 0;   // CSI X, or SS3 X in application cursor mode
-constexpr int kSs3Key = 1;      // SS3 X unmodified (F1-F4)
-constexpr int kTildeKey = 2;    // CSI n ~
+constexpr int kCursorKey = 0; // CSI X, or SS3 X in application cursor mode
+constexpr int kSs3Key = 1;    // SS3 X unmodified (F1-F4)
+constexpr int kTildeKey = 2;  // CSI n ~
 
 struct SpecialKey {
     int key;
@@ -67,15 +67,24 @@ struct KeypadKey {
 };
 
 constexpr std::array kKeypadKeys{
-    KeypadKey{.key = Qt::Key_0, .final = 'p'},        KeypadKey{.key = Qt::Key_1, .final = 'q'},
-    KeypadKey{.key = Qt::Key_2, .final = 'r'},        KeypadKey{.key = Qt::Key_3, .final = 's'},
-    KeypadKey{.key = Qt::Key_4, .final = 't'},        KeypadKey{.key = Qt::Key_5, .final = 'u'},
-    KeypadKey{.key = Qt::Key_6, .final = 'v'},        KeypadKey{.key = Qt::Key_7, .final = 'w'},
-    KeypadKey{.key = Qt::Key_8, .final = 'x'},        KeypadKey{.key = Qt::Key_9, .final = 'y'},
-    KeypadKey{.key = Qt::Key_Period, .final = 'n'},   KeypadKey{.key = Qt::Key_Comma, .final = 'l'},
-    KeypadKey{.key = Qt::Key_Enter, .final = 'M'},    KeypadKey{.key = Qt::Key_Plus, .final = 'k'},
-    KeypadKey{.key = Qt::Key_Minus, .final = 'm'},    KeypadKey{.key = Qt::Key_Asterisk, .final = 'j'},
-    KeypadKey{.key = Qt::Key_Slash, .final = 'o'},    KeypadKey{.key = Qt::Key_Equal, .final = 'X'},
+    KeypadKey{.key = Qt::Key_0, .final = 'p'},
+    KeypadKey{.key = Qt::Key_1, .final = 'q'},
+    KeypadKey{.key = Qt::Key_2, .final = 'r'},
+    KeypadKey{.key = Qt::Key_3, .final = 's'},
+    KeypadKey{.key = Qt::Key_4, .final = 't'},
+    KeypadKey{.key = Qt::Key_5, .final = 'u'},
+    KeypadKey{.key = Qt::Key_6, .final = 'v'},
+    KeypadKey{.key = Qt::Key_7, .final = 'w'},
+    KeypadKey{.key = Qt::Key_8, .final = 'x'},
+    KeypadKey{.key = Qt::Key_9, .final = 'y'},
+    KeypadKey{.key = Qt::Key_Period, .final = 'n'},
+    KeypadKey{.key = Qt::Key_Comma, .final = 'l'},
+    KeypadKey{.key = Qt::Key_Enter, .final = 'M'},
+    KeypadKey{.key = Qt::Key_Plus, .final = 'k'},
+    KeypadKey{.key = Qt::Key_Minus, .final = 'm'},
+    KeypadKey{.key = Qt::Key_Asterisk, .final = 'j'},
+    KeypadKey{.key = Qt::Key_Slash, .final = 'o'},
+    KeypadKey{.key = Qt::Key_Equal, .final = 'X'},
 };
 
 QByteArray modifierParam(unsigned int mods)
@@ -118,14 +127,22 @@ QByteArray controlByte(int key, const QString &text)
         int byte;
     };
     static constexpr std::array kAliases{
-        Alias{.key = Qt::Key_Space, .byte = 0x00},        Alias{.key = Qt::Key_At, .byte = 0x00},
-        Alias{.key = Qt::Key_2, .byte = 0x00},            Alias{.key = Qt::Key_BracketLeft, .byte = 0x1b},
-        Alias{.key = Qt::Key_3, .byte = 0x1b},            Alias{.key = Qt::Key_Backslash, .byte = 0x1c},
-        Alias{.key = Qt::Key_4, .byte = 0x1c},            Alias{.key = Qt::Key_BracketRight, .byte = 0x1d},
-        Alias{.key = Qt::Key_5, .byte = 0x1d},            Alias{.key = Qt::Key_AsciiCircum, .byte = 0x1e},
-        Alias{.key = Qt::Key_6, .byte = 0x1e},            Alias{.key = Qt::Key_Underscore, .byte = 0x1f},
-        Alias{.key = Qt::Key_Minus, .byte = 0x1f},        Alias{.key = Qt::Key_Slash, .byte = 0x1f},
-        Alias{.key = Qt::Key_7, .byte = 0x1f},            Alias{.key = Qt::Key_Question, .byte = 0x7f},
+        Alias{.key = Qt::Key_Space, .byte = 0x00},
+        Alias{.key = Qt::Key_At, .byte = 0x00},
+        Alias{.key = Qt::Key_2, .byte = 0x00},
+        Alias{.key = Qt::Key_BracketLeft, .byte = 0x1b},
+        Alias{.key = Qt::Key_3, .byte = 0x1b},
+        Alias{.key = Qt::Key_Backslash, .byte = 0x1c},
+        Alias{.key = Qt::Key_4, .byte = 0x1c},
+        Alias{.key = Qt::Key_BracketRight, .byte = 0x1d},
+        Alias{.key = Qt::Key_5, .byte = 0x1d},
+        Alias{.key = Qt::Key_AsciiCircum, .byte = 0x1e},
+        Alias{.key = Qt::Key_6, .byte = 0x1e},
+        Alias{.key = Qt::Key_Underscore, .byte = 0x1f},
+        Alias{.key = Qt::Key_Minus, .byte = 0x1f},
+        Alias{.key = Qt::Key_Slash, .byte = 0x1f},
+        Alias{.key = Qt::Key_7, .byte = 0x1f},
+        Alias{.key = Qt::Key_Question, .byte = 0x7f},
         Alias{.key = Qt::Key_8, .byte = 0x7f},
     };
     const auto *const alias = std::ranges::find(kAliases, key, &Alias::key);
@@ -141,13 +158,16 @@ QByteArray optionWordKey(int key)
     case Qt::Key_Period:
         return "\x1b.";
     case Qt::Key_Left:
-        return "\x1b" "b";
+        return "\x1b"
+               "b";
     case Qt::Key_Right:
-        return "\x1b" "f";
+        return "\x1b"
+               "f";
     case Qt::Key_Backspace:
         return "\x1b\x7f";
     case Qt::Key_Delete:
-        return "\x1b" "D";
+        return "\x1b"
+               "D";
     default:
         return {};
     }
@@ -267,7 +287,8 @@ std::optional<KittyKey> kittyKeyFor(int key, unsigned int modes, bool &textKey)
 
 // CSI code[:shifted] ; mods[:event] ; text u  (or the CSI 1;mods X / CSI n;mods ~
 // forms of the functional keys).
-QByteArray kittySequence(const KittyKey &kitty, int shifted, int base, unsigned int mods, int eventType, const QString &text)
+QByteArray
+kittySequence(const KittyKey &kitty, int shifted, int base, unsigned int mods, int eventType, const QString &text)
 {
     QByteArray modifiers;
     if (mods != 0 || eventType != KeyEventType::Press || !text.isEmpty()) {
@@ -304,8 +325,15 @@ QByteArray kittySequence(const KittyKey &kitty, int shifted, int base, unsigned 
 // The kitty encoding of an event, or an empty array when the legacy
 // encoding applies (plain text, unmodified Enter/Tab/Backspace below flag 8)
 // or nothing is sent (releases below flag 2, modifier keys below flag 8).
-QByteArray encodeKitty(int key, const QString &text, unsigned int mods, unsigned int modes, unsigned int flags,
-                       int eventType, int baseKey)
+QByteArray encodeKitty(
+    int key,
+    const QString &text,
+    unsigned int mods,
+    unsigned int modes,
+    unsigned int flags,
+    int eventType,
+    int baseKey
+)
 {
     const bool allKeys = (flags & kKittyAllKeys) != 0;
     const bool events = (flags & kKittyEventTypes) != 0;
@@ -433,7 +461,6 @@ QByteArray encodeEditingKey(int key, unsigned int mods, unsigned int modes)
     }
 }
 
-
 // A text key in the legacy encoding: Ctrl's control byte (ESC-prefixed with
 // Option), ESC + the key under Option as Meta, else the text the key typed
 // (Option composes characters on macOS: Option+e is a dead acute).
@@ -454,8 +481,15 @@ QByteArray encodeTextKey(int key, const QString &text, unsigned int mods, unsign
 
 } // namespace
 
-QByteArray encodeKey(int key, const QString &text, unsigned int mods, unsigned int modes, unsigned int kittyFlags,
-                     int eventType, int baseKey)
+QByteArray encodeKey(
+    int key,
+    const QString &text,
+    unsigned int mods,
+    unsigned int modes,
+    unsigned int kittyFlags,
+    int eventType,
+    int baseKey
+)
 {
     const bool control = (mods & KeyMod::Control) != 0;
     const bool alt = (mods & KeyMod::Alt) != 0;

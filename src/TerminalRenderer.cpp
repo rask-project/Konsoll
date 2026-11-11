@@ -4,12 +4,12 @@
 
 #include <QFontMetricsF>
 #include <QQuickWindow>
+#include <QSGClipNode>
 #include <QSGGeometry>
 #include <QSGGeometryNode>
-#include <QSGClipNode>
 #include <QSGImageNode>
-#include <QSGTransformNode>
 #include <QSGTextNode>
+#include <QSGTransformNode>
 #include <QSGVertexColorMaterial>
 #include <QTextLayout>
 #include <QTextOption>
@@ -106,8 +106,7 @@ std::unique_ptr<QSGGeometryNode> makeColorNode()
 
 } // namespace
 
-TerminalRenderer::TerminalRenderer(QQuickItem *parent)
-    : QQuickItem(parent)
+TerminalRenderer::TerminalRenderer(QQuickItem *parent) : QQuickItem(parent)
 {
     setFlag(ItemHasContents, true);
     m_blinkTimer.setInterval(kBlinkIntervalMs);
@@ -231,7 +230,12 @@ void TerminalRenderer::rebuildFonts()
     // One glyph per cell: ligatures and contextual alternates would merge or
     // shift glyphs across cell boundaries.
     const std::array<QFont::Tag, 5> shapingFeatures{
-        QFont::Tag("liga"), QFont::Tag("clig"), QFont::Tag("dlig"), QFont::Tag("hlig"), QFont::Tag("calt")};
+        QFont::Tag("liga"),
+        QFont::Tag("clig"),
+        QFont::Tag("dlig"),
+        QFont::Tag("hlig"),
+        QFont::Tag("calt")
+    };
     std::ranges::for_each(shapingFeatures, [this](QFont::Tag tag) { m_font.setFeature(tag, 0); });
 
     m_boldFont = m_font;
@@ -252,13 +256,17 @@ void TerminalRenderer::rebuildFonts()
     // Italic faces (or synthesized obliques) get the same grid correction.
     m_italicFont = m_font;
     m_italicFont.setItalic(true);
-    m_italicFont.setLetterSpacing(QFont::AbsoluteSpacing,
-                                  cellWidth - QFontMetricsF(m_italicFont).horizontalAdvance(QLatin1Char('M')));
+    m_italicFont.setLetterSpacing(
+        QFont::AbsoluteSpacing,
+        cellWidth - QFontMetricsF(m_italicFont).horizontalAdvance(QLatin1Char('M'))
+    );
     m_boldItalicFont = m_boldFont;
     m_boldItalicFont.setItalic(true);
     m_boldItalicFont.setLetterSpacing(QFont::AbsoluteSpacing, 0.0);
-    m_boldItalicFont.setLetterSpacing(QFont::AbsoluteSpacing,
-                                      cellWidth - QFontMetricsF(m_boldItalicFont).horizontalAdvance(QLatin1Char('M')));
+    m_boldItalicFont.setLetterSpacing(
+        QFont::AbsoluteSpacing,
+        cellWidth - QFontMetricsF(m_boldItalicFont).horizontalAdvance(QLatin1Char('M'))
+    );
 
     m_textOffsetY = static_cast<float>(std::floor((cellHeight - ascentDescent) / 2.0));
     m_rawFont = QRawFont::fromFont(m_font);
@@ -332,8 +340,8 @@ void TerminalRenderer::refresh()
 void TerminalRenderer::updateBlinkTimer()
 {
     // A blinking cursor only blinks while focused, as in native terminals.
-    const bool cursorBlinks = m_cursorRow >= 0 && (m_cursorState & CursorBlinking) != 0 &&
-                              (m_cursorState & CursorFocused) != 0;
+    const bool cursorBlinks =
+        m_cursorRow >= 0 && (m_cursorState & CursorBlinking) != 0 && (m_cursorState & CursorFocused) != 0;
     const bool needed = m_blinkRows > 0 || cursorBlinks;
     if (needed && !m_blinkTimer.isActive()) {
         m_blinkTimer.start();
@@ -402,7 +410,8 @@ void TerminalRenderer::pullRow(int row, std::vector<Cell> &scratch)
 QRectF TerminalRenderer::cellSpan(int row, int col, int count) const
 {
     // Cells on a double-width / double-height line are twice as wide.
-    const bool doubled = row >= 0 && row < static_cast<int>(m_rows.size()) && m_rows[static_cast<std::size_t>(row)].lineSize != 0;
+    const bool doubled =
+        row >= 0 && row < static_cast<int>(m_rows.size()) && m_rows[static_cast<std::size_t>(row)].lineSize != 0;
     const qreal width = doubled ? 2.0 * m_cellWidth : m_cellWidth;
     return {col * width, row * m_cellHeight, count * width, m_cellHeight};
 }
@@ -413,11 +422,11 @@ QSGNode *TerminalRenderer::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData
     QSGNode *root = oldNode;
     if (root == nullptr) {
         created = std::make_unique<QSGNode>();
-        created->appendChildNode(makeColorNode().release());                  // background
+        created->appendChildNode(makeColorNode().release());                    // background
         created->appendChildNode(std::make_unique<QSGNode>().release());        // images below the text
         created->appendChildNode(std::make_unique<QSGNode>().release());        // text rows
         created->appendChildNode(std::make_unique<QSGNode>().release());        // images above the text
-        created->appendChildNode(makeColorNode().release());                  // overlay
+        created->appendChildNode(makeColorNode().release());                    // overlay
         created->appendChildNode(std::make_unique<ImageCacheNode>().release()); // image textures
         root = created.get();
         markAllDirty();
@@ -449,8 +458,9 @@ QSGNode *TerminalRenderer::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData
 
 void TerminalRenderer::appendBackgroundRects(std::vector<ColorRect> &rects) const
 {
-    std::ranges::for_each(std::views::iota(0, static_cast<int>(m_rows.size())),
-                          [&](int row) { appendRowBackground(rects, row); });
+    std::ranges::for_each(std::views::iota(0, static_cast<int>(m_rows.size())), [&](int row) {
+        appendRowBackground(rects, row);
+    });
     appendHighlightFrame(rects);
 
     appendCursor(rects, false);
@@ -460,10 +470,11 @@ void TerminalRenderer::appendBackgroundRects(std::vector<ColorRect> &rects) cons
 // underline, bar and the hollow unfocused block go over it.
 void TerminalRenderer::appendCursor(std::vector<ColorRect> &rects, bool overlay) const
 {
-    const bool cursorInGrid = m_cursorRow >= 0 && m_cursorRow < static_cast<int>(m_rows.size()) && m_cursorCol >= 0 &&
-                              m_cursorCol < static_cast<int>(m_rows[static_cast<std::size_t>(m_cursorRow)].cells.size());
-    const bool blinkHidden = (m_cursorState & CursorBlinking) != 0 && m_blinkPhase == 0 &&
-                             (m_cursorState & CursorFocused) != 0;
+    const bool cursorInGrid =
+        m_cursorRow >= 0 && m_cursorRow < static_cast<int>(m_rows.size()) && m_cursorCol >= 0 &&
+        m_cursorCol < static_cast<int>(m_rows[static_cast<std::size_t>(m_cursorRow)].cells.size());
+    const bool blinkHidden =
+        (m_cursorState & CursorBlinking) != 0 && m_blinkPhase == 0 && (m_cursorState & CursorFocused) != 0;
     if (!cursorInGrid || blinkHidden || overlay == cursorInvertsGlyph()) {
         return;
     }
@@ -496,11 +507,13 @@ void TerminalRenderer::appendRowBackground(std::vector<ColorRect> &rects, int ro
     const Row &data = m_rows[static_cast<std::size_t>(row)];
     const auto push = [&](int col, int count, QRgb color) {
         const QRectF r = cellSpan(row, col, count);
-        rects.push_back({.x = static_cast<float>(r.x()),
-                         .y = static_cast<float>(r.y()),
-                         .w = static_cast<float>(r.width()),
-                         .h = static_cast<float>(r.height()),
-                         .color = color});
+        rects.push_back(
+            {.x = static_cast<float>(r.x()),
+             .y = static_cast<float>(r.y()),
+             .w = static_cast<float>(r.width()),
+             .h = static_cast<float>(r.height()),
+             .color = color}
+        );
     };
 
     // Default-background cells are left empty so the window translucency
@@ -572,11 +585,13 @@ void TerminalRenderer::appendOverlayRects(std::vector<ColorRect> &rects) const
 
     if (m_hoverRow >= 0 && m_hoverStart >= 0 && m_hoverEnd > m_hoverStart) {
         const QRectF r = cellSpan(m_hoverRow, m_hoverStart, m_hoverEnd - m_hoverStart);
-        rects.push_back({.x = static_cast<float>(r.x()),
-                         .y = static_cast<float>(r.y()) + cellHeight - 2.0F,
-                         .w = static_cast<float>(r.width()),
-                         .h = 1.0F,
-                         .color = withAlpha(m_accent, 1.0F)});
+        rects.push_back(
+            {.x = static_cast<float>(r.x()),
+             .y = static_cast<float>(r.y()) + cellHeight - 2.0F,
+             .w = static_cast<float>(r.width()),
+             .h = 1.0F,
+             .color = withAlpha(m_accent, 1.0F)}
+        );
     }
 }
 
@@ -647,8 +662,12 @@ void TerminalRenderer::syncImages(QSGNode &below, QSGNode &above, ImageCacheNode
         node->setOwnsTexture(false);
         node->setFiltering(QSGTexture::Linear);
         node->setSourceRect(QRectF(visible.source));
-        node->setRect(QRectF(visible.target.x() * m_cellWidth, visible.target.y() * m_cellHeight,
-                             visible.target.width() * m_cellWidth, visible.target.height() * m_cellHeight));
+        node->setRect(QRectF(
+            visible.target.x() * m_cellWidth,
+            visible.target.y() * m_cellHeight,
+            visible.target.width() * m_cellWidth,
+            visible.target.height() * m_cellHeight
+        ));
         (visible.z < 0 ? below : above).appendChildNode(node.release());
     });
     // Textures of images no longer shown are freed here (render thread).
@@ -662,8 +681,8 @@ void TerminalRenderer::uploadRects(QSGGeometryNode &node, const std::vector<Colo
     // (a blinking underline/bar cursor, alone in the overlay, vanished for
     // good). A transparent zero-size rect keeps the node in its batch.
     static constexpr std::array<ColorRect, 1> kPlaceholder{{{.x = 0.0F, .y = 0.0F, .w = 0.0F, .h = 0.0F, .color = 0u}}};
-    const std::span<const ColorRect> uploaded = rects.empty() ? std::span<const ColorRect>(kPlaceholder)
-                                                              : std::span<const ColorRect>(rects);
+    const std::span<const ColorRect> uploaded =
+        rects.empty() ? std::span<const ColorRect>(kPlaceholder) : std::span<const ColorRect>(rects);
     QSGGeometry *geometry = node.geometry();
     geometry->allocate(static_cast<int>(uploaded.size()) * kVerticesPerRect);
     const std::span vertices(geometry->vertexDataAsColoredPoint2D(), static_cast<std::size_t>(geometry->vertexCount()));
@@ -794,7 +813,8 @@ void TerminalRenderer::buildRowText(QSGNode &rowNode, int row)
 
 void TerminalRenderer::addTextRun(QSGTextNode &node, std::span<const Cell> run, qreal x, qreal top) const
 {
-    if (isInvisible(run.front()) || (isBlinking(run.front()) && m_blinkPhase == 0) || std::ranges::all_of(run, isBlank)) {
+    if (isInvisible(run.front()) || (isBlinking(run.front()) && m_blinkPhase == 0) ||
+        std::ranges::all_of(run, isBlank)) {
         return;
     }
 
@@ -806,8 +826,10 @@ void TerminalRenderer::addTextRun(QSGTextNode &node, std::span<const Cell> run, 
 
     QTextOption option;
     option.setWrapMode(QTextOption::NoWrap);
-    QTextLayout layout(QString::fromUcs4(codePoints.data(), static_cast<qsizetype>(codePoints.size())),
-                       fontFor(run.front()));
+    QTextLayout layout(
+        QString::fromUcs4(codePoints.data(), static_cast<qsizetype>(codePoints.size())),
+        fontFor(run.front())
+    );
     layout.setTextOption(option);
     layout.beginLayout();
     QTextLine line = layout.createLine();

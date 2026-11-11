@@ -56,8 +56,10 @@ QString commandTitle(const QString &command)
     if (first == lines.end()) {
         return command;
     }
-    const bool more = std::ranges::any_of(std::ranges::subrange(std::next(first), lines.end()),
-                                          [](const QString &line) { return !line.trimmed().isEmpty(); });
+    const bool more =
+        std::ranges::any_of(std::ranges::subrange(std::next(first), lines.end()), [](const QString &line) {
+            return !line.trimmed().isEmpty();
+        });
     return more ? first->trimmed() + QStringLiteral(" …") : first->trimmed();
 }
 
@@ -73,8 +75,13 @@ QJsonObject savedCommand(const QString &name, const QString &command, const QStr
 
 } // namespace
 
-BackgroundJob::BackgroundJob(std::unique_ptr<TerminalBackend> session, int number, QString title, QString command,
-                             QString directory)
+BackgroundJob::BackgroundJob(
+    std::unique_ptr<TerminalBackend> session,
+    int number,
+    QString title,
+    QString command,
+    QString directory
+)
     : m_session(std::move(session))
     , m_title(std::move(title))
     , m_command(std::move(command))
@@ -133,9 +140,11 @@ void BackgroundJob::finish(Status status, int exitCode)
         return;
     }
     m_status = status;
-    m_exitCode = static_cast<std::int16_t>(
-        std::clamp(exitCode, int{std::numeric_limits<std::int16_t>::min()}, int{std::numeric_limits<std::int16_t>::max()})
-    );
+    m_exitCode = static_cast<std::int16_t>(std::clamp(
+        exitCode,
+        int{std::numeric_limits<std::int16_t>::min()},
+        int{std::numeric_limits<std::int16_t>::max()}
+    ));
     m_finishedAt = QDateTime::currentDateTime();
     emit stateChanged();
 }
@@ -248,8 +257,9 @@ QVariantList BackgroundJobs::jobs() const
 {
     QVariantList list;
     list.reserve(static_cast<qsizetype>(m_jobs.size()));
-    std::ranges::transform(m_jobs, std::back_inserter(list),
-                           [](const auto &job) { return QVariant::fromValue(static_cast<QObject *>(job.get())); });
+    std::ranges::transform(m_jobs, std::back_inserter(list), [](const auto &job) {
+        return QVariant::fromValue(static_cast<QObject *>(job.get()));
+    });
     return list;
 }
 
@@ -274,8 +284,12 @@ BackgroundJob *BackgroundJobs::ownedJob(const QObject *job) const
     return it == m_jobs.end() ? nullptr : it->get();
 }
 
-BackgroundJob *BackgroundJobs::addJob(std::unique_ptr<TerminalBackend> session, const QString &title,
-                                      const QString &command, const QString &directory)
+BackgroundJob *BackgroundJobs::addJob(
+    std::unique_ptr<TerminalBackend> session,
+    const QString &title,
+    const QString &command,
+    const QString &directory
+)
 {
     auto job = std::make_unique<BackgroundJob>(std::move(session), m_nextNumber++, title, command, directory);
     BackgroundJob *jobPtr = job.get();
@@ -328,8 +342,11 @@ QObject *BackgroundJobs::runSaved(int index)
         return nullptr;
     }
     const QJsonObject entry = m_saved.at(index).toObject();
-    return run(entry.value(QStringLiteral("command")).toString(), entry.value(QStringLiteral("directory")).toString(),
-               entry.value(QStringLiteral("name")).toString());
+    return run(
+        entry.value(QStringLiteral("command")).toString(),
+        entry.value(QStringLiteral("directory")).toString(),
+        entry.value(QStringLiteral("name")).toString()
+    );
 }
 
 void BackgroundJobs::interrupt(QObject *job) const
@@ -416,8 +433,12 @@ void BackgroundJobs::saveCommand(const QString &name, const QString &command, co
     storeSaved();
 }
 
-void BackgroundJobs::updateSavedCommand(int index, const QString &name, const QString &command,
-                                        const QString &directory)
+void BackgroundJobs::updateSavedCommand(
+    int index,
+    const QString &name,
+    const QString &command,
+    const QString &directory
+)
 {
     if (index < 0 || index >= m_saved.size() || command.trimmed().isEmpty()) {
         return;

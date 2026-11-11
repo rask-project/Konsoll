@@ -118,8 +118,7 @@ namespace
 
 QString stateDir()
 {
-    const QString dir =
-        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/windows");
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/windows");
     QDir().mkpath(dir);
     return dir;
 }

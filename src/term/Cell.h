@@ -20,7 +20,7 @@ inline constexpr unsigned int Invisible = 1u << 5;
 // lead before it is right-margin padding left when a wide character wrapped.
 inline constexpr unsigned int Wide = 1u << 6;
 inline constexpr unsigned int WideSpacer = 1u << 7;
-}
+} // namespace CellFlag
 
 // Second byte of per-cell style: SGR attributes beyond CellFlag, plus the
 // underline style (CellFlag::Underline says whether the cell is underlined;
@@ -37,7 +37,7 @@ inline constexpr unsigned int UnderlineMask = 7u << UnderlineShift;
 // area) cells also resist ED/EL/ECH while ERM is reset.
 inline constexpr unsigned int DecProtected = 1u << 6;
 inline constexpr unsigned int IsoProtected = 1u << 7;
-}
+} // namespace CellAttr
 
 // SGR 4:n underline styles, stored in CellAttr::UnderlineMask.
 namespace UnderlineStyle
@@ -47,7 +47,7 @@ inline constexpr unsigned int Double = 1;
 inline constexpr unsigned int Curly = 2;
 inline constexpr unsigned int Dotted = 3;
 inline constexpr unsigned int Dashed = 4;
-}
+} // namespace UnderlineStyle
 
 // Encoded color value stored per cell:
 //   0                       -> default (resolved at render time)

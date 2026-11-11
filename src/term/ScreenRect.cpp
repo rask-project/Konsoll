@@ -70,8 +70,9 @@ void Screen::shiftRows(int top, int bottom, int left, int right, int count)
         std::ranges::for_each(std::views::iota(top, bottom - n + 1), [&](int row) { copyColumns(row + n, row); });
         std::ranges::for_each(std::views::iota(bottom - n + 1, bottom + 1), blankColumns);
     } else {
-        std::ranges::for_each(std::views::iota(top + n, bottom + 1) | std::views::reverse,
-                              [&](int row) { copyColumns(row - n, row); });
+        std::ranges::for_each(std::views::iota(top + n, bottom + 1) | std::views::reverse, [&](int row) {
+            copyColumns(row - n, row);
+        });
         std::ranges::for_each(std::views::iota(top, top + n), blankColumns);
     }
 }
@@ -178,8 +179,7 @@ int Screen::checksumRect(const Rect &rect) const
     unsigned int sum = 0;
     std::ranges::for_each(std::views::iota(r.top, r.bottom + 1), [&](int row) {
         const Line &line = grid()[row];
-        std::for_each(line.begin() + r.left, line.begin() + r.right + 1,
-                      [&sum](const Cell &cell) { sum += cell.ch; });
+        std::for_each(line.begin() + r.left, line.begin() + r.right + 1, [&sum](const Cell &cell) { sum += cell.ch; });
     });
     return static_cast<int>((0u - sum) & 0xffffu); // xterm: the negated sum, 16 bits
 }

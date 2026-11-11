@@ -125,7 +125,8 @@ QByteArray readFile(const QString &path, bool temporary, qsizetype size, qsizety
     if (temporary) {
         const QString dir = info.canonicalPath();
         const bool inTemp = dir.startsWith(QDir::tempPath()) || dir.startsWith(QStringLiteral("/tmp")) ||
-                            dir.startsWith(QStringLiteral("/private/tmp")) || dir.startsWith(QStringLiteral("/private/var/folders"));
+                            dir.startsWith(QStringLiteral("/private/tmp")) ||
+                            dir.startsWith(QStringLiteral("/private/var/folders"));
         if (!inTemp || !info.fileName().contains(QStringLiteral("tty-graphics-protocol"))) {
             return {};
         }
@@ -150,8 +151,13 @@ QImage rawImage(const QByteArray &data, int width, int height, int format)
         data.size() < static_cast<qsizetype>(width) * height * bytesPerPixel) {
         return {};
     }
-    const QImage view(reinterpret_cast<const uchar *>(data.constData()), width, height, static_cast<qsizetype>(width) * bytesPerPixel,
-                      format == 24 ? QImage::Format_RGB888 : QImage::Format_RGBA8888);
+    const QImage view(
+        reinterpret_cast<const uchar *>(data.constData()),
+        width,
+        height,
+        static_cast<qsizetype>(width) * bytesPerPixel,
+        format == 24 ? QImage::Format_RGB888 : QImage::Format_RGBA8888
+    );
     return view.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
 }
 
@@ -304,7 +310,8 @@ KittyResult GraphicsStore::handleKitty(const QByteArray &command, const Graphics
     return runKitty(control, payload, context);
 }
 
-KittyResult GraphicsStore::runKitty(const QByteArray &control, const QByteArray &payload, const GraphicsContext &context)
+KittyResult
+GraphicsStore::runKitty(const QByteArray &control, const QByteArray &payload, const GraphicsContext &context)
 {
     const KittyControl keys(control);
     switch (keys.letter('a', 't')) {
@@ -333,8 +340,12 @@ KittyResult GraphicsStore::runKitty(const QByteArray &control, const QByteArray 
     }
 }
 
-KittyResult GraphicsStore::transmit(const QByteArray &control, const QByteArray &payload, const GraphicsContext &context,
-                                    bool display)
+KittyResult GraphicsStore::transmit(
+    const QByteArray &control,
+    const QByteArray &payload,
+    const GraphicsContext &context,
+    bool display
+)
 {
     const KittyControl keys(control);
     const std::uint32_t requestedId = keys.id('i');
@@ -394,14 +405,17 @@ KittyResult GraphicsStore::place(const QByteArray &control, std::uint32_t imageI
         .rows = keys.number('r'),
         .z = keys.number('z'),
         .alternate = static_cast<short>(context.alternate),
-        .scaled = keys.number('U') == 1 ? kPlacementVirtual
-                                         : (keys.number('c') > 0 || keys.number('r') > 0 ? kPlacementScaled : kPlacementNatural),
+        .scaled = keys.number('U') == 1
+                      ? kPlacementVirtual
+                      : (keys.number('c') > 0 || keys.number('r') > 0 ? kPlacementScaled : kPlacementNatural),
         .offsetX = static_cast<short>(std::clamp(keys.number('X'), 0, std::min(context.cellWidth - 1, 0x7fff))),
         .offsetY = static_cast<short>(std::clamp(keys.number('Y'), 0, std::min(context.cellHeight - 1, 0x7fff))),
     };
     const auto cells = [](int pixels, int cell) { return std::max(1, (pixels + cell - 1) / std::max(cell, 1)); };
-    placement.columns = placement.columns > 0 ? placement.columns : cells(source.width() + placement.offsetX, context.cellWidth);
-    placement.rows = placement.rows > 0 ? placement.rows : cells(source.height() + placement.offsetY, context.cellHeight);
+    placement.columns =
+        placement.columns > 0 ? placement.columns : cells(source.width() + placement.offsetX, context.cellWidth);
+    placement.rows =
+        placement.rows > 0 ? placement.rows : cells(source.height() + placement.offsetY, context.cellHeight);
     if (placement.placementId != 0) {
         std::erase_if(m_placements, [&placement](const GraphicsPlacement &p) {
             return p.imageId == placement.imageId && p.placementId == placement.placementId;
@@ -515,8 +529,13 @@ int itermDimension(const QByteArray &value, int cell, int screenCells)
 }
 } // namespace
 
-ItermResult GraphicsStore::placeItermFile(const QByteArray &args, const QByteArray &base64, const GraphicsContext &context,
-                                          int screenColumns, int screenRows)
+ItermResult GraphicsStore::placeItermFile(
+    const QByteArray &args,
+    const QByteArray &base64,
+    const GraphicsContext &context,
+    int screenColumns,
+    int screenRows
+)
 {
     QByteArray width;
     QByteArray height;
@@ -536,7 +555,8 @@ ItermResult GraphicsStore::placeItermFile(const QByteArray &args, const QByteArr
             preserve = value != "0";
         }
     });
-    const QImage image = shown && base64.size() <= kMaxPayload ? QImage::fromData(QByteArray::fromBase64(base64)) : QImage{};
+    const QImage image =
+        shown && base64.size() <= kMaxPayload ? QImage::fromData(QByteArray::fromBase64(base64)) : QImage{};
     if (image.isNull() || static_cast<qint64>(image.width()) * image.height() > kMaxPixels) {
         return {};
     }
@@ -553,7 +573,8 @@ ItermResult GraphicsStore::placeItermFile(const QByteArray &args, const QByteArr
         boxHeight = static_cast<int>(boxWidth / aspect);
     } else if (preserve) {
         // Fit inside the box, keeping the aspect ratio.
-        const double scale = std::min(static_cast<double>(boxWidth) / image.width(), static_cast<double>(boxHeight) / image.height());
+        const double scale =
+            std::min(static_cast<double>(boxWidth) / image.width(), static_cast<double>(boxHeight) / image.height());
         boxWidth = static_cast<int>(image.width() * scale);
         boxHeight = static_cast<int>(image.height() * scale);
     }
@@ -581,7 +602,8 @@ ItermResult GraphicsStore::placeItermFile(const QByteArray &args, const QByteArr
 const GraphicsPlacement *GraphicsStore::virtualPlacement(std::uint32_t imageId, std::uint32_t placementId) const
 {
     const auto found = std::ranges::find_if(m_placements, [&](const GraphicsPlacement &p) {
-        return p.scaled == kPlacementVirtual && p.imageId == imageId && (placementId == 0 || p.placementId == placementId);
+        return p.scaled == kPlacementVirtual && p.imageId == imageId &&
+               (placementId == 0 || p.placementId == placementId);
     });
     return found == m_placements.end() ? nullptr : &*found;
 }
@@ -626,9 +648,11 @@ KittyResult GraphicsStore::addFrame(const QByteArray &control, const QByteArray 
         QPainter painter(&canvas);
         painter.drawImage(QPoint(keys.number('x'), keys.number('y')), data);
     }
-    const GraphicsFrame frame{.pixels = std::make_shared<const QImage>(std::move(canvas)),
-                              .serial = m_nextSerial++,
-                              .gap = std::max(keys.number('z', 40), 1)};
+    const GraphicsFrame frame{
+        .pixels = std::make_shared<const QImage>(std::move(canvas)),
+        .serial = m_nextSerial++,
+        .gap = std::max(keys.number('z', 40), 1)
+    };
     const int edit = keys.number('r');
     if (edit >= 1 && edit <= static_cast<int>(image.frames.size())) {
         image.frames[static_cast<std::size_t>(edit - 1)] = frame;
@@ -690,10 +714,13 @@ void GraphicsStore::composeFrames(const QByteArray &control)
     }
     const QImage &from = *image.frames[static_cast<std::size_t>(source - 1)].pixels;
     QImage to = *image.frames[static_cast<std::size_t>(target - 1)].pixels;
-    const QRect rect(keys.number('x'), keys.number('y'), keys.number('w', from.width()), keys.number('h', from.height()));
+    const QRect
+        rect(keys.number('x'), keys.number('y'), keys.number('w', from.width()), keys.number('h', from.height()));
     {
         QPainter painter(&to);
-        painter.setCompositionMode(keys.number('C') == 1 ? QPainter::CompositionMode_Source : QPainter::CompositionMode_SourceOver);
+        painter.setCompositionMode(
+            keys.number('C') == 1 ? QPainter::CompositionMode_Source : QPainter::CompositionMode_SourceOver
+        );
         painter.drawImage(QPoint(keys.number('X'), keys.number('Y')), from, rect);
     }
     GraphicsFrame &frame = image.frames[static_cast<std::size_t>(target - 1)];
@@ -795,8 +822,22 @@ namespace
 
 // VT340 default color registers 0-15.
 constexpr std::array<QRgb, 16> kSixelDefaults{
-    0xff000000, 0xff3333cc, 0xffcc2121, 0xff33cc33, 0xffcc33cc, 0xff33cccc, 0xffcccc33, 0xff878787,
-    0xff424242, 0xff545499, 0xff994242, 0xff549954, 0xff995499, 0xff549999, 0xff999954, 0xffcccccc,
+    0xff000000,
+    0xff3333cc,
+    0xffcc2121,
+    0xff33cc33,
+    0xffcc33cc,
+    0xff33cccc,
+    0xffcccc33,
+    0xff878787,
+    0xff424242,
+    0xff545499,
+    0xff994242,
+    0xff549954,
+    0xff995499,
+    0xff549999,
+    0xff999954,
+    0xffcccccc,
 };
 
 constexpr int kMaxSixelSize = 4096;
@@ -897,7 +938,8 @@ private:
             m_palette[static_cast<std::size_t>(m_color)] = qRgb(percent(a), percent(b), percent(c));
         } else if (space == 1) {
             // DEC HLS: hue 0 is blue, 120 red, 240 green.
-            m_palette[static_cast<std::size_t>(m_color)] = QColor::fromHsl((a + 240) % 360, percent(c), percent(b)).rgb();
+            m_palette[static_cast<std::size_t>(m_color)] =
+                QColor::fromHsl((a + 240) % 360, percent(c), percent(b)).rgb();
         }
     }
 
@@ -912,8 +954,9 @@ private:
             if ((bits & (1 << bit)) == 0 || m_y + bit >= kMaxSixelSize) {
                 return;
             }
-            std::ranges::for_each(std::views::iota(m_x, m_x + run),
-                                  [&](int x) { m_pixels.push_back(Pixel{.x = x, .y = m_y + bit, .color = color}); });
+            std::ranges::for_each(std::views::iota(m_x, m_x + run), [&](int x) {
+                m_pixels.push_back(Pixel{.x = x, .y = m_y + bit, .color = color});
+            });
             m_height = std::max(m_height, m_y + bit + 1);
         });
         m_x += run;

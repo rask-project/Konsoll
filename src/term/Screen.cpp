@@ -85,7 +85,8 @@ Screen::Screen(int rows, int cols) : m_rows(rows), m_cols(cols), m_scrollBottom(
 int Screen::lineSize(int index) const
 {
     const int row = index - (m_inAlt ? 0 : static_cast<int>(m_scrollback.size()));
-    return row >= 0 && row < static_cast<int>(m_lineSizes.size()) ? m_lineSizes[static_cast<std::size_t>(row)] : SingleLine;
+    return row >= 0 && row < static_cast<int>(m_lineSizes.size()) ? m_lineSizes[static_cast<std::size_t>(row)]
+                                                                  : SingleLine;
 }
 
 void Screen::setLineSize(int size)
@@ -159,8 +160,8 @@ void Screen::resize(int rows, int cols)
             m_scrollbackWrapped.clear();
             m_scrollOffset = 0;
         }
-        const bool emptyScreen = std::ranges::all_of(m_scrollback, isBlankLine) &&
-                                 std::ranges::all_of(m_main, isBlankLine);
+        const bool emptyScreen =
+            std::ranges::all_of(m_scrollback, isBlankLine) && std::ranges::all_of(m_main, isBlankLine);
         if (emptyScreen) {
             // A smaller pane must not turn unused blank screen rows into
             // scrollback; that makes an idle terminal appear scrollable.
@@ -206,8 +207,10 @@ void Screen::moveCursor(int row, int col)
 void Screen::moveCursorAddressed(int row, int col)
 {
     if (originMode()) {
-        moveCursor(std::clamp(row + m_scrollTop, m_scrollTop, m_scrollBottom),
-                   std::clamp(col + leftMargin(), leftMargin(), rightMargin()));
+        moveCursor(
+            std::clamp(row + m_scrollTop, m_scrollTop, m_scrollBottom),
+            std::clamp(col + leftMargin(), leftMargin(), rightMargin())
+        );
     } else {
         moveCursor(row, col);
     }
@@ -577,8 +580,9 @@ void Screen::eraseInDisplay(int mode, unsigned int protectedMask)
         return;
     }
     const auto eraseRows = [this, &protectedMask](int from, int to) {
-        std::ranges::for_each(std::views::iota(from, to),
-                              [this, &protectedMask](int r) { eraseCells(r, 0, m_cols - 1, protectedMask); });
+        std::ranges::for_each(std::views::iota(from, to), [this, &protectedMask](int r) {
+            eraseCells(r, 0, m_cols - 1, protectedMask);
+        });
     };
     // Lines erased completely become single width (DEC).
     const auto singleRows = [this](int from, int to) {
@@ -1067,8 +1071,12 @@ void Screen::reflow()
 
 // Records where every old physical line went (m_reflowMap): the first new
 // line of its logical line plus its offset in it, at the new width.
-void Screen::remapAfterReflow(const std::vector<Line> &phys, const std::vector<bool> &wrapped,
-                              const std::vector<size_t> &logicalStarts, size_t keepFrom)
+void Screen::remapAfterReflow(
+    const std::vector<Line> &phys,
+    const std::vector<bool> &wrapped,
+    const std::vector<size_t> &logicalStarts,
+    size_t keepFrom
+)
 {
     const long long base = m_droppedLines - static_cast<long long>(keepFrom);
     m_reflowMap = ReflowMap{.base = base, .anchors = {}};
@@ -1083,7 +1091,9 @@ void Screen::remapAfterReflow(const std::vector<Line> &phys, const std::vector<b
             offset = 0;
         }
         const std::size_t start = logicalIndex < logicalStarts.size() ? logicalStarts[logicalIndex] : i;
-        m_reflowMap.anchors.push_back(base + static_cast<long long>(start + (offset / static_cast<std::size_t>(m_cols))));
+        m_reflowMap.anchors.push_back(
+            base + static_cast<long long>(start + (offset / static_cast<std::size_t>(m_cols)))
+        );
     });
 }
 
@@ -1113,9 +1123,13 @@ void Screen::collectPhysicalLines(std::vector<Line> &phys, std::vector<bool> &wr
 //    padding of each logical line. Spaces at a wrap point are content
 //    (they separate words), so only the end of the whole logical line is
 //    padding.
-std::vector<std::vector<Cell>>
-Screen::buildLogicalLines(const std::vector<Line> &phys, const std::vector<bool> &wrapped, size_t cursorPhys,
-                           size_t &cursorLogical, size_t &cursorLogicalCol) const
+std::vector<std::vector<Cell>> Screen::buildLogicalLines(
+    const std::vector<Line> &phys,
+    const std::vector<bool> &wrapped,
+    size_t cursorPhys,
+    size_t &cursorLogical,
+    size_t &cursorLogicalCol
+) const
 {
     auto const trimEnd = [](std::vector<Cell> &line) {
         // A wide character's spacer is part of it, not trailing padding.
@@ -1157,9 +1171,14 @@ Screen::buildLogicalLines(const std::vector<Line> &phys, const std::vector<bool>
 // 3. Re-wrap each logical line at the new width. A wide character never
 //    straddles two rows: when its lead would land in the last column it moves
 //    to the next row and the gap becomes wrap padding.
-Screen::ReflowedScreen
-Screen::rewrapLogicalLines(const std::vector<std::vector<Cell>> &logical, size_t cursorLogical, size_t cursorLogicalCol,
-                           size_t &cursorNewPhys, size_t &cursorNewCol, std::vector<size_t> &logicalStarts) const
+Screen::ReflowedScreen Screen::rewrapLogicalLines(
+    const std::vector<std::vector<Cell>> &logical,
+    size_t cursorLogical,
+    size_t cursorLogicalCol,
+    size_t &cursorNewPhys,
+    size_t &cursorNewCol,
+    std::vector<size_t> &logicalStarts
+) const
 {
     ReflowedScreen rewrapped;
     const auto cols = static_cast<size_t>(m_cols);
@@ -1175,7 +1194,8 @@ Screen::rewrapLogicalLines(const std::vector<std::vector<Cell>> &logical, size_t
             // it (cursor beyond the trimmed text) spill onto following rows.
             const auto chunk = std::ranges::upper_bound(chunkStarts, cursorLogicalCol) - 1;
             const size_t offset = cursorLogicalCol - *chunk;
-            cursorNewPhys = logicalStart + static_cast<size_t>(std::distance(chunkStarts.begin(), chunk)) + (offset / cols);
+            cursorNewPhys =
+                logicalStart + static_cast<size_t>(std::distance(chunkStarts.begin(), chunk)) + (offset / cols);
             cursorNewCol = offset % cols;
         }
     }
@@ -1193,8 +1213,10 @@ void Screen::wrapLogicalLine(const std::vector<Cell> &log, ReflowedScreen &out, 
         if (more && take > 1 && hasFlag(log[start + take - 1], CellFlag::Wide)) {
             --take;
         }
-        Line line(log.begin() + static_cast<std::ptrdiff_t>(start),
-                  log.begin() + static_cast<std::ptrdiff_t>(start + take));
+        Line line(
+            log.begin() + static_cast<std::ptrdiff_t>(start),
+            log.begin() + static_cast<std::ptrdiff_t>(start + take)
+        );
         if (more && line.size() < cols) {
             line.push_back(Cell{.fg = 0, .bg = 0, .ch = ' ', .flags = CellFlag::WideSpacer});
         }
@@ -1212,8 +1234,13 @@ void Screen::wrapLogicalLine(const std::vector<Cell> &log, ReflowedScreen &out, 
 // 5. Keep the cursor attached to its logical line and column. This keeps
 //    it in place when the window grows instead of anchoring it to the
 //    bottom row of the newly larger screen.
-void Screen::redistribute(const ReflowedScreen &rewrapped, size_t cursorNewPhys, size_t cursorNewCol, size_t &keepFrom,
-                          size_t &screenStart)
+void Screen::redistribute(
+    const ReflowedScreen &rewrapped,
+    size_t cursorNewPhys,
+    size_t cursorNewCol,
+    size_t &keepFrom,
+    size_t &screenStart
+)
 {
     const size_t total = rewrapped.lines.size();
     // Cap only when a limit is set (0 = unlimited).

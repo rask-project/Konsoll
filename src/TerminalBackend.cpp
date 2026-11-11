@@ -15,8 +15,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
-#include <QMetaObject>
 #include <QImage>
+#include <QMetaObject>
 #include <QProcess>
 #include <QSettings>
 #include <QUrl>
@@ -279,8 +279,17 @@ void TerminalBackend::startWorker(const QString &workingDirectory, const QString
     connect(m_thread.get(), &QThread::finished, this, &TerminalBackend::onWorkerThreadStopped);
     m_thread->start();
     const QString shell = detectDefaultShell();
-    QMetaObject::invokeMethod(m_worker.get(), &PtyWorker::start, Qt::QueuedConnection, shell, m_cols, m_rows,
-                              workingDirectory, m_remoteHostToken, command);
+    QMetaObject::invokeMethod(
+        m_worker.get(),
+        &PtyWorker::start,
+        Qt::QueuedConnection,
+        shell,
+        m_cols,
+        m_rows,
+        workingDirectory,
+        m_remoteHostToken,
+        command
+    );
     m_state = SessionState::Starting;
 }
 
@@ -312,8 +321,10 @@ bool TerminalBackend::close()
     if (m_thread) {
         constexpr unsigned long kThreadJoinTimeoutMs = 3000;
         if (!m_thread->wait(kThreadJoinTimeoutMs)) {
-            qWarning("Konsoll: session worker did not stop within %lu ms; deferring session removal",
-                     kThreadJoinTimeoutMs);
+            qWarning(
+                "Konsoll: session worker did not stop within %lu ms; deferring session removal",
+                kThreadJoinTimeoutMs
+            );
             return false;
         }
     }
@@ -374,8 +385,12 @@ void TerminalBackend::onData(const QByteArray &data)
     }
     // Acknowledge consumption to the worker so it can resume paused reads.
     if (m_worker) {
-        QMetaObject::invokeMethod(m_worker.get(), &PtyWorker::outputDelivered, Qt::QueuedConnection,
-                                  static_cast<qint64>(data.size()));
+        QMetaObject::invokeMethod(
+            m_worker.get(),
+            &PtyWorker::outputDelivered,
+            Qt::QueuedConnection,
+            static_cast<qint64>(data.size())
+        );
     }
 }
 
@@ -583,28 +598,34 @@ void TerminalBackend::keyEvent(int key, const QString &text, int modifiers, int 
     }
 }
 
-QByteArray TerminalBackend::keyOutputBytes(int key, const QString &text, unsigned int mods, bool keypad, int eventType) const
+QByteArray
+TerminalBackend::keyOutputBytes(int key, const QString &text, unsigned int mods, bool keypad, int eventType) const
 {
     if (!m_terminal) {
         return {};
     }
-    const unsigned int modes = (m_terminal->applicationCursorKeys() ? KeyMode::ApplicationCursor : 0u) |
-                               (m_terminal->applicationKeypad() ? KeyMode::ApplicationKeypad : 0u) |
-                               (keypad ? KeyMode::FromKeypad : 0u) |
-                               (m_terminal->newlineMode() ? KeyMode::NewlineMode : 0u) |
-                               (m_terminal->vt52Mode() ? KeyMode::Vt52 : 0u) |
-                               (m_terminal->modifyOtherKeys() == 1 ? KeyMode::OtherKeys1 : 0u) |
-                               (m_terminal->modifyOtherKeys() == 2 ? KeyMode::OtherKeys2 : 0u) |
-                               (m_terminal->otherKeysCsiU() ? KeyMode::OtherKeysCsiU : 0u) |
-                               (optionAsMeta() ? KeyMode::OptionMeta : 0u);
+    const unsigned int modes =
+        (m_terminal->applicationCursorKeys() ? KeyMode::ApplicationCursor : 0u) |
+        (m_terminal->applicationKeypad() ? KeyMode::ApplicationKeypad : 0u) | (keypad ? KeyMode::FromKeypad : 0u) |
+        (m_terminal->newlineMode() ? KeyMode::NewlineMode : 0u) | (m_terminal->vt52Mode() ? KeyMode::Vt52 : 0u) |
+        (m_terminal->modifyOtherKeys() == 1 ? KeyMode::OtherKeys1 : 0u) |
+        (m_terminal->modifyOtherKeys() == 2 ? KeyMode::OtherKeys2 : 0u) |
+        (m_terminal->otherKeysCsiU() ? KeyMode::OtherKeysCsiU : 0u) | (optionAsMeta() ? KeyMode::OptionMeta : 0u);
     // DECUDK: Shift+F1-F20 send the strings the program defined.
     if (mods == KeyMod::Shift && key >= Qt::Key_F1 && key <= Qt::Key_F20 && eventType == KeyEventType::Press) {
         if (QByteArray defined = m_terminal->userDefinedKey(key - Qt::Key_F1 + 1); !defined.isEmpty()) {
             return defined;
         }
     }
-    return encodeKey(key, text, mods, modes, m_terminal->kittyKeyboardFlags(), eventType,
-                     usLayoutKey(NativeKeyTracker::lastVirtualKey()));
+    return encodeKey(
+        key,
+        text,
+        mods,
+        modes,
+        m_terminal->kittyKeyboardFlags(),
+        eventType,
+        usLayoutKey(NativeKeyTracker::lastVirtualKey())
+    );
 }
 
 void TerminalBackend::writeText(const QString &text)
@@ -683,8 +704,13 @@ QVariantMap TerminalBackend::hyperlinkAt(int row, int col) const
     }
     const unsigned short id = cells[static_cast<std::size_t>(col)].link;
     const QUrl url(m_terminal->linkTarget(id));
-    static const QStringList kSchemes{QStringLiteral("http"), QStringLiteral("https"), QStringLiteral("ftp"),
-                                      QStringLiteral("mailto"), QStringLiteral("file")};
+    static const QStringList kSchemes{
+        QStringLiteral("http"),
+        QStringLiteral("https"),
+        QStringLiteral("ftp"),
+        QStringLiteral("mailto"),
+        QStringLiteral("file")
+    };
     if (!url.isValid() || !kSchemes.contains(url.scheme().toLower()) ||
         (url.isLocalFile() && !QFileInfo::exists(url.toLocalFile()))) {
         return {};
@@ -1358,9 +1384,7 @@ QString TerminalBackend::selectionText() const
             const int end = lastContent == reversedCells.end()
                                 ? -1
                                 : static_cast<int>(std::distance(cells.begin(), lastContent.base())) - 1;
-            std::ranges::for_each(std::views::iota(0, end + 1), [&](int col) {
-                appendCellText(text, cells[col]);
-            });
+            std::ranges::for_each(std::views::iota(0, end + 1), [&](int col) { appendCellText(text, cells[col]); });
             if (line < m_highlightEnd) {
                 text.append('\n');
             }
@@ -1397,9 +1421,7 @@ QString TerminalBackend::selectionText() const
             std::ranges::find_last_if(selectedCells, [](const Cell &cell) { return cell.ch != ' '; });
         end = lastContent.empty() ? first
                                   : first + static_cast<int>(std::distance(selectedCells.begin(), lastContent.end()));
-        std::ranges::for_each(std::views::iota(first, end), [&](int col) {
-            appendCellText(text, cells[col]);
-        });
+        std::ranges::for_each(std::views::iota(first, end), [&](int col) { appendCellText(text, cells[col]); });
         if (line < bot && !screen.isWrappedContinuation(line + 1)) {
             text.append('\n');
         }
@@ -1421,9 +1443,7 @@ QString TerminalBackend::bufferText() const
         const auto lastContent = std::ranges::find_if(reversedCells, [](const Cell &cell) { return cell.ch != ' '; });
         const int end =
             lastContent == reversedCells.end() ? 0 : static_cast<int>(std::distance(cells.begin(), lastContent.base()));
-        std::ranges::for_each(std::views::iota(0, end), [&](int col) {
-            appendCellText(text, cells[col]);
-        });
+        std::ranges::for_each(std::views::iota(0, end), [&](int col) { appendCellText(text, cells[col]); });
         if (line + 1 < totalLines && !screen.isWrappedContinuation(line + 1)) {
             text.append('\n');
         }
@@ -1810,10 +1830,12 @@ std::vector<TerminalBackend::VisibleImage> TerminalBackend::visibleImages() cons
         // c= / r= stretch the image over that many cells; otherwise it keeps
         // its pixel size.
         const bool scaled = placement.scaled == kPlacementScaled;
-        const QRectF target(placement.column + (placement.offsetX / cellWidth),
-                            static_cast<double>(row) + (placement.offsetY / cellHeight),
-                            scaled ? placement.columns : placement.source.width() / cellWidth,
-                            scaled ? placement.rows : placement.source.height() / cellHeight);
+        const QRectF target(
+            placement.column + (placement.offsetX / cellWidth),
+            static_cast<double>(row) + (placement.offsetY / cellHeight),
+            scaled ? placement.columns : placement.source.width() / cellWidth,
+            scaled ? placement.rows : placement.source.height() / cellHeight
+        );
         out.push_back(VisibleImage{
             .image = image->pixels,
             .target = target,
@@ -1874,7 +1896,8 @@ namespace
 bool mergeSlice(TerminalBackend::VisibleImage &last, const TerminalBackend::VisibleImage &next)
 {
     if (last.serial != next.serial || !qFuzzyCompare(last.target.right(), next.target.left()) ||
-        !qFuzzyCompare(last.target.top(), next.target.top()) || !qFuzzyCompare(last.source.right(), next.source.left())) {
+        !qFuzzyCompare(last.target.top(), next.target.top()) ||
+        !qFuzzyCompare(last.source.right(), next.source.left())) {
         return false;
     }
     last.target.setRight(next.target.right());
@@ -1885,9 +1908,14 @@ bool mergeSlice(TerminalBackend::VisibleImage &last, const TerminalBackend::Visi
 
 // The part of a virtual placement one placeholder cell shows: the image
 // fitted into the placement's c x r cells (aspect kept, centered).
-std::optional<TerminalBackend::VisibleImage> TerminalBackend::placeholderSlice(std::uint32_t imageId,
-                                                                               std::uint32_t placementId, int imageRow,
-                                                                               int imageColumn, int row, int col) const
+std::optional<TerminalBackend::VisibleImage> TerminalBackend::placeholderSlice(
+    std::uint32_t imageId,
+    std::uint32_t placementId,
+    int imageRow,
+    int imageColumn,
+    int row,
+    int col
+) const
 {
     const GraphicsStore &graphics = m_terminal->graphics();
     const GraphicsPlacement *const placement = graphics.virtualPlacement(imageId, placementId);
@@ -1901,8 +1929,12 @@ std::optional<TerminalBackend::VisibleImage> TerminalBackend::placeholderSlice(s
     const double boxWidth = std::max(placement->columns, 1) * cellWidth;
     const double boxHeight = std::max(placement->rows, 1) * cellHeight;
     const double scale = std::min(boxWidth / source.width(), boxHeight / source.height());
-    const QRectF drawn((boxWidth - (source.width() * scale)) / 2.0, (boxHeight - (source.height() * scale)) / 2.0,
-                       source.width() * scale, source.height() * scale);
+    const QRectF drawn(
+        (boxWidth - (source.width() * scale)) / 2.0,
+        (boxHeight - (source.height() * scale)) / 2.0,
+        source.width() * scale,
+        source.height() * scale
+    );
     const QRectF cell(imageColumn * cellWidth, imageRow * cellHeight, cellWidth, cellHeight);
     const QRectF piece = cell.intersected(drawn);
     if (piece.isEmpty()) {
@@ -1910,10 +1942,18 @@ std::optional<TerminalBackend::VisibleImage> TerminalBackend::placeholderSlice(s
     }
     return VisibleImage{
         .image = image->pixels,
-        .target = QRectF(col + ((piece.x() - cell.x()) / cellWidth), row + ((piece.y() - cell.y()) / cellHeight),
-                         piece.width() / cellWidth, piece.height() / cellHeight),
-        .source = QRectF(source.x() + ((piece.x() - drawn.x()) / scale), source.y() + ((piece.y() - drawn.y()) / scale),
-                         piece.width() / scale, piece.height() / scale),
+        .target = QRectF(
+            col + ((piece.x() - cell.x()) / cellWidth),
+            row + ((piece.y() - cell.y()) / cellHeight),
+            piece.width() / cellWidth,
+            piece.height() / cellHeight
+        ),
+        .source = QRectF(
+            source.x() + ((piece.x() - drawn.x()) / scale),
+            source.y() + ((piece.y() - drawn.y()) / scale),
+            piece.width() / scale,
+            piece.height() / scale
+        ),
         .serial = image->serial,
         .z = placement->z,
     };
@@ -1939,7 +1979,8 @@ void TerminalBackend::appendPlaceholderImages(std::vector<VisibleImage> &out) co
             cell.column = cell.column >= 0 ? cell.column : (continues ? previous.column + 1 : 0);
             previous = cell;
             previousCol = col;
-            const std::optional<VisibleImage> slice = placeholderSlice(cell.image, cell.placement, cell.row, cell.column, row, col);
+            const std::optional<VisibleImage> slice =
+                placeholderSlice(cell.image, cell.placement, cell.row, cell.column, row, col);
             if (slice && (out.empty() || !mergeSlice(out.back(), *slice))) {
                 out.push_back(*slice);
             }

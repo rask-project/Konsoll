@@ -87,13 +87,13 @@ public:
         int bottom{0};
         int right{0};
     };
-    void fillRect(const Rect &rect, const Cell &cell);                // DECFRA
-    void eraseRect(const Rect &rect, unsigned int protectedMask);     // DECERA / DECSERA
-    void copyRect(const Rect &source, int top, int left);             // DECCRA
+    void fillRect(const Rect &rect, const Cell &cell);            // DECFRA
+    void eraseRect(const Rect &rect, unsigned int protectedMask); // DECERA / DECSERA
+    void copyRect(const Rect &source, int top, int left);         // DECCRA
     // DECCARA / DECRARA: `change` applies to every cell of the rectangle,
     // or of the character stream from its top-left to its bottom-right.
     template <typename Change> void changeRect(const Rect &rect, bool stream, Change change);
-    int checksumRect(const Rect &rect) const;                         // DECRQCRA
+    int checksumRect(const Rect &rect) const; // DECRQCRA
 
     // Cell access for rendering.
     const Cell &cellAt(int row, int col) const;
@@ -121,7 +121,7 @@ public:
     void backspace();
     void tab(int count = 1);
     void backTab(int count);
-    void setTabStop();          // HTS
+    void setTabStop();           // HTS
     void clearTabStop(int mode); // TBC: 0 at the cursor, 3 all
     void reverseIndex();
 
@@ -144,7 +144,7 @@ public:
     void scrollDown(int count);
     void insertLines(int count);
     void deleteLines(int count);
-    void setScrollRegion(int top, int bottom); // 1-based inclusive
+    void setScrollRegion(int top, int bottom);          // 1-based inclusive
     int scrollTop() const { return m_scrollTop; }       // 0-based inclusive
     int scrollBottom() const { return m_scrollBottom; } // 0-based inclusive
     void resetScrollRegion();
@@ -273,16 +273,34 @@ private:
     void reflow();
     void collectPhysicalLines(std::vector<Line> &phys, std::vector<bool> &wrapped) const;
     std::vector<std::vector<Cell>> buildLogicalLines(
-        const std::vector<Line> &phys, const std::vector<bool> &wrapped, size_t cursorPhys,
-        size_t &cursorLogical, size_t &cursorLogicalCol) const;
+        const std::vector<Line> &phys,
+        const std::vector<bool> &wrapped,
+        size_t cursorPhys,
+        size_t &cursorLogical,
+        size_t &cursorLogicalCol
+    ) const;
     ReflowedScreen rewrapLogicalLines(
-        const std::vector<std::vector<Cell>> &logical, size_t cursorLogical, size_t cursorLogicalCol,
-        size_t &cursorNewPhys, size_t &cursorNewCol, std::vector<size_t> &logicalStarts) const;
-    void remapAfterReflow(const std::vector<Line> &phys, const std::vector<bool> &wrapped,
-                          const std::vector<size_t> &logicalStarts, size_t keepFrom);
+        const std::vector<std::vector<Cell>> &logical,
+        size_t cursorLogical,
+        size_t cursorLogicalCol,
+        size_t &cursorNewPhys,
+        size_t &cursorNewCol,
+        std::vector<size_t> &logicalStarts
+    ) const;
+    void remapAfterReflow(
+        const std::vector<Line> &phys,
+        const std::vector<bool> &wrapped,
+        const std::vector<size_t> &logicalStarts,
+        size_t keepFrom
+    );
     void wrapLogicalLine(const std::vector<Cell> &log, ReflowedScreen &out, std::vector<size_t> &chunkStarts) const;
-    void redistribute(const ReflowedScreen &rewrapped, size_t cursorNewPhys, size_t cursorNewCol, size_t &keepFrom,
-                      size_t &screenStart);
+    void redistribute(
+        const ReflowedScreen &rewrapped,
+        size_t cursorNewPhys,
+        size_t cursorNewCol,
+        size_t &keepFrom,
+        size_t &screenStart
+    );
     std::vector<Line> &grid() { return m_inAlt ? m_alt : m_main; }
     const std::vector<Line> &grid() const { return m_inAlt ? m_alt : m_main; }
 
@@ -312,11 +330,11 @@ private:
     unsigned int m_eraseBg = 0; // encoded like Cell::bg; 0 = default
     int m_cursorRow = 0;
     int m_cursorCol = 0;
-    int m_scrollTop = 0;    // 0-based inclusive
-    int m_scrollBottom = 0; // 0-based inclusive
+    int m_scrollTop = 0;     // 0-based inclusive
+    int m_scrollBottom = 0;  // 0-based inclusive
     int m_maxScrollback = 0; // 0 = unlimited
-    int m_scrollOffset = 0; // 0 = at the bottom
-    int m_marginLeft = 0;   // DECSLRM, 0-based inclusive
+    int m_scrollOffset = 0;  // 0 = at the bottom
+    int m_marginLeft = 0;    // DECSLRM, 0-based inclusive
     int m_marginRight = 0;
     std::array<SavedCursor, 2> m_savedCursors{}; // [0] main, [1] alternate
     bool m_cursorVisible = true;

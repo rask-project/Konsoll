@@ -64,7 +64,9 @@ QByteArray colorSgr(unsigned int encoded, int basicBase, int extended)
     if (encoded <= 256) {
         return ";" + number(extended) + ":5:" + number(static_cast<int>(encoded) - 1);
     }
-    const auto component = [encoded](unsigned int shift) { return number(static_cast<int>((encoded >> shift) & 0xffu)); };
+    const auto component = [encoded](unsigned int shift) {
+        return number(static_cast<int>((encoded >> shift) & 0xffu));
+    };
     return ";" + number(extended) + ":2::" + component(16) + ":" + component(8) + ":" + component(0);
 }
 
@@ -86,8 +88,7 @@ constexpr std::array kTermCaps{
     TermCap{.name = "setrgbf", .value = "\x1b[38:2::%p1%d:%p2%d:%p3%dm"},
     TermCap{.name = "setrgbb", .value = "\x1b[48:2::%p1%d:%p2%d:%p3%dm"},
     TermCap{.name = "Smulx", .value = "\x1b[4:%p1%dm"},
-    TermCap{.name = "Setulc",
-            .value = "\x1b[58:2::%p1%{65536}%/%d:%p1%{256}%/%{255}%&%d:%p1%{255}%&%dm"},
+    TermCap{.name = "Setulc", .value = "\x1b[58:2::%p1%{65536}%/%d:%p1%{256}%/%{255}%&%d:%p1%{255}%&%dm"},
     TermCap{.name = "Ss", .value = "\x1b[%p1%d q"},
     TermCap{.name = "Se", .value = "\x1b[2 q"},
     TermCap{.name = "Ms", .value = "\x1b]52;%p1%s;%p2%s\x07"},
@@ -208,7 +209,14 @@ void Terminal::handleWindowOps(const std::vector<int> &params)
         break;
     case 20: // report icon label
     case 21: // report title
-        m_requests.push_back(TerminalRequest{.data = {}, .body = {}, .kind = TerminalRequest::TitleReport, .a = paramAt(params, 0, 0) == 20 ? 1 : 0, .b = 0, .c = 0});
+        m_requests.push_back(TerminalRequest{
+            .data = {},
+            .body = {},
+            .kind = TerminalRequest::TitleReport,
+            .a = paramAt(params, 0, 0) == 20 ? 1 : 0,
+            .b = 0,
+            .c = 0
+        });
         break;
     case 1:  // de-iconify
     case 2:  // iconify
@@ -220,12 +228,14 @@ void Terminal::handleWindowOps(const std::vector<int> &params)
     case 9:  // maximize (1) / restore (0)
     case 10: // full screen: 0 leave, 1 enter, 2 toggle
         // Window manipulation needs the window and the user's permission.
-        m_requests.push_back(TerminalRequest{.data = {},
-                                             .body = {},
-                                             .kind = TerminalRequest::WindowOp,
-                                             .a = paramAt(params, 0, 0),
-                                             .b = params.size() > 1 ? params[1] : 0,
-                                             .c = params.size() > 2 ? params[2] : 0});
+        m_requests.push_back(TerminalRequest{
+            .data = {},
+            .body = {},
+            .kind = TerminalRequest::WindowOp,
+            .a = paramAt(params, 0, 0),
+            .b = params.size() > 1 ? params[1] : 0,
+            .c = params.size() > 2 ? params[2] : 0
+        });
         break;
     default:
         break;
@@ -236,8 +246,10 @@ void Terminal::reportInBandSize()
 {
     const int rows = m_screen.rows();
     const int cols = m_screen.cols();
-    reply("\x1b[48;" + number(rows) + ";" + number(cols) + ";" + number(rows * m_cellPixelHeight) + ";" +
-          number(cols * m_cellPixelWidth) + "t");
+    reply(
+        "\x1b[48;" + number(rows) + ";" + number(cols) + ";" + number(rows * m_cellPixelHeight) + ";" +
+        number(cols * m_cellPixelWidth) + "t"
+    );
 }
 
 // DECRQM state: 0 not recognized, 1 set, 2 reset, 4 permanently reset.
@@ -351,7 +363,9 @@ QByteArray Terminal::sgrReport() const
     add((m_pen.flags & CellFlag::Dim) != 0, "2");
     add((m_pen.attrs & CellAttr::Italic) != 0, "3");
     if ((m_pen.flags & CellFlag::Underline) != 0) {
-        sgr += underlineStyle(m_pen) == UnderlineStyle::Single ? ";4" : ";4:" + number(static_cast<int>(underlineStyle(m_pen)) + 1);
+        sgr += underlineStyle(m_pen) == UnderlineStyle::Single
+                   ? ";4"
+                   : ";4:" + number(static_cast<int>(underlineStyle(m_pen)) + 1);
     }
     add((m_pen.attrs & CellAttr::Blink) != 0, "5");
     add((m_pen.flags & CellFlag::Reverse) != 0, "7");
@@ -391,8 +405,8 @@ void Terminal::handleXtgettcap(const QByteArray &names)
 {
     std::ranges::for_each(names.split(';'), [this](const QByteArray &hexName) {
         const QByteArray name = QByteArray::fromHex(hexName);
-        const auto *const cap = std::ranges::find(kTermCaps, std::string_view(name.constData(), name.size()),
-                                                  &TermCap::name);
+        const auto *const cap =
+            std::ranges::find(kTermCaps, std::string_view(name.constData(), name.size()), &TermCap::name);
         if (name.isEmpty() || cap == kTermCaps.end()) {
             reply("\x1bP0+r" + hexName + "\x1b\\");
             return;

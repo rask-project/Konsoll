@@ -23,18 +23,43 @@ constexpr auto kEditor =
     std::to_array({"emacs"sv, "hx"sv, "kak"sv, "micro"sv, "nano"sv, "nvim"sv, "vi"sv, "view"sv, "vim"sv});
 constexpr auto kMonitor = std::to_array({"atop"sv, "btm"sv, "btop"sv, "glances"sv, "htop"sv, "top"sv});
 constexpr auto kContainer = std::to_array({"docker"sv, "k9s"sv, "kubectl"sv, "lazydocker"sv, "podman"sv});
-constexpr auto kRepl = std::to_array(
-    {"bun"sv, "deno"sv, "ghci"sv, "iex"sv, "ipython"sv, "irb"sv, "julia"sv, "lua"sv, "node"sv, "python"sv});
+constexpr auto kRepl =
+    std::to_array({"bun"sv, "deno"sv, "ghci"sv, "iex"sv, "ipython"sv, "irb"sv, "julia"sv, "lua"sv, "node"sv, "python"sv}
+    );
 constexpr auto kDatabase =
     std::to_array({"mongosh"sv, "mycli"sv, "mysql"sv, "pgcli"sv, "psql"sv, "redis-cli"sv, "sqlite"sv});
 constexpr auto kPrivileged = std::to_array({"doas"sv, "su"sv, "sudo"sv});
 constexpr auto kPager = std::to_array({"less"sv, "man"sv, "more"sv, "most"sv});
 constexpr auto kGit = std::to_array({"git"sv, "gitui"sv, "lazygit"sv, "tig"sv});
-constexpr auto kBuild = std::to_array({"cargo"sv, "cmake"sv, "ctest"sv, "go"sv, "gradle"sv, "make"sv, "mvn"sv, "ninja"sv,
-                                       "npm"sv, "pnpm"sv, "swift"sv, "xcodebuild"sv, "yarn"sv});
+constexpr auto kBuild = std::to_array(
+    {"cargo"sv,
+     "cmake"sv,
+     "ctest"sv,
+     "go"sv,
+     "gradle"sv,
+     "make"sv,
+     "mvn"sv,
+     "ninja"sv,
+     "npm"sv,
+     "pnpm"sv,
+     "swift"sv,
+     "xcodebuild"sv,
+     "yarn"sv}
+);
 constexpr auto kMultiplexer = std::to_array({"screen"sv, "tmux"sv, "zellij"sv});
-constexpr auto kAgent = std::to_array({"aider"sv, "amp"sv, "claude"sv, "codex"sv, "copilot"sv, "crush"sv,
-                                       "cursor-agent"sv, "gemini"sv, "goose"sv, "opencode"sv, "qwen"sv});
+constexpr auto kAgent = std::to_array(
+    {"aider"sv,
+     "amp"sv,
+     "claude"sv,
+     "codex"sv,
+     "copilot"sv,
+     "crush"sv,
+     "cursor-agent"sv,
+     "gemini"sv,
+     "goose"sv,
+     "opencode"sv,
+     "qwen"sv}
+);
 
 // Interpreters whose script argument names the program.
 constexpr auto kInterpreters = std::to_array({"bun"sv, "node"sv, "perl"sv, "python"sv, "ruby"sv});
@@ -45,12 +70,37 @@ constexpr auto kScriptSuffixes = std::to_array({"cjs"sv, "js"sv, "mjs"sv, "pl"sv
 
 // The executables of each kind, indexed by ProcessKind.
 constexpr auto kExecutables = std::to_array<std::span<const std::string_view>>(
-    {{}, kRemote, kEditor, kMonitor, kContainer, kRepl, kDatabase, kPrivileged, kPager, kGit, kBuild, kMultiplexer, kAgent});
+    {{},
+     kRemote,
+     kEditor,
+     kMonitor,
+     kContainer,
+     kRepl,
+     kDatabase,
+     kPrivileged,
+     kPager,
+     kGit,
+     kBuild,
+     kMultiplexer,
+     kAgent}
+);
 
 // processKindName(), indexed by ProcessKind.
-constexpr auto kKindNames = std::to_array({""sv, "remote"sv, "editor"sv, "monitor"sv, "container"sv, "repl"sv,
-                                           "database"sv, "privileged"sv, "pager"sv, "git"sv, "build"sv,
-                                           "multiplexer"sv, "agent"sv});
+constexpr auto kKindNames = std::to_array(
+    {""sv,
+     "remote"sv,
+     "editor"sv,
+     "monitor"sv,
+     "container"sv,
+     "repl"sv,
+     "database"sv,
+     "privileged"sv,
+     "pager"sv,
+     "git"sv,
+     "build"sv,
+     "multiplexer"sv,
+     "agent"sv}
+);
 
 constexpr std::size_t kKindCount = static_cast<std::size_t>(ProcessKind::Agent) + 1;
 static_assert(kExecutables.size() == kKindCount && kKindNames.size() == kKindCount);
@@ -90,8 +140,9 @@ ProcessKind processKind(const QString &executableName)
         return ProcessKind::None;
     }
     const auto kinds = std::views::iota(std::size_t{1}, kKindCount);
-    const auto match = std::ranges::find_if(
-        kinds, [&name](std::size_t kind) { return std::ranges::contains(kExecutables.at(kind), toView(name)); });
+    const auto match = std::ranges::find_if(kinds, [&name](std::size_t kind) {
+        return std::ranges::contains(kExecutables.at(kind), toView(name));
+    });
     return match == kinds.end() ? ProcessKind::None : static_cast<ProcessKind>(*match);
 }
 

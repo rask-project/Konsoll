@@ -22,8 +22,8 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName(QStringLiteral("rask-project"));
     QCoreApplication::setApplicationName(QStringLiteral("Konsoll"));
     QCoreApplication::setApplicationVersion(
-        QStringLiteral(KONSOLL_VERSION) + QStringLiteral(" (") + QStringLiteral(KONSOLL_GIT_COMMIT)
-        + QStringLiteral(")")
+        QStringLiteral(KONSOLL_VERSION) + QStringLiteral(" (") + QStringLiteral(KONSOLL_GIT_COMMIT) +
+        QStringLiteral(")")
     );
 
     // Headless parser harness (tools/vtdrive.py): no Qt application needed.
@@ -65,12 +65,16 @@ int main(int argc, char *argv[])
 
     // Declared before the engine so it outlives every QML view of its jobs.
     const auto backgroundJobs = std::make_unique<konsoll::BackgroundJobs>();
-    QObject::connect(backgroundJobs.get(), &konsoll::BackgroundJobs::jobEnded,
-                     [](const QString &title, const QString &message, bool succeeded) {
-                         konsoll::postNotification(succeeded ? QObject::tr("Background command finished")
-                                                             : QObject::tr("Background command failed"),
-                                                   QStringLiteral("%1 — %2").arg(title, message));
-                     });
+    QObject::connect(
+        backgroundJobs.get(),
+        &konsoll::BackgroundJobs::jobEnded,
+        [](const QString &title, const QString &message, bool succeeded) {
+            konsoll::postNotification(
+                succeeded ? QObject::tr("Background command finished") : QObject::tr("Background command failed"),
+                QStringLiteral("%1 — %2").arg(title, message)
+            );
+        }
+    );
     QQmlApplicationEngine engine;
 
     QObject::connect(

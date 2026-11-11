@@ -18,8 +18,8 @@ std::atomic<int> &lastKey()
 
 // macOS kVK_ANSI_* virtual key codes 0x00-0x32 -> the US-layout character.
 constexpr std::array<char, 0x33> kUsLayout{
-    'a', 's', 'd', 'f', 'h', 'g', 'z', 'x', 'c', 'v', 0,   'b', 'q', 'w', 'e', 'r', 'y',
-    't', '1', '2', '3', '4', '6', '5', '=', '9', '7', '-', '8', '0', ']', 'o', 'u', '[',
+    'a', 's', 'd', 'f', 'h', 'g',  'z', 'x', 'c',  'v', 0,   'b', 'q', 'w', 'e', 'r', 'y',
+    't', '1', '2', '3', '4', '6',  '5', '=', '9',  '7', '-', '8', '0', ']', 'o', 'u', '[',
     'i', 'p', 0,   'l', 'j', '\'', 'k', ';', '\\', ',', '/', 'n', 'm', '.', 0,   0,   '`',
 };
 } // namespace
@@ -32,7 +32,10 @@ int NativeKeyTracker::lastVirtualKey()
 bool NativeKeyTracker::eventFilter(QObject *watched, QEvent *event)
 {
     if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
-        lastKey().store(static_cast<int>(static_cast<QKeyEvent *>(event)->nativeVirtualKey()), std::memory_order_relaxed);
+        lastKey().store(
+            static_cast<int>(static_cast<QKeyEvent *>(event)->nativeVirtualKey()),
+            std::memory_order_relaxed
+        );
     }
     return QObject::eventFilter(watched, event);
 }

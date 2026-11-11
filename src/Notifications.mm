@@ -11,8 +11,8 @@
        willPresentNotification:(UNNotification *)notification
          withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler
 {
-    (void)center;
-    (void)notification;
+    (void) center;
+    (void) notification;
     completionHandler(UNNotificationPresentationOptionBanner | UNNotificationPresentationOptionSound);
 }
 @end
@@ -31,10 +31,11 @@ UNUserNotificationCenter *preparedCenter()
         static KonsollNotificationDelegate *const delegate = [[KonsollNotificationDelegate alloc] init];
         center.delegate = delegate;
         [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
-                              completionHandler:^(BOOL, NSError *) {}];
+                              completionHandler:^(BOOL, NSError *) {
+                              }];
         return true;
     }();
-    (void)prepared;
+    (void) prepared;
     return center;
 }
 } // namespace

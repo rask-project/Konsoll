@@ -12,10 +12,10 @@ namespace Charset
 inline constexpr char Ascii = 'B';
 inline constexpr char DecSpecialGraphics = '0';
 inline constexpr char British = 'A';
-inline constexpr char Latin1 = 'L';           // 96-character ESC - A / . A / / A
-inline constexpr char DecSupplemental = 'S';  // ESC ( % 5, ESC ( <
-inline constexpr char Portuguese = 'P';       // ESC ( % 6
-}
+inline constexpr char Latin1 = 'L';          // 96-character ESC - A / . A / / A
+inline constexpr char DecSupplemental = 'S'; // ESC ( % 5, ESC ( <
+inline constexpr char Portuguese = 'P';      // ESC ( % 6
+} // namespace Charset
 
 // The set an SCS designation selects: `intermediates` are the ESC
 // intermediates ("(" G0 ... "+" G3 for 94-character sets, "-" G1 ... "/" G3

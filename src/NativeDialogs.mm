@@ -9,12 +9,8 @@ namespace konsoll
 
 namespace
 {
-struct QuitApproval
-{
-    void approve() const
-    {
-        approved = true;
-    }
+struct QuitApproval {
+    void approve() const { approved = true; }
     bool consume() const
     {
         const bool wasApproved = approved;
@@ -38,8 +34,8 @@ QString toQString(NSString *value)
 
 // Shared "workspace name" prompt: an informational alert with a single text
 // field. Returns {accepted, title}; title is empty when the user cancels.
-QVariantMap workspaceNamePrompt(
-    const char *message, const char *informative, const char *confirmTitle, const QString &initialTitle)
+QVariantMap
+workspaceNamePrompt(const char *message, const char *informative, const char *confirmTitle, const QString &initialTitle)
 {
     NSAlert *const alert = [[NSAlert alloc] init];
     [alert setAlertStyle:NSAlertStyleInformational];
@@ -81,8 +77,9 @@ bool NativeDialogs::confirmClipboardRead(const QString &title)
     NSAlert *const alert = [[NSAlert alloc] init];
     [alert setAlertStyle:NSAlertStyleWarning];
     [alert setMessageText:@"Allow access to the clipboard?"];
-    [alert setInformativeText:[NSString stringWithFormat:@"The program running in “%@” wants to read the clipboard. You can change this in Settings > Security.",
-                                                        title.toNSString()]];
+    [alert setInformativeText:[NSString stringWithFormat:@"The program running in “%@” wants to read the clipboard. "
+                                                         @"You can change this in Settings > Security.",
+                                                         title.toNSString()]];
     [alert addButtonWithTitle:@"Allow"];
     [alert addButtonWithTitle:@"Deny"];
     const bool allowed = [alert runModal] == NSAlertFirstButtonReturn;
@@ -95,7 +92,9 @@ bool NativeDialogs::confirmQuit(int sessionCount)
     NSAlert *const alert = [[NSAlert alloc] init];
     [alert setAlertStyle:NSAlertStyleWarning];
     [alert setMessageText:@"Quit Konsoll?"];
-    [alert setInformativeText:[NSString stringWithFormat:@"Quitting will close all windows and terminate %d session(s).", sessionCount]];
+    [alert
+        setInformativeText:[NSString stringWithFormat:@"Quitting will close all windows and terminate %d session(s).",
+                                                      sessionCount]];
     [alert addButtonWithTitle:@"Quit Anyway"];
     [alert addButtonWithTitle:@"Cancel"];
     const bool confirmed = [alert runModal] == NSAlertFirstButtonReturn;

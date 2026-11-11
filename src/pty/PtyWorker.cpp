@@ -11,8 +11,14 @@ namespace konsoll
 
 PtyWorker::PtyWorker() : QObject() {}
 
-void PtyWorker::start(const QString &shellPath, int columns, int rows, const QString &workingDirectory,
-                      const QString &remoteHostToken, const QString &command)
+void PtyWorker::start(
+    const QString &shellPath,
+    int columns,
+    int rows,
+    const QString &workingDirectory,
+    const QString &remoteHostToken,
+    const QString &command
+)
 {
     if (m_pty) {
         return; // Already started.

@@ -46,8 +46,7 @@ public:
     Q_INVOKABLE QString validate(int index, const QString &name) const;
     // Adds (index -1) or replaces a function and rewrites the files. Returns
     // an error message, or an empty string on success.
-    Q_INVOKABLE QString saveFunction(int index, const QString &name, const QString &description,
-                                     const QString &body);
+    Q_INVOKABLE QString saveFunction(int index, const QString &name, const QString &description, const QString &body);
     Q_INVOKABLE QString removeFunction(int index);
 
 signals:

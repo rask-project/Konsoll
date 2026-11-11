@@ -9,8 +9,8 @@
 #include <QUrl>
 
 #include <algorithm>
-#include <iterator>
 #include <array>
+#include <iterator>
 #include <optional>
 #include <ranges>
 #include <string_view>
@@ -336,8 +336,10 @@ void Terminal::processVt52AddressByte(unsigned char c)
     // on the VT52.
     const int row = static_cast<unsigned char>(m_csiParams.front()) - 32;
     const int col = static_cast<int>(c) - 32;
-    m_screen.moveCursor(row < m_screen.rows() ? row : m_screen.cursorRow(),
-                        col < m_screen.cols() ? col : m_screen.cursorCol());
+    m_screen.moveCursor(
+        row < m_screen.rows() ? row : m_screen.cursorRow(),
+        col < m_screen.cols() ? col : m_screen.cursorCol()
+    );
 }
 
 void Terminal::processEscapeIntermediateByte(unsigned char c)
@@ -519,8 +521,9 @@ void Terminal::setColumnMode(bool wide)
         if (columns != m_screen.cols()) {
             resize(m_screen.rows(), columns);
         }
-        m_requests.push_back(TerminalRequest{
-            .data = {}, .body = {}, .kind = TerminalRequest::ColumnMode, .a = columns, .b = 0, .c = 0});
+        m_requests.push_back(
+            TerminalRequest{.data = {}, .body = {}, .kind = TerminalRequest::ColumnMode, .a = columns, .b = 0, .c = 0}
+        );
     }
     if ((m_extraFlags & NoClearOnColumnChange) == 0) {
         m_screen.eraseInDisplay(2);
@@ -580,8 +583,9 @@ bool Terminal::extendPreviousCluster(unsigned int codePoint)
     }
     cluster.push_back(static_cast<char32_t>(codePoint));
     // A letter with a mark that has a precomposed form stays one code point.
-    const QList<uint> composed =
-        QString::fromUcs4(cluster.data(), static_cast<qsizetype>(cluster.size())).normalized(QString::NormalizationForm_C).toUcs4();
+    const QList<uint> composed = QString::fromUcs4(cluster.data(), static_cast<qsizetype>(cluster.size()))
+                                     .normalized(QString::NormalizationForm_C)
+                                     .toUcs4();
     const int width = graphemeWidth(cluster);
     const bool wasWide = m_screen.previousCharIsWide();
     const unsigned int cell = composed.size() == 1 ? composed.front() : internCluster(cluster, width);
@@ -651,7 +655,8 @@ void Terminal::combineWithPrevious(unsigned int mark)
         return;
     }
     const std::array<char32_t, 2> pair{static_cast<char32_t>(*base), static_cast<char32_t>(mark)};
-    const QList<uint> composed = QString::fromUcs4(pair.data(), pair.size()).normalized(QString::NormalizationForm_C).toUcs4();
+    const QList<uint> composed =
+        QString::fromUcs4(pair.data(), pair.size()).normalized(QString::NormalizationForm_C).toUcs4();
     if (composed.size() == 1) {
         m_screen.replacePreviousChar(composed.front());
     }
@@ -683,7 +688,9 @@ std::vector<int> Terminal::parseParams(const QByteArray &body)
 {
     const ParamGroups groups = parseParamGroups(body);
     std::vector<int> out(groups.size());
-    std::ranges::transform(groups, out.begin(), [](const std::vector<int> &group) { return std::max(group.front(), 0); });
+    std::ranges::transform(groups, out.begin(), [](const std::vector<int> &group) {
+        return std::max(group.front(), 0);
+    });
     return out;
 }
 
@@ -927,8 +934,9 @@ void Terminal::handleCsiWithIntermediates(char final)
         // DECSCA: 1 protects the following characters, 0 / 2 do not.
         const std::vector<int> params = parseParams(m_csiParams);
         const bool protect = paramAt(params, 0, 0) == 1;
-        m_pen.attrs = static_cast<unsigned char>(protect ? (m_pen.attrs | CellAttr::DecProtected)
-                                                         : (m_pen.attrs & ~CellAttr::DecProtected));
+        m_pen.attrs = static_cast<unsigned char>(
+            protect ? (m_pen.attrs | CellAttr::DecProtected) : (m_pen.attrs & ~CellAttr::DecProtected)
+        );
     } else if (m_csiIntermediates == " " && final == 'q') {
         // DECSCUSR: cursor shape and blinking.
         const std::vector<int> params = parseParams(m_csiParams);
@@ -982,8 +990,10 @@ void Terminal::handleRectangle(char intermediate, char final)
         } else if (final == 'y') {
             // DECRQCRA: DCS Pid ! ~ checksum ST.
             const int checksum = m_screen.checksumRect(rectangleParams(p, 2));
-            reply("\x1bP" + QByteArray::number(paramAt(p, 0, 0)) + "!~" +
-                  QByteArray::number(checksum, 16).toUpper().rightJustified(4, '0') + "\x1b\\");
+            reply(
+                "\x1bP" + QByteArray::number(paramAt(p, 0, 0)) + "!~" +
+                QByteArray::number(checksum, 16).toUpper().rightJustified(4, '0') + "\x1b\\"
+            );
         }
         return;
     }
@@ -1046,8 +1056,8 @@ void Terminal::changeRectangleAttributes(const std::vector<int> &params, bool re
                 if (!selected) {
                     return;
                 }
-                const bool on = reverse ? ((cell.flags & a.flag) == 0u && (cell.attrs & a.attr) == 0u)
-                                        : (code == a.code);
+                const bool on =
+                    reverse ? ((cell.flags & a.flag) == 0u && (cell.attrs & a.attr) == 0u) : (code == a.code);
                 cell.flags = static_cast<unsigned char>(on ? (cell.flags | a.flag) : (cell.flags & ~a.flag));
                 cell.attrs = static_cast<unsigned char>(on ? (cell.attrs | a.attr) : (cell.attrs & ~a.attr));
             });
@@ -1257,7 +1267,9 @@ void Terminal::handleApc(const QByteArray &body)
         // The cursor moves to the cell after the image's last column, on its
         // last row (scrolling if needed), as in kitty.
         const int column = m_screen.cursorCol();
-        std::ranges::for_each(std::views::iota(1, std::max(result.cursorRows, 1)), [this](int) { m_screen.lineFeed(); });
+        std::ranges::for_each(std::views::iota(1, std::max(result.cursorRows, 1)), [this](int) {
+            m_screen.lineFeed();
+        });
         m_screen.moveCursor(m_screen.cursorRow(), std::min(column + result.cursorColumns, m_screen.cols() - 1));
     }
 }
@@ -1317,8 +1329,10 @@ void Terminal::handleGraphicsAttributes(const std::vector<int> &params)
     if (item == 1) {
         reply("\x1b[?1;0;256S");
     } else if (item == 2) {
-        reply("\x1b[?2;0;" + QByteArray::number(m_screen.cols() * m_cellPixelWidth) + ";" +
-              QByteArray::number(m_screen.rows() * m_cellPixelHeight) + "S");
+        reply(
+            "\x1b[?2;0;" + QByteArray::number(m_screen.cols() * m_cellPixelWidth) + ";" +
+            QByteArray::number(m_screen.rows() * m_cellPixelHeight) + "S"
+        );
     } else {
         reply("\x1b[?" + QByteArray::number(item) + ";1;0S"); // not supported (ReGIS)
     }
@@ -1710,8 +1724,10 @@ void Terminal::handleOscIterm(const QByteArray &command)
         }
     } else if (command == "ReportCellSize") {
         // Height ; width in points; the cell size is kept in device pixels.
-        reply("\x1b]1337;ReportCellSize=" + QByteArray::number(m_cellPixelHeight) + ";" +
-              QByteArray::number(m_cellPixelWidth) + "\x1b\\");
+        reply(
+            "\x1b]1337;ReportCellSize=" + QByteArray::number(m_cellPixelHeight) + ";" +
+            QByteArray::number(m_cellPixelWidth) + "\x1b\\"
+        );
     } else if (command == "ClearScrollback") {
         m_screen.clearScrollback();
     }
@@ -1757,12 +1773,14 @@ void Terminal::handleOscNotification(const QByteArray &body)
     if (text.isEmpty() && title.isEmpty()) {
         return;
     }
-    m_requests.push_back(TerminalRequest{.data = title.left(kMaxText),
-                                         .body = text.left(kMaxText),
-                                         .kind = TerminalRequest::Notification,
-                                         .a = 0,
-                                         .b = 0,
-                                         .c = 0});
+    m_requests.push_back(TerminalRequest{
+        .data = title.left(kMaxText),
+        .body = text.left(kMaxText),
+        .kind = TerminalRequest::Notification,
+        .a = 0,
+        .b = 0,
+        .c = 0
+    });
 }
 
 // OSC 9 ; 4 ; state ; percent: 0 removes the progress, 1 sets it, 2 is an
@@ -1817,12 +1835,14 @@ void Terminal::handleOscClipboard(const QByteArray &body)
     const QByteArray selection = body.mid(3, separator - 3);
     if (body.mid(separator + 1) == "?") {
         // Reading the clipboard is up to the user (see TerminalBackend).
-        m_requests.push_back(TerminalRequest{.data = selection.isEmpty() ? QByteArray("c") : selection,
-                                             .body = {},
-                                             .kind = TerminalRequest::ClipboardRead,
-                                             .a = 0,
-                                             .b = 0,
-                                             .c = 0});
+        m_requests.push_back(TerminalRequest{
+            .data = selection.isEmpty() ? QByteArray("c") : selection,
+            .body = {},
+            .kind = TerminalRequest::ClipboardRead,
+            .a = 0,
+            .b = 0,
+            .c = 0
+        });
         return;
     }
     if (selection.isEmpty() || selection.contains('c') || selection.contains('p')) {
@@ -1877,26 +1897,46 @@ int pointerCursorShape(const QByteArray &name)
     using Entry = std::pair<std::string_view, Qt::CursorShape>;
     // CSS names (kitty's OSC 22) and their X cursor-font aliases.
     static constexpr std::array kShapes{
-        Entry{"default", Qt::ArrowCursor},       Entry{"left_ptr", Qt::ArrowCursor},
-        Entry{"text", Qt::IBeamCursor},          Entry{"xterm", Qt::IBeamCursor},
-        Entry{"vertical-text", Qt::IBeamCursor}, Entry{"pointer", Qt::PointingHandCursor},
-        Entry{"hand2", Qt::PointingHandCursor},  Entry{"hand1", Qt::PointingHandCursor},
-        Entry{"help", Qt::WhatsThisCursor},      Entry{"question_arrow", Qt::WhatsThisCursor},
-        Entry{"wait", Qt::WaitCursor},           Entry{"watch", Qt::WaitCursor},
-        Entry{"progress", Qt::BusyCursor},       Entry{"crosshair", Qt::CrossCursor},
-        Entry{"cell", Qt::CrossCursor},          Entry{"tcross", Qt::CrossCursor},
-        Entry{"move", Qt::SizeAllCursor},        Entry{"fleur", Qt::SizeAllCursor},
-        Entry{"all-scroll", Qt::SizeAllCursor},  Entry{"not-allowed", Qt::ForbiddenCursor},
-        Entry{"no-drop", Qt::ForbiddenCursor},   Entry{"grab", Qt::OpenHandCursor},
-        Entry{"grabbing", Qt::ClosedHandCursor}, Entry{"copy", Qt::DragCopyCursor},
-        Entry{"alias", Qt::DragLinkCursor},      Entry{"ew-resize", Qt::SizeHorCursor},
-        Entry{"col-resize", Qt::SplitHCursor},   Entry{"e-resize", Qt::SizeHorCursor},
-        Entry{"w-resize", Qt::SizeHorCursor},    Entry{"sb_h_double_arrow", Qt::SizeHorCursor},
-        Entry{"ns-resize", Qt::SizeVerCursor},   Entry{"row-resize", Qt::SplitVCursor},
-        Entry{"n-resize", Qt::SizeVerCursor},    Entry{"s-resize", Qt::SizeVerCursor},
-        Entry{"sb_v_double_arrow", Qt::SizeVerCursor}, Entry{"nesw-resize", Qt::SizeBDiagCursor},
-        Entry{"ne-resize", Qt::SizeBDiagCursor}, Entry{"sw-resize", Qt::SizeBDiagCursor},
-        Entry{"nwse-resize", Qt::SizeFDiagCursor}, Entry{"nw-resize", Qt::SizeFDiagCursor},
+        Entry{"default", Qt::ArrowCursor},
+        Entry{"left_ptr", Qt::ArrowCursor},
+        Entry{"text", Qt::IBeamCursor},
+        Entry{"xterm", Qt::IBeamCursor},
+        Entry{"vertical-text", Qt::IBeamCursor},
+        Entry{"pointer", Qt::PointingHandCursor},
+        Entry{"hand2", Qt::PointingHandCursor},
+        Entry{"hand1", Qt::PointingHandCursor},
+        Entry{"help", Qt::WhatsThisCursor},
+        Entry{"question_arrow", Qt::WhatsThisCursor},
+        Entry{"wait", Qt::WaitCursor},
+        Entry{"watch", Qt::WaitCursor},
+        Entry{"progress", Qt::BusyCursor},
+        Entry{"crosshair", Qt::CrossCursor},
+        Entry{"cell", Qt::CrossCursor},
+        Entry{"tcross", Qt::CrossCursor},
+        Entry{"move", Qt::SizeAllCursor},
+        Entry{"fleur", Qt::SizeAllCursor},
+        Entry{"all-scroll", Qt::SizeAllCursor},
+        Entry{"not-allowed", Qt::ForbiddenCursor},
+        Entry{"no-drop", Qt::ForbiddenCursor},
+        Entry{"grab", Qt::OpenHandCursor},
+        Entry{"grabbing", Qt::ClosedHandCursor},
+        Entry{"copy", Qt::DragCopyCursor},
+        Entry{"alias", Qt::DragLinkCursor},
+        Entry{"ew-resize", Qt::SizeHorCursor},
+        Entry{"col-resize", Qt::SplitHCursor},
+        Entry{"e-resize", Qt::SizeHorCursor},
+        Entry{"w-resize", Qt::SizeHorCursor},
+        Entry{"sb_h_double_arrow", Qt::SizeHorCursor},
+        Entry{"ns-resize", Qt::SizeVerCursor},
+        Entry{"row-resize", Qt::SplitVCursor},
+        Entry{"n-resize", Qt::SizeVerCursor},
+        Entry{"s-resize", Qt::SizeVerCursor},
+        Entry{"sb_v_double_arrow", Qt::SizeVerCursor},
+        Entry{"nesw-resize", Qt::SizeBDiagCursor},
+        Entry{"ne-resize", Qt::SizeBDiagCursor},
+        Entry{"sw-resize", Qt::SizeBDiagCursor},
+        Entry{"nwse-resize", Qt::SizeFDiagCursor},
+        Entry{"nw-resize", Qt::SizeFDiagCursor},
         Entry{"se-resize", Qt::SizeFDiagCursor},
     };
     const std::string_view wanted(name.constData(), static_cast<std::size_t>(name.size()));

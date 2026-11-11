@@ -179,7 +179,6 @@ public:
     bool otherKeysCsiU() const { return (m_extraFlags & OtherKeysCsiU) != 0; }
     QByteArray mouseReport(int button, int row, int col, int event, unsigned int modifiers);
 
-
 private:
     // CSI parameters split on ';' into groups and on ':' into sub-parameters
     // (SGR 4:3, 38:2::r:g:b). An omitted value is -1.
@@ -191,9 +190,9 @@ private:
     static constexpr std::uint64_t CursorBlinkMode = std::uint64_t{1} << 3; // ?12
     static constexpr std::uint64_t SgrMouse = std::uint64_t{1} << 4;
     static constexpr std::uint64_t ApplicationCursorKeys = std::uint64_t{1} << 5;
-    static constexpr std::uint64_t InBandResize = std::uint64_t{1} << 6; // ?2048
-    static constexpr std::uint64_t NewlineMode = std::uint64_t{1} << 7;  // LNM: LF also returns
-    static constexpr std::uint64_t ReverseVideo = std::uint64_t{1} << 8; // DECSCNM
+    static constexpr std::uint64_t InBandResize = std::uint64_t{1} << 6;      // ?2048
+    static constexpr std::uint64_t NewlineMode = std::uint64_t{1} << 7;       // LNM: LF also returns
+    static constexpr std::uint64_t ReverseVideo = std::uint64_t{1} << 8;      // DECSCNM
     static constexpr std::uint64_t ApplicationKeypad = std::uint64_t{1} << 9; // DECKPAM
     static constexpr std::uint64_t TitleDirty = std::uint64_t{1} << 10;
     static constexpr std::uint64_t CurrentDirectoryDirty = std::uint64_t{1} << 11;
@@ -207,25 +206,25 @@ private:
     static constexpr std::uint64_t DarkColorScheme = std::uint64_t{1} << 19;
     static constexpr std::uint64_t FocusReporting = std::uint64_t{1} << 20; // ?1004
     static constexpr std::uint64_t ColorsDirty = std::uint64_t{1} << 21;
-    static constexpr std::uint64_t AlternateScroll = std::uint64_t{1} << 22; // ?1007, on by default
+    static constexpr std::uint64_t AlternateScroll = std::uint64_t{1} << 22;       // ?1007, on by default
     static constexpr std::uint64_t NoClearOnColumnChange = std::uint64_t{1} << 23; // ?95
     static constexpr std::uint64_t NrcMode = std::uint64_t{1} << 24;               // ?42
     static constexpr std::uint64_t Vt52Mode = std::uint64_t{1} << 25;              // ?2 reset (DECANM)
     static constexpr std::uint64_t ErasureMode = std::uint64_t{1} << 26;           // ERM (6): erase protected cells too
     static constexpr std::uint64_t SixelDisplayMode = std::uint64_t{1} << 27;      // ?80 DECSDM: no sixel scrolling
     static constexpr std::uint64_t RectangleExtent = std::uint64_t{1} << 28;       // DECSACE 2: rectangle, else stream
-    static constexpr unsigned int OtherKeysShift = 29u;             // XTMODKEYS modifyOtherKeys 0-2 (2 bits)
+    static constexpr unsigned int OtherKeysShift = 29u; // XTMODKEYS modifyOtherKeys 0-2 (2 bits)
     static constexpr std::uint64_t OtherKeysMask = std::uint64_t{3} << OtherKeysShift;
-    static constexpr std::uint64_t OtherKeysCsiU = std::uint64_t{1} << 31;         // XTFMTKEYS formatOtherKeys 1
-    static constexpr std::uint64_t MetaSendsEscape = std::uint64_t{1} << 32;       // ?1036 / ?1039
-    static constexpr std::uint64_t HighlightStarted = std::uint64_t{1} << 33;      // ?1001 highlight in progress
-    static constexpr std::uint64_t PointerShapeDirty = std::uint64_t{1} << 34;     // OSC 22 changed the pointer
-    static constexpr std::uint64_t Allow132Columns = std::uint64_t{1} << 35;       // ?40: DECCOLM may resize
-    static constexpr std::uint64_t Columns132 = std::uint64_t{1} << 36;            // ?3 DECCOLM set
-    static constexpr std::uint64_t EightBitControls = std::uint64_t{1} << 37;      // S8C1T: C1 replies
-    static constexpr std::uint64_t UdkLocked = std::uint64_t{1} << 38;             // DECUDK locked
-    static constexpr std::uint64_t BellPending = std::uint64_t{1} << 39;           // BEL not yet consumed
-    static constexpr std::uint64_t ProgressDirty = std::uint64_t{1} << 40;         // OSC 9 ; 4 changed
+    static constexpr std::uint64_t OtherKeysCsiU = std::uint64_t{1} << 31;     // XTFMTKEYS formatOtherKeys 1
+    static constexpr std::uint64_t MetaSendsEscape = std::uint64_t{1} << 32;   // ?1036 / ?1039
+    static constexpr std::uint64_t HighlightStarted = std::uint64_t{1} << 33;  // ?1001 highlight in progress
+    static constexpr std::uint64_t PointerShapeDirty = std::uint64_t{1} << 34; // OSC 22 changed the pointer
+    static constexpr std::uint64_t Allow132Columns = std::uint64_t{1} << 35;   // ?40: DECCOLM may resize
+    static constexpr std::uint64_t Columns132 = std::uint64_t{1} << 36;        // ?3 DECCOLM set
+    static constexpr std::uint64_t EightBitControls = std::uint64_t{1} << 37;  // S8C1T: C1 replies
+    static constexpr std::uint64_t UdkLocked = std::uint64_t{1} << 38;         // DECUDK locked
+    static constexpr std::uint64_t BellPending = std::uint64_t{1} << 39;       // BEL not yet consumed
+    static constexpr std::uint64_t ProgressDirty = std::uint64_t{1} << 40;     // OSC 9 ; 4 changed
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.
@@ -244,8 +243,8 @@ private:
         EscapeIntermediate,
         Csi,
         CsiIgnore,
-        Osc,   // OSC string: collected, dispatched on BEL or ST.
-        Dcs,   // DCS string: collected, dispatched on ST.
+        Osc,          // OSC string: collected, dispatched on BEL or ST.
+        Dcs,          // DCS string: collected, dispatched on ST.
         IgnoreString, // SOS / PM / APC: consumed and dropped.
         StringEscape, // ESC inside a string: ST (ESC \) or a new sequence.
         Vt52Row,      // VT52 ESC Y: row byte next
@@ -396,7 +395,7 @@ private:
     // SGR style (and OSC 8 link) applied to subsequent characters; `ch` unused.
     Cell m_pen;
     std::array<SavedTerminalState, 2> m_savedStates{}; // [0] main, [1] alternate
-    unsigned int m_lastGraphic = 0; // last printed code point, for REP (0 = none)
+    unsigned int m_lastGraphic = 0;                    // last printed code point, for REP (0 = none)
     unsigned int m_fgOverride = 0;
     unsigned int m_bgOverride = 0;
     unsigned int m_cursorOverride = 0;

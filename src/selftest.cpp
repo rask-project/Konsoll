@@ -95,66 +95,121 @@ void checkTabIndicators(int &failures, TerminalManager &manager, TerminalBackend
     manager.addWorkspace();
     auto *u = activeSession(manager);
     auto *uWorkspace = static_cast<TerminalWorkspaceModel *>(manager.workspaces().last().value<QObject *>());
-    check(failures, waitFor("indicators: shell output", [u]() { return !u->bufferText().isEmpty(); }, 15000),
-          "indicators: shell produced output");
+    check(
+        failures,
+        waitFor(
+            "indicators: shell output",
+            [u]() { return !u->bufferText().isEmpty(); },
+            15000
+        ),
+        "indicators: shell produced output"
+    );
     u->writeText("less /etc/hosts\n");
-    check(failures,
-          waitFor("indicators: pager", [u, uWorkspace]() {
-              return u->foregroundProcess() == QStringLiteral("less") && uWorkspace->processKind() == QStringLiteral("pager") &&
-                     uWorkspace->busy() && u->displayTitle() == QStringLiteral("less") &&
-                     uWorkspace->title() == QStringLiteral("less");
-          }, 10000),
-          "indicators: foreground job name, kind and title reach the workspace");
+    check(
+        failures,
+        waitFor(
+            "indicators: pager",
+            [u, uWorkspace]() {
+                return u->foregroundProcess() == QStringLiteral("less") &&
+                       uWorkspace->processKind() == QStringLiteral("pager") && uWorkspace->busy() &&
+                       u->displayTitle() == QStringLiteral("less") && uWorkspace->title() == QStringLiteral("less");
+            },
+            10000
+        ),
+        "indicators: foreground job name, kind and title reach the workspace"
+    );
     u->writeText("q");
-    check(failures,
-          waitFor("indicators: back at the prompt", [u, uWorkspace]() {
-              return u->foregroundProcess().isEmpty() && uWorkspace->processKind().isEmpty() &&
-                     uWorkspace->title() != QStringLiteral("less");
-          }, 10000),
-          "indicators: kind cleared at the prompt");
+    check(
+        failures,
+        waitFor(
+            "indicators: back at the prompt",
+            [u, uWorkspace]() {
+                return u->foregroundProcess().isEmpty() && uWorkspace->processKind().isEmpty() &&
+                       uWorkspace->title() != QStringLiteral("less");
+            },
+            10000
+        ),
+        "indicators: kind cleared at the prompt"
+    );
     // An interpreter's script names the program (agents installed with npm
     // run as "node .../bin/codex").
     u->writeText("printf 'sleep 30\\n' > \"${TMPDIR:-/tmp}/codex.pl\"; perl \"${TMPDIR:-/tmp}/codex.pl\"\n");
-    check(failures,
-          waitFor("indicators: agent script", [u, uWorkspace]() {
-              return u->foregroundProcess() == QStringLiteral("codex") && uWorkspace->processKind() == QStringLiteral("agent");
-          }, 10000),
-          "indicators: interpreter script names the program");
+    check(
+        failures,
+        waitFor(
+            "indicators: agent script",
+            [u, uWorkspace]() {
+                return u->foregroundProcess() == QStringLiteral("codex") &&
+                       uWorkspace->processKind() == QStringLiteral("agent");
+            },
+            10000
+        ),
+        "indicators: interpreter script names the program"
+    );
     u->writeText("\x03");
-    check(failures,
-          waitFor("indicators: agent ended", [u]() { return u->foregroundProcess().isEmpty(); }, 10000),
-          "indicators: agent script interrupted");
+    check(
+        failures,
+        waitFor(
+            "indicators: agent ended",
+            [u]() { return u->foregroundProcess().isEmpty(); },
+            10000
+        ),
+        "indicators: agent script interrupted"
+    );
     // The icon follows the pane worked in last.
     u->writeText("less /etc/hosts\n");
-    check(failures,
-          waitFor("indicators: pager before split",
-                  [uWorkspace]() { return uWorkspace->processKind() == QStringLiteral("pager"); }, 10000),
-          "indicators: pager in the first pane");
+    check(
+        failures,
+        waitFor(
+            "indicators: pager before split",
+            [uWorkspace]() { return uWorkspace->processKind() == QStringLiteral("pager"); },
+            10000
+        ),
+        "indicators: pager in the first pane"
+    );
     manager.splitActive(static_cast<int>(Qt::Horizontal));
     auto *v = activeSession(manager);
-    check(failures,
-          v != u && waitFor("indicators: split pane at the prompt", [uWorkspace]() {
-              return uWorkspace->processKind().isEmpty() && !uWorkspace->busy();
-          }, 10000),
-          "indicators: the new pane's prompt replaces the pager icon");
+    check(
+        failures,
+        v != u && waitFor(
+                      "indicators: split pane at the prompt",
+                      [uWorkspace]() { return uWorkspace->processKind().isEmpty() && !uWorkspace->busy(); },
+                      10000
+                  ),
+        "indicators: the new pane's prompt replaces the pager icon"
+    );
     manager.activateSession(u);
-    check(failures, uWorkspace->processKind() == QStringLiteral("pager"),
-          "indicators: activating the pager pane brings its icon back");
+    check(
+        failures,
+        uWorkspace->processKind() == QStringLiteral("pager"),
+        "indicators: activating the pager pane brings its icon back"
+    );
     u->writeText("q");
     manager.closeSession(v);
     manager.activateSession(other);
     u->writeText("printf '\\e]9;4;1;30\\a'; false\n");
-    check(failures,
-          waitFor("indicators: failure", [uWorkspace]() {
-              return uWorkspace->attention() == QStringLiteral("failure") && uWorkspace->progressState() == 1 &&
-                     uWorkspace->progressValue() == 30;
-          }, 10000),
-          "indicators: background failure and OSC 9;4 progress");
+    check(
+        failures,
+        waitFor(
+            "indicators: failure",
+            [uWorkspace]() {
+                return uWorkspace->attention() == QStringLiteral("failure") && uWorkspace->progressState() == 1 &&
+                       uWorkspace->progressValue() == 30;
+            },
+            10000
+        ),
+        "indicators: background failure and OSC 9;4 progress"
+    );
     u->writeText("printf '\\a'; true\n");
-    check(failures,
-          waitFor("indicators: bell", [uWorkspace]() { return uWorkspace->attention() == QStringLiteral("bell"); },
-                  10000),
-          "indicators: bell outranks the failure");
+    check(
+        failures,
+        waitFor(
+            "indicators: bell",
+            [uWorkspace]() { return uWorkspace->attention() == QStringLiteral("bell"); },
+            10000
+        ),
+        "indicators: bell outranks the failure"
+    );
     manager.activateSession(u);
     check(failures, uWorkspace->attention().isEmpty(), "indicators: activation clears attention");
     manager.closeSession(u);
@@ -167,8 +222,7 @@ void checkPaneMoves(int &failures, TerminalManager &manager)
     other.start();
     auto *otherFirst = activeSession(other);
     const auto rootOf = [](QObject *workspace) {
-        return static_cast<TerminalLayoutNode *>(
-            static_cast<TerminalWorkspaceModel *>(workspace)->rootNode());
+        return static_cast<TerminalLayoutNode *>(static_cast<TerminalWorkspaceModel *>(workspace)->rootNode());
     };
 
     manager.addWorkspace();
@@ -178,40 +232,59 @@ void checkPaneMoves(int &failures, TerminalManager &manager)
     QObject *split = manager.workspaces().last().value<QObject *>();
     const auto workspaceCount = manager.workspaces().size();
 
-    check(failures, manager.movePane(a, &manager, b, TerminalManager::PaneEdgeBottom),
-          "move pane: below its sibling accepted");
+    check(
+        failures,
+        manager.movePane(a, &manager, b, TerminalManager::PaneEdgeBottom),
+        "move pane: below its sibling accepted"
+    );
     const TerminalLayoutNode *stacked = rootOf(split);
-    check(failures,
-          !stacked->isLeaf() && stacked->orientation() == static_cast<int>(Qt::Vertical) &&
-              static_cast<TerminalLayoutNode *>(stacked->first())->session() == b &&
-              static_cast<TerminalLayoutNode *>(stacked->second())->session() == a &&
-              manager.activeSession() == a,
-          "move pane: side by side becomes a stack, moved pane active");
-    check(failures, !manager.movePane(a, &manager, a, TerminalManager::PaneEdgeLeft),
-          "move pane: onto itself refused");
+    check(
+        failures,
+        !stacked->isLeaf() && stacked->orientation() == static_cast<int>(Qt::Vertical) &&
+            static_cast<TerminalLayoutNode *>(stacked->first())->session() == b &&
+            static_cast<TerminalLayoutNode *>(stacked->second())->session() == a && manager.activeSession() == a,
+        "move pane: side by side becomes a stack, moved pane active"
+    );
+    check(failures, !manager.movePane(a, &manager, a, TerminalManager::PaneEdgeLeft), "move pane: onto itself refused");
 
-    check(failures,
-          manager.movePaneToWorkspace(a, &manager, 0) && manager.workspaces().size() == workspaceCount + 1 &&
-              rootOf(split)->isLeaf() && rootOf(split)->session() == b && manager.activeWorkspaceIndex() == 0,
-          "move pane: into a workspace of its own");
+    check(
+        failures,
+        manager.movePaneToWorkspace(a, &manager, 0) && manager.workspaces().size() == workspaceCount + 1 &&
+            rootOf(split)->isLeaf() && rootOf(split)->session() == b && manager.activeWorkspaceIndex() == 0,
+        "move pane: into a workspace of its own"
+    );
 
-    check(failures, manager.movePane(a, &other, otherFirst, TerminalManager::PaneEdgeLeft),
-          "move pane: to another window accepted");
+    check(
+        failures,
+        manager.movePane(a, &other, otherFirst, TerminalManager::PaneEdgeLeft),
+        "move pane: to another window accepted"
+    );
     const TerminalLayoutNode *joined = rootOf(other.workspaces().first().value<QObject *>());
-    check(failures,
-          !manager.hasSession(a) && other.hasSession(a) && manager.workspaces().size() == workspaceCount &&
-              joined->orientation() == static_cast<int>(Qt::Horizontal) &&
-              static_cast<TerminalLayoutNode *>(joined->first())->session() == a && other.activeSession() == a,
-          "move pane: lone pane leaves its workspace and splits the target");
+    check(
+        failures,
+        !manager.hasSession(a) && other.hasSession(a) && manager.workspaces().size() == workspaceCount &&
+            joined->orientation() == static_cast<int>(Qt::Horizontal) &&
+            static_cast<TerminalLayoutNode *>(joined->first())->session() == a && other.activeSession() == a,
+        "move pane: lone pane leaves its workspace and splits the target"
+    );
     a->writeText("echo PANE_MOVED\n");
-    check(failures, waitFor("move pane: alive", [a]() { return a->bufferText().contains("PANE_MOVED"); }, 10000),
-          "move pane: moved shell still running");
+    check(
+        failures,
+        waitFor(
+            "move pane: alive",
+            [a]() { return a->bufferText().contains("PANE_MOVED"); },
+            10000
+        ),
+        "move pane: moved shell still running"
+    );
 
-    check(failures,
-          other.movePaneToWorkspace(a, &manager, 99) && manager.hasSession(a) && other.sessionCount() == 1 &&
-              manager.workspaces().size() == workspaceCount + 1 && manager.activeSession() == a &&
-              manager.activeWorkspaceIndex() == static_cast<int>(workspaceCount),
-          "move pane: back as a new workspace of the first window");
+    check(
+        failures,
+        other.movePaneToWorkspace(a, &manager, 99) && manager.hasSession(a) && other.sessionCount() == 1 &&
+            manager.workspaces().size() == workspaceCount + 1 && manager.activeSession() == a &&
+            manager.activeWorkspaceIndex() == static_cast<int>(workspaceCount),
+        "move pane: back as a new workspace of the first window"
+    );
     manager.closeSession(a);
     manager.closeSession(b);
 }
@@ -222,30 +295,62 @@ void checkBackgroundJobs(int &failures, TerminalManager &manager)
 {
     BackgroundJobs jobs;
     const auto *ok = static_cast<BackgroundJob *>(jobs.run(QStringLiteral("echo BG_OK; exit 0")));
-    const auto *failed = static_cast<BackgroundJob *>(jobs.run(QStringLiteral("echo BG_FAIL; exit 3"), QStringLiteral("~")));
+    const auto *failed =
+        static_cast<BackgroundJob *>(jobs.run(QStringLiteral("echo BG_FAIL; exit 3"), QStringLiteral("~")));
     check(failures, ok != nullptr && failed != nullptr && jobs.jobCount() == 2, "background: commands started");
-    check(failures, waitFor("background: ok ends", [ok]() { return !ok->running(); }, 20000) &&
-                        ok->state() == QStringLiteral("finished") && ok->exitCode() == 0 &&
-                        ok->backend()->bufferText().contains("BG_OK"),
-          "background: exit 0 finishes, output kept");
-    check(failures, waitFor("background: fail ends", [failed]() { return !failed->running(); }, 20000) &&
-                        failed->state() == QStringLiteral("failed") && failed->exitCode() == 3,
-          "background: non-zero exit fails with its status");
+    check(
+        failures,
+        waitFor(
+            "background: ok ends",
+            [ok]() { return !ok->running(); },
+            20000
+        ) && ok->state() == QStringLiteral("finished") &&
+            ok->exitCode() == 0 && ok->backend()->bufferText().contains("BG_OK"),
+        "background: exit 0 finishes, output kept"
+    );
+    check(
+        failures,
+        waitFor(
+            "background: fail ends",
+            [failed]() { return !failed->running(); },
+            20000
+        ) && failed->state() == QStringLiteral("failed") &&
+            failed->exitCode() == 3,
+        "background: non-zero exit fails with its status"
+    );
 
     auto *sleeper = static_cast<BackgroundJob *>(jobs.run(QStringLiteral("sleep 31338")));
-    check(failures, waitFor("background: sleep spawned", []() { return pgrepCount("sleep 31338") > 0; }, 15000) &&
-                        jobs.runningCount() == 1,
-          "background: long command running");
+    check(
+        failures,
+        waitFor(
+            "background: sleep spawned",
+            []() { return pgrepCount("sleep 31338") > 0; },
+            15000
+        ) && jobs.runningCount() == 1,
+        "background: long command running"
+    );
     jobs.interrupt(sleeper);
-    check(failures, waitFor("background: interrupted", [sleeper]() { return !sleeper->running(); }, 10000) &&
-                        pgrepCount("sleep 31338") == 0,
-          "background: Ctrl+C ends it");
+    check(
+        failures,
+        waitFor(
+            "background: interrupted",
+            [sleeper]() { return !sleeper->running(); },
+            10000
+        ) && pgrepCount("sleep 31338") == 0,
+        "background: Ctrl+C ends it"
+    );
     auto *stopped = static_cast<BackgroundJob *>(jobs.run(QStringLiteral("sleep 31339")));
     waitFor("background: second sleep", []() { return pgrepCount("sleep 31339") > 0; }, 15000);
     jobs.stop(stopped);
-    check(failures, stopped->state() == QStringLiteral("stopped") &&
-                        waitFor("background: stopped", []() { return pgrepCount("sleep 31339") == 0; }, 5000),
-          "background: Stop ends it, no orphan");
+    check(
+        failures,
+        stopped->state() == QStringLiteral("stopped") && waitFor(
+                                                             "background: stopped",
+                                                             []() { return pgrepCount("sleep 31339") == 0; },
+                                                             5000
+                                                         ),
+        "background: Stop ends it, no orphan"
+    );
     jobs.removeEnded();
     check(failures, jobs.jobCount() == 0 && jobs.runningCount() == 0, "background: ended jobs removed");
 
@@ -253,16 +358,29 @@ void checkBackgroundJobs(int &failures, TerminalManager &manager)
     auto *shell = activeSession(manager);
     waitFor("background: tab shell", [shell]() { return !shell->bufferText().isEmpty(); }, 15000);
     const int sessionsBefore = manager.sessionCount();
-    check(failures, jobs.sendSession(&manager, shell) && !manager.hasSession(shell) &&
-                        manager.sessionCount() == sessionsBefore - 1 && jobs.runningCount() == 1,
-          "background: tab session moves there");
+    check(
+        failures,
+        jobs.sendSession(&manager, shell) && !manager.hasSession(shell) &&
+            manager.sessionCount() == sessionsBefore - 1 && jobs.runningCount() == 1,
+        "background: tab session moves there"
+    );
     shell->writeText("echo BG_ALIVE\n");
-    check(failures, waitFor("background: alive", [shell]() { return shell->bufferText().contains("BG_ALIVE"); }, 10000),
-          "background: moved shell still running");
+    check(
+        failures,
+        waitFor(
+            "background: alive",
+            [shell]() { return shell->bufferText().contains("BG_ALIVE"); },
+            10000
+        ),
+        "background: moved shell still running"
+    );
     QObject *job = jobs.jobs().first().value<QObject *>();
-    check(failures, jobs.openInWindow(job, &manager) && manager.hasSession(shell) && manager.activeSession() == shell &&
-                        jobs.jobCount() == 0,
-          "background: opens again as the active tab");
+    check(
+        failures,
+        jobs.openInWindow(job, &manager) && manager.hasSession(shell) && manager.activeSession() == shell &&
+            jobs.jobCount() == 0,
+        "background: opens again as the active tab"
+    );
     manager.closeSession(shell);
 
     // A window's only workspace leaves a fresh one behind.
@@ -270,9 +388,12 @@ void checkBackgroundJobs(int &failures, TerminalManager &manager)
     lone.start();
     auto *loneShell = activeSession(lone);
     QObject *loneWorkspace = lone.workspaces().first().value<QObject *>();
-    check(failures, jobs.sendWorkspace(&lone, loneWorkspace) && lone.sessionCount() == 1 &&
-                        !lone.hasSession(loneShell) && lone.activeSession() != nullptr,
-          "background: last tab out leaves a new one");
+    check(
+        failures,
+        jobs.sendWorkspace(&lone, loneWorkspace) && lone.sessionCount() == 1 && !lone.hasSession(loneShell) &&
+            lone.activeSession() != nullptr,
+        "background: last tab out leaves a new one"
+    );
 }
 
 // Functions defined in Konsoll reach background commands at start and open
@@ -288,37 +409,76 @@ void checkShellFunctions(int &failures, TerminalManager &manager)
         waitFor("functions: tab shell", [shell]() { return !shell->bufferText().isEmpty(); }, 15000);
 
         konsoll::ShellFunctions functions;
-        check(failures, !functions.validate(-1, QStringLiteral("9bad")).isEmpty() &&
-                            !functions.validate(-1, QStringLiteral("_konsoll_x")).isEmpty(),
-              "functions: invalid names refused");
-        const QString error = functions.saveFunction(-1, QStringLiteral("konsoll_selftest_fn"), QString{},
-                                                     QStringLiteral("echo \"FN_OUT:$1\"\necho FN_SECOND_LINE"));
-        check(failures, error.isEmpty() && !functions.validate(-1, QStringLiteral("konsoll_selftest_fn")).isEmpty(),
-              "functions: saved, name now taken");
+        check(
+            failures,
+            !functions.validate(-1, QStringLiteral("9bad")).isEmpty() &&
+                !functions.validate(-1, QStringLiteral("_konsoll_x")).isEmpty(),
+            "functions: invalid names refused"
+        );
+        const QString error = functions.saveFunction(
+            -1,
+            QStringLiteral("konsoll_selftest_fn"),
+            QString{},
+            QStringLiteral("echo \"FN_OUT:$1\"\necho FN_SECOND_LINE")
+        );
+        check(
+            failures,
+            error.isEmpty() && !functions.validate(-1, QStringLiteral("konsoll_selftest_fn")).isEmpty(),
+            "functions: saved, name now taken"
+        );
 
         BackgroundJobs jobs;
         const auto *job = static_cast<BackgroundJob *>(jobs.run(QStringLiteral("konsoll_selftest_fn arg1")));
-        check(failures, waitFor("functions: job ends", [job]() { return !job->running(); }, 20000) &&
-                            job->exitCode() == 0 && job->backend()->bufferText().contains("FN_OUT:arg1") &&
-                            job->backend()->bufferText().contains("FN_SECOND_LINE"),
-              "functions: callable from a background command");
+        check(
+            failures,
+            waitFor(
+                "functions: job ends",
+                [job]() { return !job->running(); },
+                20000
+            ) && job->exitCode() == 0 &&
+                job->backend()->bufferText().contains("FN_OUT:arg1") &&
+                job->backend()->bufferText().contains("FN_SECOND_LINE"),
+            "functions: callable from a background command"
+        );
 
         shell->writeText("konsoll_selftest_fn tab\n");
-        check(failures, waitFor("functions: tab", [shell]() { return shell->bufferText().contains("FN_OUT:tab"); }, 10000),
-              "functions: an open tab picks them up at its next prompt");
+        check(
+            failures,
+            waitFor(
+                "functions: tab",
+                [shell]() { return shell->bufferText().contains("FN_OUT:tab"); },
+                10000
+            ),
+            "functions: an open tab picks them up at its next prompt"
+        );
 
         const auto *multi = static_cast<BackgroundJob *>(
-            jobs.run(QStringLiteral("echo MULTI_ONE\nfor i in 1 2; do\n  echo MULTI_$i\ndone\nexit 4")));
-        check(failures, waitFor("multi-line: ends", [multi]() { return !multi->running(); }, 20000) &&
-                            multi->exitCode() == 4 && multi->backend()->bufferText().contains("MULTI_ONE") &&
-                            multi->backend()->bufferText().contains("MULTI_2") &&
-                            multi->title() == QStringLiteral("echo MULTI_ONE …"),
-              "multi-line: the whole script runs, listed by its first line");
+            jobs.run(QStringLiteral("echo MULTI_ONE\nfor i in 1 2; do\n  echo MULTI_$i\ndone\nexit 4"))
+        );
+        check(
+            failures,
+            waitFor(
+                "multi-line: ends",
+                [multi]() { return !multi->running(); },
+                20000
+            ) && multi->exitCode() == 4 &&
+                multi->backend()->bufferText().contains("MULTI_ONE") &&
+                multi->backend()->bufferText().contains("MULTI_2") &&
+                multi->title() == QStringLiteral("echo MULTI_ONE …"),
+            "multi-line: the whole script runs, listed by its first line"
+        );
 
         functions.removeFunction(0);
         shell->writeText("konsoll_selftest_fn gone || echo FN_REMOVED\n");
-        check(failures, waitFor("functions: removed", [shell]() { return shell->bufferText().contains("FN_REMOVED"); }, 10000),
-              "functions: a removed function goes away");
+        check(
+            failures,
+            waitFor(
+                "functions: removed",
+                [shell]() { return shell->bufferText().contains("FN_REMOVED"); },
+                10000
+            ),
+            "functions: a removed function goes away"
+        );
         manager.closeSession(shell);
     }
     if (saved.isValid()) {
@@ -344,17 +504,24 @@ int runSelfTest()
     // onto the next row.
     {
         Terminal term(4, 10, QStringLiteral("selftest"));
-        term.write(QByteArray("\xe2\x97\x86\xef\xb8\x8e" "ab")); // U+25C6 U+FE0E a b
+        term.write(QByteArray("\xe2\x97\x86\xef\xb8\x8e"
+                              "ab")); // U+25C6 U+FE0E a b
         const Screen &screen = term.screen();
-        check(failures,
-              screen.cellAt(0, 0).ch == 0x25c6u && screen.cellAt(0, 1).ch == 'a' && screen.cellAt(0, 2).ch == 'b' &&
-                  screen.cursorCol() == 3,
-              "zero-width: variation selector takes no cell");
-        term.write(QByteArray("\r\nac\xcc\xa7" "a\xcc\x83" "o")); // NFD "ação"
-        check(failures,
-              screen.cellAt(1, 1).ch == 0xe7u && screen.cellAt(1, 2).ch == 0xe3u && screen.cellAt(1, 3).ch == 'o' &&
-                  screen.cursorCol() == 4,
-              "zero-width: combining marks compose (NFD -> NFC)");
+        check(
+            failures,
+            screen.cellAt(0, 0).ch == 0x25c6u && screen.cellAt(0, 1).ch == 'a' && screen.cellAt(0, 2).ch == 'b' &&
+                screen.cursorCol() == 3,
+            "zero-width: variation selector takes no cell"
+        );
+        term.write(QByteArray("\r\nac\xcc\xa7"
+                              "a\xcc\x83"
+                              "o")); // NFD "ação"
+        check(
+            failures,
+            screen.cellAt(1, 1).ch == 0xe7u && screen.cellAt(1, 2).ch == 0xe3u && screen.cellAt(1, 3).ch == 'o' &&
+                screen.cursorCol() == 4,
+            "zero-width: combining marks compose (NFD -> NFC)"
+        );
     }
 
     // 0a. Prefixed CSI sequences are not SGR: Claude Code's modifyOtherKeys
@@ -363,10 +530,12 @@ int runSelfTest()
         Terminal term(4, 10, QStringLiteral("selftest"));
         term.write(QByteArray("\x1b[>4;2mabc\x1b[>4m\x1b[>0q"));
         const unsigned char flags = term.screen().cellAt(0, 0).flags;
-        check(failures,
-              (flags & (konsoll::CellFlag::Underline | konsoll::CellFlag::Dim)) == 0u &&
-                  term.screen().cellAt(0, 2).ch == 'c' && term.screen().cursorCol() == 3,
-              "csi: CSI > 4;2 m (modifyOtherKeys) is not SGR");
+        check(
+            failures,
+            (flags & (konsoll::CellFlag::Underline | konsoll::CellFlag::Dim)) == 0u &&
+                term.screen().cellAt(0, 2).ch == 'c' && term.screen().cursorCol() == 3,
+            "csi: CSI > 4;2 m (modifyOtherKeys) is not SGR"
+        );
     }
 
     // 0d. Control characters never land in a cell: a stray C0 byte or C1 code
@@ -374,12 +543,16 @@ int runSelfTest()
     // meaning, such as U+009B CSI, act as ESC Fe; U+0080 has none.)
     {
         Terminal term(4, 10, QStringLiteral("selftest"));
-        term.write(QByteArray("a\x0e\x0f\x01\x7f" "b\xc2\x80" "c"));
+        term.write(QByteArray("a\x0e\x0f\x01\x7f"
+                              "b\xc2\x80"
+                              "c"));
         const Screen &screen = term.screen();
-        check(failures,
-              screen.cellAt(0, 0).ch == 'a' && screen.cellAt(0, 1).ch == 'b' && screen.cellAt(0, 2).ch == 'c' &&
-                  screen.cursorCol() == 3,
-              "controls: C0 and C1 controls take no cell");
+        check(
+            failures,
+            screen.cellAt(0, 0).ch == 'a' && screen.cellAt(0, 1).ch == 'b' && screen.cellAt(0, 2).ch == 'c' &&
+                screen.cursorCol() == 3,
+            "controls: C0 and C1 controls take no cell"
+        );
     }
 
     // 0c. Background Color Erase + ECH: Neovim paints its theme background with
@@ -389,12 +562,17 @@ int runSelfTest()
         const Screen &screen = term.screen();
         term.write(QByteArray("abcdef\x1b[48;2;1;2;3m\r\x1b[2X\x1b[4G\x1b[K"));
         constexpr unsigned int kBg = 0x80010203u;
-        check(failures,
-              screen.cellAt(0, 0).ch == ' ' && screen.cellAt(0, 0).bg == kBg && screen.cellAt(0, 1).bg == kBg &&
-                  screen.cellAt(0, 2).ch == 'c' && screen.cellAt(0, 2).bg == 0u,
-              "erase: ECH blanks N cells with the current background");
-        check(failures, screen.cellAt(0, 3).ch == ' ' && screen.cellAt(0, 9).bg == kBg,
-              "erase: EL fills with the current background (BCE)");
+        check(
+            failures,
+            screen.cellAt(0, 0).ch == ' ' && screen.cellAt(0, 0).bg == kBg && screen.cellAt(0, 1).bg == kBg &&
+                screen.cellAt(0, 2).ch == 'c' && screen.cellAt(0, 2).bg == 0u,
+            "erase: ECH blanks N cells with the current background"
+        );
+        check(
+            failures,
+            screen.cellAt(0, 3).ch == ' ' && screen.cellAt(0, 9).bg == kBg,
+            "erase: EL fills with the current background (BCE)"
+        );
         term.write(QByteArray("\x1b[0m\x1b[2J"));
         check(failures, screen.cellAt(1, 5).bg == 0u, "erase: SGR reset restores default-background erase");
     }
@@ -405,22 +583,34 @@ int runSelfTest()
         const auto isSpacer = [](const Cell &cell) { return (cell.flags & konsoll::CellFlag::WideSpacer) != 0u; };
         Terminal term(4, 10, QStringLiteral("selftest"));
         const Screen &screen = term.screen();
-        term.write(QByteArray("a\xe2\x9c\x85" "b")); // a U+2705 b
-        check(failures,
-              isWide(screen.cellAt(0, 1)) && screen.cellAt(0, 1).ch == 0x2705u && isSpacer(screen.cellAt(0, 2)) &&
-                  screen.cellAt(0, 3).ch == 'b' && screen.cursorCol() == 4,
-              "wide: emoji occupies two cells");
+        term.write(QByteArray("a\xe2\x9c\x85"
+                              "b")); // a U+2705 b
+        check(
+            failures,
+            isWide(screen.cellAt(0, 1)) && screen.cellAt(0, 1).ch == 0x2705u && isSpacer(screen.cellAt(0, 2)) &&
+                screen.cellAt(0, 3).ch == 'b' && screen.cursorCol() == 4,
+            "wide: emoji occupies two cells"
+        );
         term.write(QByteArray("\r\xe4\xb8\xad")); // overwrite a, then U+4E2D over the emoji's lead
-        term.write(QByteArray("\rz"));           // z over the CJK lead breaks the pair
-        check(failures, screen.cellAt(0, 0).ch == 'z' && !isSpacer(screen.cellAt(0, 1)) && screen.cellAt(0, 1).ch == ' ',
-              "wide: overwriting a lead clears its spacer");
-        term.write(QByteArray("\r\n\xe2\x9d\xa4\xef\xb8\x8f" "c")); // U+2764 U+FE0F c
-        check(failures, isWide(screen.cellAt(1, 0)) && isSpacer(screen.cellAt(1, 1)) && screen.cellAt(1, 2).ch == 'c',
-              "wide: VS16 widens the previous character");
+        term.write(QByteArray("\rz"));            // z over the CJK lead breaks the pair
+        check(
+            failures,
+            screen.cellAt(0, 0).ch == 'z' && !isSpacer(screen.cellAt(0, 1)) && screen.cellAt(0, 1).ch == ' ',
+            "wide: overwriting a lead clears its spacer"
+        );
+        term.write(QByteArray("\r\n\xe2\x9d\xa4\xef\xb8\x8f"
+                              "c")); // U+2764 U+FE0F c
+        check(
+            failures,
+            isWide(screen.cellAt(1, 0)) && isSpacer(screen.cellAt(1, 1)) && screen.cellAt(1, 2).ch == 'c',
+            "wide: VS16 widens the previous character"
+        );
         term.write(QByteArray("\r\nxxxxxxxxx\xe4\xb8\xad")); // 9 cells + wide: wraps whole
-        check(failures,
-              isSpacer(screen.cellAt(2, 9)) && isWide(screen.cellAt(3, 0)) && screen.cellAt(3, 0).ch == 0x4e2du,
-              "wide: no room in the last column wraps the whole character");
+        check(
+            failures,
+            isSpacer(screen.cellAt(2, 9)) && isWide(screen.cellAt(3, 0)) && screen.cellAt(3, 0).ch == 0x4e2du,
+            "wide: no room in the last column wraps the whole character"
+        );
     }
     {
         const auto isWide = [](const Cell &cell) { return (cell.flags & konsoll::CellFlag::Wide) != 0u; };
@@ -428,11 +618,17 @@ int runSelfTest()
         const Screen &screen = term.screen();
         term.write(QByteArray("abcdefgh\xe4\xb8\xad")); // fills exactly 10 cells
         term.resize(4, 9);
-        check(failures, screen.cellAt(0, 7).ch == 'h' && isWide(screen.cellAt(1, 0)),
-              "wide: reflow never splits a wide pair");
+        check(
+            failures,
+            screen.cellAt(0, 7).ch == 'h' && isWide(screen.cellAt(1, 0)),
+            "wide: reflow never splits a wide pair"
+        );
         term.resize(4, 10);
-        check(failures, isWide(screen.cellAt(0, 8)) && screen.cellAt(0, 8).ch == 0x4e2du,
-              "wide: reflow re-joins without the wrap padding");
+        check(
+            failures,
+            isWide(screen.cellAt(0, 8)) && screen.cellAt(0, 8).ch == 0x4e2du,
+            "wide: reflow re-joins without the wrap padding"
+        );
     }
 
     runParserSelfTest(failures);
@@ -450,28 +646,74 @@ int runSelfTest()
     manager.addNamedWorkspace(QStringLiteral("Named WS"));
     {
         auto *named = static_cast<TerminalWorkspaceModel *>(manager.workspaces().last().value<QObject *>());
-        check(failures, named != nullptr && named->title() == QStringLiteral("Named WS"),
-              "named workspace: custom title shown");
+        check(
+            failures,
+            named != nullptr && named->title() == QStringLiteral("Named WS"),
+            "named workspace: custom title shown"
+        );
     }
     manager.addNamedWorkspace(QString{});
     {
         auto *unnamed = static_cast<TerminalWorkspaceModel *>(manager.workspaces().last().value<QObject *>());
-        check(failures, unnamed != nullptr && unnamed->customTitle().isEmpty(),
-              "named workspace: empty title stays unnamed");
+        check(
+            failures,
+            unnamed != nullptr && unnamed->customTitle().isEmpty(),
+            "named workspace: empty title stays unnamed"
+        );
     }
 
     a->writeText("seq 1 5000\n");
     b->writeText("seq 1 5000\n");
     c->writeText("seq 1 5000\n");
-    check(failures, waitFor("a: seq output", [a]() { return a->bufferText().contains("\n5000\n"); }, 20000), "concurrent output: session A");
-    check(failures, waitFor("b: seq output", [b]() { return b->bufferText().contains("\n5000\n"); }, 20000), "concurrent output: session B");
-    check(failures, waitFor("c: seq output", [c]() { return c->bufferText().contains("\n5000\n"); }, 20000), "concurrent output: session C");
+    check(
+        failures,
+        waitFor(
+            "a: seq output",
+            [a]() { return a->bufferText().contains("\n5000\n"); },
+            20000
+        ),
+        "concurrent output: session A"
+    );
+    check(
+        failures,
+        waitFor(
+            "b: seq output",
+            [b]() { return b->bufferText().contains("\n5000\n"); },
+            20000
+        ),
+        "concurrent output: session B"
+    );
+    check(
+        failures,
+        waitFor(
+            "c: seq output",
+            [c]() { return c->bufferText().contains("\n5000\n"); },
+            20000
+        ),
+        "concurrent output: session C"
+    );
 
     // 2. Independent input: each session receives only its own input.
     a->writeText("echo SELFTEST_A\n");
     b->writeText("echo SELFTEST_B\n");
-    check(failures, waitFor("a: marker", [a]() { return a->bufferText().contains("SELFTEST_A"); }, 10000), "independent input: A echo");
-    check(failures, waitFor("b: marker", [b]() { return b->bufferText().contains("SELFTEST_B"); }, 10000), "independent input: B echo");
+    check(
+        failures,
+        waitFor(
+            "a: marker",
+            [a]() { return a->bufferText().contains("SELFTEST_A"); },
+            10000
+        ),
+        "independent input: A echo"
+    );
+    check(
+        failures,
+        waitFor(
+            "b: marker",
+            [b]() { return b->bufferText().contains("SELFTEST_B"); },
+            10000
+        ),
+        "independent input: B echo"
+    );
     check(failures, !a->bufferText().contains("SELFTEST_B"), "independent input: A has no B marker");
     check(failures, !b->bufferText().contains("SELFTEST_A"), "independent input: B has no A marker");
 
@@ -485,9 +727,25 @@ int runSelfTest()
     // 4. Process exit: natural exit auto-closes only that session.
     const int countBefore = manager.sessionCount();
     c->writeText("exit\n");
-    check(failures, waitFor("c: auto close", [&manager, &countBefore]() { return manager.sessionCount() == countBefore - 1; }, 15000), "process exit: C auto-closed");
+    check(
+        failures,
+        waitFor(
+            "c: auto close",
+            [&manager, &countBefore]() { return manager.sessionCount() == countBefore - 1; },
+            15000
+        ),
+        "process exit: C auto-closed"
+    );
     a->writeText("echo STILL_ALIVE_A\n");
-    check(failures, waitFor("a: still alive", [a]() { return a->bufferText().contains("STILL_ALIVE_A"); }, 10000), "process exit: A still running");
+    check(
+        failures,
+        waitFor(
+            "a: still alive",
+            [a]() { return a->bufferText().contains("STILL_ALIVE_A"); },
+            10000
+        ),
+        "process exit: A still running"
+    );
 
     // 5. Fast close/reopen, bounded close time.
     const int baseline = manager.sessionCount();
@@ -496,7 +754,15 @@ int runSelfTest()
         auto *s = activeSession(manager);
         std::array<char, 48> label{};
         std::snprintf(label.data(), label.size(), "reopen %d: shell output", i);
-        check(failures, waitFor(label.data(), [s]() { return !s->bufferText().isEmpty(); }, 15000), "fast close/reopen: shell output");
+        check(
+            failures,
+            waitFor(
+                label.data(),
+                [s]() { return !s->bufferText().isEmpty(); },
+                15000
+            ),
+            "fast close/reopen: shell output"
+        );
         QElapsedTimer timer;
         timer.start();
         manager.closeSession(s);
@@ -521,38 +787,72 @@ int runSelfTest()
         QObject *moving = manager.workspaces().last().value<QObject *>();
         const int sourceBefore = manager.sessionCount();
         const auto workspacesBefore = manager.workspaces().size();
-        check(failures, waitFor("move: shell output", [right]() { return !right->bufferText().isEmpty(); }, 15000),
-              "move workspace: split shell started");
+        check(
+            failures,
+            waitFor(
+                "move: shell output",
+                [right]() { return !right->bufferText().isEmpty(); },
+                15000
+            ),
+            "move workspace: split shell started"
+        );
 
         check(failures, manager.moveWorkspaceTo(moving, &other, 0), "move workspace: accepted");
-        check(failures,
-              manager.sessionCount() == sourceBefore - 2 && manager.workspaces().size() == workspacesBefore - 1 &&
-                  !manager.hasSession(left) && !manager.hasSession(right),
-              "move workspace: source gives up the workspace and both panes");
-        check(failures,
-              other.sessionCount() == 3 && other.workspaces().size() == 2 &&
-                  other.workspaces().first().value<QObject *>() == moving && other.activeSession() == right &&
-                  other.activeWorkspaceIndex() == 0,
-              "move workspace: target adopts it at the index, active pane kept");
-        check(failures, manager.activeSession() != nullptr && manager.activeSession() != left &&
-                            manager.activeSession() != right && !sourceEmptied,
-              "move workspace: source activates another session");
+        check(
+            failures,
+            manager.sessionCount() == sourceBefore - 2 && manager.workspaces().size() == workspacesBefore - 1 &&
+                !manager.hasSession(left) && !manager.hasSession(right),
+            "move workspace: source gives up the workspace and both panes"
+        );
+        check(
+            failures,
+            other.sessionCount() == 3 && other.workspaces().size() == 2 &&
+                other.workspaces().first().value<QObject *>() == moving && other.activeSession() == right &&
+                other.activeWorkspaceIndex() == 0,
+            "move workspace: target adopts it at the index, active pane kept"
+        );
+        check(
+            failures,
+            manager.activeSession() != nullptr && manager.activeSession() != left && manager.activeSession() != right &&
+                !sourceEmptied,
+            "move workspace: source activates another session"
+        );
 
         right->writeText("echo MOVED_ALIVE\n");
-        check(failures, waitFor("move: alive", [right]() { return right->bufferText().contains("MOVED_ALIVE"); }, 10000),
-              "move workspace: moved shell still running");
+        check(
+            failures,
+            waitFor(
+                "move: alive",
+                [right]() { return right->bufferText().contains("MOVED_ALIVE"); },
+                10000
+            ),
+            "move workspace: moved shell still running"
+        );
         left->writeText("exit\n");
-        check(failures, waitFor("move: exit closes in target", [&other]() { return other.sessionCount() == 2; }, 15000),
-              "move workspace: exit closes the pane in the new window");
+        check(
+            failures,
+            waitFor(
+                "move: exit closes in target",
+                [&other]() { return other.sessionCount() == 2; },
+                15000
+            ),
+            "move workspace: exit closes the pane in the new window"
+        );
 
         QObject *original = other.workspaces().last().value<QObject *>();
-        check(failures, other.moveWorkspaceTo(moving, &other, 1) && other.workspaces().last().value<QObject *>() == moving,
-              "move workspace: same window reorders");
+        check(
+            failures,
+            other.moveWorkspaceTo(moving, &other, 1) && other.workspaces().last().value<QObject *>() == moving,
+            "move workspace: same window reorders"
+        );
         const int sourceCount = manager.sessionCount();
         other.moveWorkspaceTo(original, &manager, 99);
         other.moveWorkspaceTo(moving, &manager, 99);
-        check(failures, otherEmptied && other.sessionCount() == 0 && manager.sessionCount() == sourceCount + 2,
-              "move workspace: last workspace out closes the window");
+        check(
+            failures,
+            otherEmptied && other.sessionCount() == 0 && manager.sessionCount() == sourceCount + 2,
+            "move workspace: last workspace out closes the window"
+        );
         manager.closeSession(right);
         manager.closeWorkspace(original);
     }
@@ -567,11 +867,35 @@ int runSelfTest()
     // 6. App shutdown while a shell is running: no orphaned process group.
     manager.addWorkspace();
     auto *s = activeSession(manager);
-    check(failures, waitFor("shutdown: shell output", [s]() { return !s->bufferText().isEmpty(); }, 15000), "shutdown: shell produced output");
+    check(
+        failures,
+        waitFor(
+            "shutdown: shell output",
+            [s]() { return !s->bufferText().isEmpty(); },
+            15000
+        ),
+        "shutdown: shell produced output"
+    );
     s->writeText("sleep 31337\n");
-    check(failures, waitFor("shutdown: sleep spawned", []() { return pgrepCount("sleep 31337") > 0; }, 10000), "shutdown: sleep started");
+    check(
+        failures,
+        waitFor(
+            "shutdown: sleep spawned",
+            []() { return pgrepCount("sleep 31337") > 0; },
+            10000
+        ),
+        "shutdown: sleep started"
+    );
     manager.closeSession(s);
-    check(failures, waitFor("shutdown: sleep gone", []() { return pgrepCount("sleep 31337") == 0; }, 5000), "shutdown: no orphaned sleep");
+    check(
+        failures,
+        waitFor(
+            "shutdown: sleep gone",
+            []() { return pgrepCount("sleep 31337") == 0; },
+            5000
+        ),
+        "shutdown: no orphaned sleep"
+    );
 
     // 6b. Tab indicators.
     checkTabIndicators(failures, manager, a);
@@ -579,9 +903,25 @@ int runSelfTest()
     // 7. Output backpressure: sustained output above the 1 MiB high-water mark.
     manager.addWorkspace();
     auto *t = activeSession(manager);
-    check(failures, waitFor("backpressure: shell output", [t]() { return !t->bufferText().isEmpty(); }, 15000), "backpressure: shell produced output");
+    check(
+        failures,
+        waitFor(
+            "backpressure: shell output",
+            [t]() { return !t->bufferText().isEmpty(); },
+            15000
+        ),
+        "backpressure: shell produced output"
+    );
     t->writeText("seq 1 250000\n");
-    check(failures, waitFor("backpressure: seq done", [t]() { return t->maxScrollOffset() >= 249900; }, 60000), "backpressure: 250k lines delivered");
+    check(
+        failures,
+        waitFor(
+            "backpressure: seq done",
+            [t]() { return t->maxScrollOffset() >= 249900; },
+            60000
+        ),
+        "backpressure: 250k lines delivered"
+    );
     check(failures, t->bufferText().contains("\n250000\n"), "backpressure: last line intact");
 
     // Remaining sessions (A and B) are closed by the manager destructor.
