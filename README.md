@@ -496,6 +496,29 @@ The native side is Objective-C++ (`src/MacOSTranslucency.mm`): it makes the
 alpha. The QML `Window` must keep `color: "transparent"` so the backing
 surface is transparent and the native tint shows through.
 
+## Performance
+
+Measured against iTerm2 3.7.7 on an Apple Silicon Mac with 8 GB of RAM
+(macOS 27.2), both with unlimited scrollback, the same 48×199 window and
+the same scripted scenarios:
+
+| Scenario | Konsoll | iTerm2 |
+| --- | --- | --- |
+| Idle, 1 tab, window active | 0.5% CPU, 192 MB | 9.2% CPU, 242 MB |
+| Idle, 10 tabs, window active | ~0% CPU, 235 MB | 7.0% CPU, 270 MB |
+| `top` redrawing at 1 Hz | 1.1% CPU | 10.8% CPU |
+| `yes \| head -n 5000000` (until the last byte is parsed) | 6.7 s | 8.4 s |
+| `yes` for 15 s: peak memory, then after a clear | 483 MB, 192 MB | 13 GB, 885 MB |
+
+History is stored compacted (a short line costs a few bytes), so unlimited
+scrollback stays affordable, and clearing the buffer (⌃K) or closing a tab
+returns the memory to the system. For the same output the macOS PTY alone
+takes 6.1 s, so a burst is parsed close to the kernel's own limit. iTerm2
+costs less per extra idle tab (+3.1 MB against +4.8 MB).
+
+The method, every scenario and the fixes behind these numbers are in
+[`docs/PERFORMANCE-FINDINGS.md`](docs/PERFORMANCE-FINDINGS.md).
+
 ## Testing
 
 ```sh
