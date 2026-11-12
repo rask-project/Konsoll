@@ -2006,6 +2006,9 @@ void Terminal::handleOscCommandMark(const QByteArray &body)
         return;
     }
     handleCommandMark(body.at(4));
+    if (body.at(4) == 'A') {
+        resetProgramInputModes();
+    }
     if (body.at(4) == 'D') {
         // D ; status ; ... -- later fields (aid=, err=) are ignored.
         bool ok = false;
@@ -2013,6 +2016,22 @@ void Terminal::handleOscCommandMark(const QByteArray &body)
         m_lastExitCode = ok ? code : -1;
         setExtraFlag(CommandFinishedPending, true);
     }
+}
+
+// A new prompt: the shell reads the input now. A program that died without
+// restoring the terminal (a crash, kill -9) leaves its mouse, focus or
+// keyboard reporting on, and the shell would get the reports as typed text
+// (a wheel turn shows up as "65;67;25M"). Shells use none of these modes.
+void Terminal::resetProgramInputModes()
+{
+    m_mouseModes = 0;
+    setExtraFlag(SgrMouse, false);
+    setExtraFlag(Utf8Mouse, false);
+    setExtraFlag(UrxvtMouse, false);
+    setExtraFlag(SgrPixelMouse, false);
+    setExtraFlag(FocusReporting, false);
+    m_kittyStack = {};
+    m_kittyDepth = 0;
 }
 
 // Form: <num>;<text>. We only honor 0 (icon+title) and 2 (title).

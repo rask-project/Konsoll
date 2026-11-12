@@ -1324,6 +1324,19 @@ void tabIndicators(int &failures)
             "osc 133;D: exit status, extra fields and a missing status"
         );
     }
+    {
+        // A program that died with mouse, focus and kitty keyboard reporting
+        // on: the next prompt turns them off.
+        Terminal term(4, 10, QStringLiteral("selftest"));
+        term.write("\x1b[?1002h\x1b[?1006h\x1b[?1004h\x1b[>1u");
+        const bool on = term.mouseTracking() && term.sgrMouse() && term.focusReporting() && term.kittyKeyboardEnabled();
+        term.write("\x1b]133;A\x07");
+        selfTestCheck(
+            failures,
+            on && !term.mouseTracking() && !term.sgrMouse() && !term.focusReporting() && !term.kittyKeyboardEnabled(),
+            "osc 133;A: a prompt turns off input reporting a dead program left on"
+        );
+    }
     selfTestCheck(
         failures,
         processKind(QStringLiteral("ssh")) == ProcessKind::Remote &&

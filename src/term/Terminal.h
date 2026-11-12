@@ -301,6 +301,7 @@ private:
     void handleOscClipboard(const QByteArray &body);
     void handleOscCurrentDirectory(const QByteArray &body);
     void handleOscCommandMark(const QByteArray &body);
+    void resetProgramInputModes();
     void handleOscVsCode(const QByteArray &body);
     void handleOscPointerShape(const QByteArray &body);
     QByteArray pointerShapeQuery(const QByteArray &names) const;
