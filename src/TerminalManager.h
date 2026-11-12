@@ -191,6 +191,17 @@ public:
     Q_INVOKABLE int sessionCount() const;
     // Compares by address only, so `session` may dangle.
     bool hasSession(const QObject *session) const;
+    // Shows the session whose token is `token` (a clicked notification):
+    // activates its pane and raises the window. False when not here.
+    bool activateSessionWithToken(const QString &token);
+    // The session in this window whose token is `token`, or null.
+    TerminalBackend *sessionWithToken(const QString &token) const;
+    // Splits the pane of `session` (Qt::Orientation) and runs `command` in an
+    // interactive shell in the new pane, leaving the focus where it is (an
+    // agent asks for it while the user may be typing). Null when `session`
+    // is not in this window.
+    TerminalBackend *
+    openPaneBeside(TerminalBackend *session, int orientation, const QString &command, const QString &directory = {});
     Q_INVOKABLE void moveWorkspace(int fromIndex, int toIndex);
     // Hands `workspace` and its running sessions to the manager of another
     // window, inserted at `index`; the shells keep running. A source window
@@ -248,6 +259,13 @@ private:
     void adoptWorkspace(DetachedWorkspace detached, int index);
     TerminalBackend *ownedSession(const QObject *session) const;
     TerminalWorkspaceModel *workspaceOf(TerminalBackend *session) const;
+    // Splits the pane of `session` with a new, not yet started session.
+    TerminalBackend *splitSession(TerminalBackend *session, int orientation);
+    // Tab attention and a desktop notification for an agent's new state.
+    void onAgentStatusChanged(TerminalBackend *session, AgentState previous);
+    // Whether the user is looking at `session`: the active pane of the
+    // active window of the frontmost app.
+    bool sessionInView(const TerminalBackend *session) const;
     // Takes the pane of `session` out of its workspace's tree. `notify` false
     // leaves the layout signals to the caller, which reshapes the same tree.
     std::unique_ptr<TerminalLayoutNode> extractPane(TerminalBackend *session, bool notify = true);

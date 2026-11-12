@@ -112,6 +112,7 @@ On macOS, ⌘ is Command, ⌥ is Option, ⌃ is Control and ⇧ is Shift.
 | — | Close the whole tab | Shell ▸ Close Workspace |
 | — | Send the active pane to the background | Shell ▸ Move Session to Background |
 | ⇧⌘B | Open Background Commands | Window ▸ Background Commands |
+| ⇧⌘A | List the AI agents running in every window | Window ▸ AI Agents |
 | ⌘C / ⌘V | Copy the selection / paste | Edit ▸ Copy / Paste |
 | ⌘A | Select everything (scrollback included) | Edit ▸ Select All |
 | — | Save the buffer or the selection to a file | Edit ▸ Save Buffer or Selection… |
@@ -355,8 +356,8 @@ Background**.
 ### AI agents
 
 Konsoll recognizes AI coding agents (Claude Code, Codex, opencode, Qwen Code,
-Gemini CLI, …) and gives their tab the agent icon. With its hooks connected,
-an agent also reports what it is doing, and the tab shows it:
+Gemini CLI, …) and gives their tab the agent icon. Once an agent is
+connected, it also reports what it is doing, and the tab shows it:
 
 | Icon | State |
 | --- | --- |
@@ -365,19 +366,62 @@ an agent also reports what it is doing, and the tab shows it:
 | Sparkle with a check | Done with the turn |
 | Sparkle with a cross (red) | Failed |
 
-A tab in the background flags a waiting agent like the bell, a finished turn
-with ✓ and a failure with ✗; hovering the tab shows the agent's message
-(what it needs permission for). With several panes in a tab, the pane that
-most needs you sets the icon.
+- **Connect an agent** in **Settings ▸ AI Agents**: *Connect* adds Konsoll's
+  hooks to Claude Code (`~/.claude/settings.json`), Codex
+  (`~/.codex/hooks.json`) or Qwen Code (`~/.qwen/settings.json`), keeping
+  everything else in the file and a copy of it as `.konsoll-backup`;
+  opencode gets a plugin file (`~/.config/opencode/plugins/konsoll.js`).
+  *Remove* takes them out again. Restart agents already running; Codex runs
+  new hooks only after you trust them with `/hooks`. The hooks do nothing
+  outside Konsoll.
+- **A background tab** flags a waiting agent like the bell, a finished turn
+  with ✓ and a failure with ✗. Hovering the tab shows the agent's message
+  (what it needs permission for). With several panes in a tab, the pane that
+  most needs you sets the icon.
+- **Notifications:** when an agent waits for you, finishes or fails while
+  you are looking elsewhere, Konsoll posts a notification; clicking it brings
+  that pane forward. Turn it off in Settings ▸ AI Agents.
+- **Window ▸ AI Agents** (⇧⌘A) lists every pane running an agent, in every
+  window, the ones waiting for you first, with **Show** to jump there.
 
-**Claude Code:** install the Konsoll plugin once, in your shell:
+**Konsoll tools for agents (MCP).** `konsoll --mcp` is an MCP server that
+gives an agent running in Konsoll three tools, for the pane it runs in only:
+
+| Tool | What it does |
+| --- | --- |
+| `open_pane` | Opens a pane next to the agent's (right or below) running a command — a dev server, a watcher — without taking the focus. The pane stays when the command ends. |
+| `run_in_background` | Starts a Background Command (Window ▸ Background Commands). |
+| `background_job_status` | The state, exit code and last output of a background command that same agent started. |
+
+Register it once per agent: **Settings ▸ AI Agents ▸ Copy** gives the exact
+command or configuration for this Konsoll. For the installed app:
+
+```bash
+claude mcp add --scope user konsoll -- /Applications/Konsoll.app/Contents/MacOS/konsoll --mcp
+qwen mcp add --scope user konsoll /Applications/Konsoll.app/Contents/MacOS/konsoll --mcp
+```
+
+```toml
+# ~/.codex/config.toml — Codex passes a server only the variables listed
+[mcp_servers.konsoll]
+command = "/Applications/Konsoll.app/Contents/MacOS/konsoll"
+args = ["--mcp"]
+env_vars = ["KONSOLL_SESSION_TOKEN", "KONSOLL_AGENT_SOCKET"]
+```
+
+```jsonc
+// ~/.config/opencode/opencode.json
+"mcp": { "konsoll": { "type": "local", "command": ["/Applications/Konsoll.app/Contents/MacOS/konsoll", "--mcp"] } }
+```
+
+Outside Konsoll the server offers no tools. It cannot read other panes.
+
+Claude Code can use the Konsoll plugin instead of the hooks:
 
 ```bash
 claude plugin marketplace add rask-project/Konsoll
 claude plugin install konsoll@konsoll
 ```
-
-Its hooks do nothing outside Konsoll.
 
 Any other tool can report a state the same way: Konsoll exports
 `KONSOLL_AGENT_HOOK`, a script that takes the agent's name, the state
@@ -398,6 +442,7 @@ window right away and are saved automatically.
 | **Window** | Background blur, background opacity |
 | **Terminal** | Scrollback: unlimited (the default) or a line limit |
 | **Keyboard** | Use Option as Meta key |
+| **AI Agents** | Connect Claude Code, Codex, Qwen Code and opencode to the tab status; notify when an agent needs you |
 | **Security** | What programs may do: read the clipboard (`OSC 52`: never / ask / always), read the window title, show desktop notifications, move and resize the window |
 
 <p align="center">
@@ -451,7 +496,8 @@ An in-house VT500-style state machine (no `libvterm`), validated against
 - `OSC 52` clipboard (reads ask first by default)
 - `OSC 9` / `OSC 777` desktop notifications, `OSC 9;4` progress in the tab
 - AI agent state in the tab (working, waiting for you, done, failed) from the
-  agent's hooks, with a Claude Code plugin in `integrations/claude-code`
+  agent's hooks, connected from Settings for Claude Code, Codex, Qwen Code
+  and opencode, with notifications and an agent list (Window ▸ AI Agents)
 - `OSC 7` working directory, `OSC 133` / `OSC 633` command blocks, and the
   iTerm2 `OSC 1337` commands (user variables, current directory, …)
 - `OSC 22` mouse pointer shapes

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QString>
+
 #include <vector>
 
 class QObject;
@@ -29,6 +31,11 @@ public:
     // to another window between an exit and its queued close. `session` may
     // dangle; it is only compared by address.
     void closeSession(QObject *session) const;
+    // Brings forward the session with that token (KONSOLL_SESSION_TOKEN), in
+    // whichever window holds it. False when no window does.
+    bool activateSessionWithToken(const QString &token) const;
+    // The window manager holding the session with that token, or null.
+    TerminalManager *managerWithToken(const QString &token) const;
 
 private:
     WindowRegistry() = default;

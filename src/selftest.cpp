@@ -1,14 +1,25 @@
 #include "selftest.h"
 
+#include "AgentCommands.h"
+#include "AgentIntegrations.h"
+#include "AgentStatus.h"
 #include "BackgroundJobs.h"
 #include "ShellFunctions.h"
 #include "TerminalManager.h"
+#include "WindowRegistry.h"
 #include "term/Terminal.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QSettings>
+#include <QTemporaryDir>
 #include <QThread>
 
 #include <algorithm>
@@ -184,6 +195,15 @@ void checkTabIndicators(int &failures, TerminalManager &manager, TerminalBackend
         ),
         "agent status: cleared back at the prompt"
     );
+    // A clicked notification names its session by token.
+    manager.activateSession(other);
+    check(
+        failures,
+        konsoll::WindowRegistry::instance().activateSessionWithToken(u->sessionToken()) &&
+            activeSession(manager) == u && !konsoll::WindowRegistry::instance().activateSessionWithToken({}) &&
+            !konsoll::WindowRegistry::instance().activateSessionWithToken(QStringLiteral("unknown")),
+        "agent status: a notification's token activates its session"
+    );
     // The icon follows the pane worked in last.
     u->writeText("less /etc/hosts\n");
     check(
@@ -241,6 +261,154 @@ void checkTabIndicators(int &failures, TerminalManager &manager, TerminalBackend
     manager.activateSession(u);
     check(failures, uWorkspace->attention().isEmpty(), "indicators: activation clears attention");
     manager.closeSession(u);
+}
+
+// Settings > AI Agents: Konsoll's hooks go into an agent's settings file and
+// come out again without touching the user's own settings and hooks.
+void checkAgentIntegrations(int &failures)
+{
+    const QTemporaryDir directory;
+    const QString path = directory.filePath(QStringLiteral("agent/settings.json"));
+    const auto writeText = [](const QString &target, const QByteArray &contents) {
+        QFile out(target);
+        return QDir().mkpath(QFileInfo(target).absolutePath()) && out.open(QIODevice::WriteOnly) &&
+               out.write(contents) == contents.size();
+    };
+    const auto readJson = [&path]() {
+        QFile json(path);
+        return json.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(json.readAll()).object() : QJsonObject{};
+    };
+    const QByteArray userSettings =
+        R"({"model": "x", "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "say done"}]}]}})";
+    const bool written = writeText(path, userSettings);
+    const auto handlerCount = [](const QJsonObject &settings, const QString &event) {
+        const QJsonArray groups = settings.value(QStringLiteral("hooks")).toObject().value(event).toArray();
+        return std::ranges::fold_left(groups, qsizetype{0}, [](qsizetype total, const QJsonValue &group) {
+            return total + group.toObject().value(QStringLiteral("hooks")).toArray().size();
+        });
+    };
+    const bool installed = written &&
+                           konsoll::installAgentHooks(path, "claude", konsoll::claudeHookSpecs()).has_value() &&
+                           konsoll::installAgentHooks(path, "claude", konsoll::claudeHookSpecs()).has_value();
+    const QJsonObject withHooks = readJson();
+    check(
+        failures,
+        installed && konsoll::hasAgentHooks(path) && withHooks.value(QStringLiteral("model")) == QStringLiteral("x") &&
+            handlerCount(withHooks, QStringLiteral("Stop")) == 2 &&
+            handlerCount(withHooks, QStringLiteral("UserPromptSubmit")) == 1 &&
+            QFile::exists(path + QStringLiteral(".konsoll-backup")),
+        "agent integrations: hooks added once, the user's kept, a backup made"
+    );
+    const bool removed = konsoll::removeAgentHooks(path).has_value();
+    check(
+        failures,
+        removed && !konsoll::hasAgentHooks(path) && readJson() == QJsonDocument::fromJson(userSettings).object(),
+        "agent integrations: removal leaves exactly the user's settings"
+    );
+    const QString commented = directory.filePath(QStringLiteral("commented.json"));
+    check(
+        failures,
+        writeText(commented, "// comment\n{}\n") &&
+            !konsoll::installAgentHooks(commented, "qwen", konsoll::qwenHookSpecs()).has_value() &&
+            !QFile::exists(commented + QStringLiteral(".konsoll-backup")),
+        "agent integrations: a file that is not plain JSON is left alone"
+    );
+    check(
+        failures,
+        konsoll::agentHookCommand("codex", konsoll::codexHookSpecs().front()) ==
+            QStringLiteral("[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" codex working || true"),
+        "agent integrations: hook command"
+    );
+}
+
+// Konsoll's MCP server (konsoll --mcp), started from an agent's pane: its
+// tool calls reach Konsoll with the pane's token, open a pane beside the
+// agent's without taking the focus, and run background commands only that
+// agent can query.
+void checkAgentTools(int &failures, TerminalManager &manager)
+{
+    BackgroundJobs jobs;
+    konsoll::AgentCommands commands(&jobs);
+    konsoll::AgentStatusServer::instance().setRequestHandler([&commands](const QJsonObject &request) {
+        return commands.handle(request);
+    });
+    manager.addWorkspace();
+    auto *agent = activeSession(manager);
+    QObject *workspace = manager.workspaces().last().value<QObject *>();
+    const QString input = QDir::temp().filePath(QStringLiteral("konsoll-mcp-selftest.in"));
+    const QString output = QDir::temp().filePath(QStringLiteral("konsoll-mcp-selftest.out"));
+    QFile::remove(output);
+    QFile requests(input);
+    const bool written =
+        requests.open(QIODevice::WriteOnly) &&
+        requests.write(
+            R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}})"
+            "\n"
+            R"({"jsonrpc":"2.0","method":"notifications/initialized"})"
+            "\n"
+            R"({"jsonrpc":"2.0","id":2,"method":"tools/list"})"
+            "\n"
+            R"({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"open_pane","arguments":{"command":"echo PANE_OK"}}})"
+            "\n"
+            R"({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"run_in_background","arguments":{"command":"echo BG_AGENT_OK"}}})"
+            "\n"
+        ) > 0;
+    requests.close();
+    check(
+        failures,
+        written && waitFor(
+                       "agent tools: shell",
+                       [agent]() { return !agent->bufferText().isEmpty(); },
+                       15000
+                   ),
+        "agent tools: shell ready"
+    );
+    agent->writeText(QStringLiteral("'%1' --mcp < '%2' > '%3' 2>/dev/null\n")
+                         .arg(QCoreApplication::applicationFilePath(), input, output));
+    const auto replies = [&output]() {
+        QFile file(output);
+        return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray{};
+    };
+    check(
+        failures,
+        waitFor(
+            "agent tools: replies",
+            [&replies, &manager, workspace, &jobs]() {
+                return replies().count('\n') == 4 && manager.workspaceSessions(workspace).size() == 2 &&
+                       jobs.jobs().size() == 1;
+            },
+            15000
+        ) && replies().contains("\"open_pane\"") &&
+            replies().contains("Opened a pane") && activeSession(manager) == agent,
+        "agent tools: MCP lists the tools, opens a pane beside the agent's (focus kept), starts a job"
+    );
+    const auto *job = qobject_cast<const BackgroundJob *>(jobs.jobs().value(0).value<QObject *>());
+    const auto status = [&commands, job](const QString &token) {
+        return commands.handle(QJsonObject{
+            {QStringLiteral("token"), token},
+            {QStringLiteral("tool"), QStringLiteral("background_job_status")},
+            {QStringLiteral("arguments"), QJsonObject{{QStringLiteral("job"), job != nullptr ? job->number() : -1}}},
+        });
+    };
+    check(
+        failures,
+        job != nullptr &&
+            waitFor(
+                "agent tools: job ends",
+                [job]() { return !job->running(); },
+                15000
+            ) &&
+            status(agent->sessionToken())
+                .value(QStringLiteral("text"))
+                .toString()
+                .contains(QStringLiteral("BG_AGENT_OK")) &&
+            status(QStringLiteral("another-session")).value(QStringLiteral("isError")).toBool(),
+        "agent tools: job status with its output, for the agent that started it only"
+    );
+    konsoll::AgentStatusServer::instance().setRequestHandler({});
+    manager.closeWorkspace(workspace);
+    QFile::remove(input);
+    QFile::remove(output);
 }
 
 // Dragging a pane rearranges the splits and moves it between windows.
@@ -660,6 +828,7 @@ int runSelfTest()
     }
 
     runParserSelfTest(failures);
+    checkAgentIntegrations(failures);
 
     // 1. Concurrent output: three sessions produce output at the same time.
     auto *a = activeSession(manager);
@@ -1007,6 +1176,7 @@ int runSelfTest()
 
     // 6b. Tab indicators.
     checkTabIndicators(failures, manager, a);
+    checkAgentTools(failures, manager);
 
     // 7. Output backpressure: sustained output above the 1 MiB high-water mark.
     manager.addWorkspace();

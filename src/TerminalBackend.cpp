@@ -235,9 +235,13 @@ void TerminalBackend::handleRequests()
             resize(request.a, m_rows);
             break;
         case TerminalRequest::Notification:
-            if (settings.value(QStringLiteral("General/allowNotifications"), true).toBool()) {
+            // An agent reporting through its hooks gets Konsoll's own
+            // notification (TerminalManager): its OSC 9 would repeat it.
+            if (settings.value(QStringLiteral("General/allowNotifications"), true).toBool() &&
+                !(m_agentState != AgentState::None &&
+                  settings.value(QStringLiteral("General/agentNotifications"), true).toBool())) {
                 const QString title = QString::fromUtf8(request.data);
-                postNotification(title.isEmpty() ? m_title : title, QString::fromUtf8(request.body));
+                postNotification(title.isEmpty() ? m_title : title, QString::fromUtf8(request.body), m_remoteHostToken);
             }
             break;
         default:

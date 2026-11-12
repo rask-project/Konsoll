@@ -49,12 +49,17 @@ Window {
         {
             title: qsTr("Sessions"),
             iconName: "background-sessions"
+        },
+        {
+            title: qsTr("AI Agents"),
+            iconName: "kind-agent"
         }
     ]
     readonly property int runningSection: 0
     readonly property int savedSection: 1
     readonly property int functionsSection: 2
     readonly property int sessionsSection: 3
+    readonly property int agentsSection: 4
 
     // Appearance tokens approximating AppKit's semantic colors (as Settings).
     readonly property bool dark: Qt.styleHints.colorScheme === Qt.ColorScheme.Dark
@@ -78,6 +83,62 @@ Window {
         control.show();
         control.raise();
         control.requestActivate();
+    }
+
+    // Every pane running an AI agent, in every window, the ones that need
+    // the user first (waiting, failed), then working, done, unreported.
+    function agentSessions(): var {
+        const urgency = {
+            waiting: 4,
+            error: 3,
+            working: 2,
+            idle: 1
+        };
+        const rows = [];
+        control.windowManager.windows.forEach(window => {
+            const manager = window.terminalManager;
+            manager.workspaces.forEach(workspace => {
+                if (!workspace.rootNode)
+                    return;
+                manager.workspaceSessions(workspace).forEach(session => {
+                    if (session.agentState !== "" || session.processKind === "agent")
+                        rows.push({
+                            window: window,
+                            manager: manager,
+                            workspace: workspace,
+                            session: session,
+                            urgency: urgency[session.agentState] || 0
+                        });
+                });
+            });
+        });
+        return rows.sort((a, b) => b.urgency - a.urgency);
+    }
+
+    function agentStateText(state: string): string {
+        switch (state) {
+        case "waiting":
+            return qsTr("Waiting for you");
+        case "error":
+            return qsTr("Failed");
+        case "working":
+            return qsTr("Working");
+        case "idle":
+            return qsTr("Done");
+        }
+        return qsTr("Running");
+    }
+
+    function agentStateColor(state: string): color {
+        switch (state) {
+        case "waiting":
+            return control.stoppedColor;
+        case "error":
+            return control.failedColor;
+        case "working":
+            return control.palette.accent;
+        }
+        return control.palette.windowText;
     }
 
     function shortPath(path: string): string {
@@ -1160,6 +1221,92 @@ Window {
                             font.pointSize: 11
                             color: control.secondaryTextColor
                             wrapMode: Text.Wrap
+                        }
+                    }
+                }
+
+                // AI agents: every pane running one, what it is doing, and
+                // a way to jump to it.
+                ScrollView {
+                    id: agentsScroll
+
+                    contentWidth: availableWidth
+
+                    ColumnLayout {
+                        width: agentsScroll.availableWidth
+
+                        spacing: 6
+
+                        Controls.FormGroup {
+                            visible: agentRepeater.count > 0
+
+                            Repeater {
+                                id: agentRepeater
+
+                                // Re-evaluated as panes, states and windows change.
+                                model: control.agentSessions()
+
+                                delegate: Controls.FormRow {
+                                    id: agentRow
+
+                                    required property var modelData
+                                    required property int index
+
+                                    readonly property string agentState: modelData.session.agentState
+
+                                    label: control.agentStateText(agentState) + (modelData.session.agentName !== "" ? "  ·  " + modelData.session.agentName : "  ·  " + modelData.session.foregroundProcess)
+                                    detail: [modelData.workspace.title, modelData.session.agentMessage].filter(part => part !== "").join("  ·  ")
+                                    showSeparator: index > 0
+
+                                    leading: [
+                                        IconImage {
+                                            name: agentRow.agentState === "" || agentRow.agentState === "working" ? "kind-agent" : "agent-" + agentRow.agentState
+                                            sourceSize: Qt.size(16, 16)
+                                            color: control.agentStateColor(agentRow.agentState)
+                                        }
+                                    ]
+
+                                    Button {
+                                        text: qsTr("Show")
+                                        highlighted: agentRow.agentState === "waiting"
+                                        onClicked: {
+                                            agentRow.modelData.manager.activateSession(agentRow.modelData.session);
+                                            agentRow.modelData.window.raise();
+                                            agentRow.modelData.window.requestActivate();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 10
+                            Layout.rightMargin: 10
+
+                            visible: agentRepeater.count === 0
+                            text: qsTr("No AI agent is running in Konsoll.")
+                            color: control.secondaryTextColor
+                            wrapMode: Text.Wrap
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 10
+                            Layout.rightMargin: 10
+
+                            text: qsTr("Agents connected in Settings ▸ AI Agents report whether they are working, waiting for you, done or failed; others show as running.")
+                            font.pointSize: 11
+                            color: control.secondaryTextColor
+                            wrapMode: Text.Wrap
+                        }
+
+                        Button {
+                            Layout.leftMargin: 6
+
+                            text: qsTr("Open AI Agents Settings…")
+                            flat: true
+                            onClicked: control.windowManager.settingsWindow.present(control.windowManager.settingsWindow.agentsSection)
                         }
                     }
                 }

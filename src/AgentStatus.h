@@ -1,11 +1,13 @@
 #pragma once
 
 #include <QByteArrayView>
+#include <QJsonObject>
 #include <QObject>
 #include <QString>
 
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <memory>
 
 class QLocalServer;
@@ -74,6 +76,11 @@ public:
 
     bool listening() const;
 
+    // Answers a JSON request line ({"token", "tool", "arguments"}, sent by
+    // `konsoll --mcp` for an agent's tool call) with a JSON reply line.
+    using RequestHandler = std::function<QJsonObject(const QJsonObject &request)>;
+    void setRequestHandler(RequestHandler handler);
+
 signals:
     void statusReceived(const QString &token, const QString &agent, AgentState state, const QString &message);
 
@@ -83,6 +90,7 @@ private:
     void readStatus(QLocalSocket *socket);
 
     std::unique_ptr<QLocalServer> m_server;
+    RequestHandler m_requestHandler;
 };
 
 } // namespace konsoll

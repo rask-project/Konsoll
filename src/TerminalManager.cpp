@@ -1,15 +1,18 @@
 #include "TerminalManager.h"
 
+#include "Notifications.h"
 #include "WindowRegistry.h"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QKeyEvent>
+#include <QSettings>
 #include <QThread>
 #include <QTimer>
 
 #include <algorithm>
 #include <iterator>
+#include <memory>
 #include <ranges>
 #include <utility>
 
@@ -18,6 +21,19 @@ namespace konsoll
 
 namespace
 {
+// "Claude Code" for "claude": how notifications name the agent.
+QString agentDisplayName(const QString &agent)
+{
+    static const QHash<QString, QString> names{
+        {QStringLiteral("claude"), QStringLiteral("Claude Code")},
+        {QStringLiteral("codex"), QStringLiteral("Codex")},
+        {QStringLiteral("opencode"), QStringLiteral("opencode")},
+        {QStringLiteral("qwen"), QStringLiteral("Qwen Code")},
+        {QStringLiteral("gemini"), QStringLiteral("Gemini CLI")},
+    };
+    return names.value(agent, agent.isEmpty() ? QObject::tr("The AI agent") : agent);
+}
+
 // How much a pane's agent state wants the user, for the workspace's icon.
 int agentUrgency(AgentState state)
 {
@@ -405,31 +421,78 @@ void TerminalManager::connectSession(TerminalBackend *sessionPtr)
     connect(sessionPtr, &TerminalBackend::foregroundProcessChanged, this, refreshStatus);
     connect(sessionPtr, &TerminalBackend::commandRunningChanged, this, refreshStatus);
     connect(sessionPtr, &TerminalBackend::progressChanged, this, refreshStatus);
-    // An agent waiting for the user, done with its turn or failed flags its
-    // background tab like a bell or a finished command.
-    connect(sessionPtr, &TerminalBackend::agentStatusChanged, this, [refreshStatus, raise, sessionPtr]() {
-        refreshStatus();
-        switch (sessionPtr->agentStateValue()) {
-        case AgentState::Waiting:
-            raise(TerminalWorkspaceModel::Attention::Bell);
-            break;
-        case AgentState::Idle:
-            raise(TerminalWorkspaceModel::Attention::Success);
-            break;
-        case AgentState::Error:
-            raise(TerminalWorkspaceModel::Attention::Failure);
-            break;
-        case AgentState::Working:
-        case AgentState::None:
-            break;
+    // The state before each change: "done" counts only after work.
+    auto previousAgentState = std::make_shared<AgentState>(AgentState::None);
+    connect(
+        sessionPtr,
+        &TerminalBackend::agentStatusChanged,
+        this,
+        [this, refreshStatus, sessionPtr, previousAgentState]() {
+            refreshStatus();
+            onAgentStatusChanged(sessionPtr, std::exchange(*previousAgentState, sessionPtr->agentStateValue()));
         }
-    });
+    );
     const auto notifyWorkspaceTitle = [this, sessionPtr]() {
         std::ranges::for_each(m_workspaces, [sessionPtr](const auto &workspace) {
             workspace->notifySessionTitleChanged(sessionPtr);
         });
     };
     connect(sessionPtr, &TerminalBackend::displayTitleChanged, this, notifyWorkspaceTitle);
+}
+
+// An agent waiting for the user, done with its turn or failed flags its
+// background tab like a bell or a finished command, and posts a desktop
+// notification unless the user is looking at it.
+void TerminalManager::onAgentStatusChanged(TerminalBackend *session, AgentState previous)
+{
+    const AgentState state = session->agentStateValue();
+    const bool finished =
+        state == AgentState::Idle && (previous == AgentState::Working || previous == AgentState::Waiting);
+    const bool wantsUser = state == AgentState::Waiting || state == AgentState::Error || finished;
+    if (!wantsUser || state == previous) {
+        return;
+    }
+    TerminalWorkspaceModel *const workspace = workspaceOf(session);
+    if (workspace != nullptr) {
+        workspace->raiseAttention(
+            state == AgentState::Waiting ? TerminalWorkspaceModel::Attention::Bell
+                                         : (state == AgentState::Error ? TerminalWorkspaceModel::Attention::Failure
+                                                                       : TerminalWorkspaceModel::Attention::Success)
+        );
+    }
+    const QSettings settings;
+    if (sessionInView(session) || !settings.value(QStringLiteral("General/agentNotifications"), true).toBool()) {
+        return;
+    }
+    const QString agent = agentDisplayName(session->agentName());
+    const QString title = state == AgentState::Waiting ? tr("%1 needs you").arg(agent)
+                          : state == AgentState::Error ? tr("%1 failed").arg(agent)
+                                                       : tr("%1 finished").arg(agent);
+    const QString place = workspace != nullptr ? workspace->title() : session->displayTitle();
+    const QString body =
+        session->agentMessage().isEmpty() ? place : session->agentMessage() + QStringLiteral(" — ") + place;
+    postNotification(title, body, session->sessionToken());
+}
+
+bool TerminalManager::sessionInView(const TerminalBackend *session) const
+{
+    const auto *const window = qobject_cast<const QWindow *>(m_window);
+    return session == m_activeSession && window != nullptr && window->isActive() &&
+           QGuiApplication::applicationState() == Qt::ApplicationActive;
+}
+
+bool TerminalManager::activateSessionWithToken(const QString &token)
+{
+    TerminalBackend *const session = sessionWithToken(token);
+    if (session == nullptr) {
+        return false;
+    }
+    setActiveSession(session, true);
+    if (auto *const window = qobject_cast<QWindow *>(m_window)) {
+        window->raise();
+        window->requestActivate();
+    }
+    return true;
 }
 
 bool TerminalManager::moveWorkspaceTo(QObject *workspaceObject, QObject *targetObject, int index)
@@ -685,23 +748,29 @@ void TerminalManager::finishPaneMove(TerminalManager *target, TerminalBackend *s
 
 void TerminalManager::splitActive(int orientation)
 {
-    if ((m_activeSession == nullptr) ||
+    TerminalBackend *const original = m_activeSession;
+    if (TerminalBackend *const newSession = splitSession(original, orientation)) {
+        setActiveSession(newSession, true);
+        newSession->start(original->currentDirectory());
+    }
+}
+
+TerminalBackend *TerminalManager::splitSession(TerminalBackend *session, int orientation)
+{
+    if ((session == nullptr) ||
         (orientation != static_cast<int>(Qt::Horizontal) && orientation != static_cast<int>(Qt::Vertical))) {
-        return;
+        return nullptr;
     }
-    const int workspaceIndex = activeWorkspaceIndex();
-    if (workspaceIndex < 0) {
-        return;
+    TerminalWorkspaceModel *const workspace = workspaceOf(session);
+    if (workspace == nullptr) {
+        return nullptr;
     }
-
-    auto &root = m_workspaces[static_cast<std::size_t>(workspaceIndex)]->root();
-    auto *leafSlot = findNodeSlot(root, m_activeSession);
+    auto *leafSlot = findNodeSlot(workspace->root(), session);
     if (leafSlot == nullptr) {
-        return;
+        return nullptr;
     }
 
-    const QString workingDirectory = m_activeSession->currentDirectory();
-    auto newSession = createSession();
+    auto *const newSession = createSession();
     auto oldLeaf = std::move(*leafSlot);
     auto newLeaf = std::make_unique<TerminalLayoutNode>(newSession);
     *leafSlot = std::make_unique<TerminalLayoutNode>(
@@ -709,13 +778,37 @@ void TerminalManager::splitActive(int orientation)
         std::move(oldLeaf),
         std::move(newLeaf)
     );
-    auto &workspace = m_workspaces[static_cast<std::size_t>(workspaceIndex)];
     workspace->root()->notifyTreeChanged();
     emit workspace->layoutChanged();
     emit workspacesChanged();
     emit activeWorkspaceChanged();
-    setActiveSession(newSession, true);
-    newSession->start(workingDirectory);
+    return newSession;
+}
+
+TerminalBackend *TerminalManager::openPaneBeside(
+    TerminalBackend *session,
+    int orientation,
+    const QString &command,
+    const QString &directory
+)
+{
+    TerminalBackend *const newSession = splitSession(session, orientation);
+    if (newSession == nullptr) {
+        return nullptr;
+    }
+    // An interactive shell that runs the command: the pane stays with its
+    // output when the command ends, and the user can run it again.
+    newSession->start(directory.isEmpty() ? session->currentDirectory() : directory);
+    newSession->writeText(command + QLatin1Char('\n'));
+    return newSession;
+}
+
+TerminalBackend *TerminalManager::sessionWithToken(const QString &token) const
+{
+    const auto found =
+        std::ranges::find_if(m_sessions, [&token](const auto &session) { return session->sessionToken() == token; });
+    return token.isEmpty() || found == m_sessions.end() || workspaceOf(found->get()) == nullptr ? nullptr
+                                                                                                : found->get();
 }
 
 void TerminalManager::closeWorkspace(QObject *workspaceObject)

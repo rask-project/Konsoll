@@ -59,9 +59,29 @@ Guidance for AI agents working in this repository.
   user-only), and the `TerminalBackend` whose token
   (`KONSOLL_SESSION_TOKEN`) matches takes it. The state clears when the
   command ends (OSC 133 ; D) or the prompt returns. The workspace shows the
-  most urgent pane's state. The script is zsh (`zsocket`): `nc` can linger
-  after the write. Agent adapters live in `integrations/` (the Claude Code
-  plugin; `.claude-plugin/marketplace.json` lists it).
+  most urgent pane's state; `TerminalManager` raises tab attention and posts
+  a notification (unless the pane is in view) whose click finds the session
+  by token (`WindowRegistry::activateSessionWithToken`). While an agent
+  reports, its own OSC 9 notifications are dropped (they would repeat ours).
+  The script is zsh (`zsocket`): `nc` can linger after the write.
+- **Agent integrations** (`AgentIntegrations`, QML singleton, Settings ▸ AI
+  Agents): merges Konsoll's hooks into Claude Code / Codex / Qwen Code JSON
+  settings (all use `{"hooks": {Event: [{matcher, hooks: [command]}]}}`;
+  Konsoll's commands are recognized by `KONSOLL_AGENT_HOOK`), never touches a
+  file that is not plain JSON, keeps a `.konsoll-backup`, and installs the
+  opencode plugin (`integrations/opencode/konsoll.js`, a resource). The
+  Claude Code plugin (`integrations/claude-code`, listed in
+  `.claude-plugin/marketplace.json`) carries the same hooks as
+  `claudeHookSpecs()` — change both together.
+- **MCP server** (`McpServer`, `konsoll --mcp`, no GUI): stdio JSON-RPC
+  started by an agent; it inherits the agent's environment (Codex needs
+  `env_vars` for that), so `KONSOLL_SESSION_TOKEN` names the agent's pane.
+  `tools/call` goes to the app as a JSON line on the agent socket
+  (`AgentStatusServer::setRequestHandler`), answered by `AgentCommands`:
+  `open_pane` (`TerminalManager::openPaneBeside`, never takes the focus),
+  `run_in_background` (`BackgroundJobs::run`) and `background_job_status`
+  (only jobs that token started). Nothing reads another pane. stdout carries
+  only protocol messages.
 - **Threading:** each session has a `PtyWorker` on its own `QThread` that
   alone touches the PTY descriptor, its notifier and the child process. PTY
   writes, resizes and shutdown go to it as queued calls; output comes back as

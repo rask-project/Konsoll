@@ -22,6 +22,10 @@ Settings {
     property bool allowWindowOps: false   // XTWINOPS move/resize/iconify
     property bool allowNotifications: true // OSC 9 / OSC 777 desktop notifications
 
+    // Settings > AI Agents: a notification when an agent waits for the user,
+    // finishes or fails while its pane is out of view.
+    property bool agentNotifications: true
+
     // Settings > Keyboard.
     property bool optionAsMeta: false // Option sends ESC + key instead of composing
 }

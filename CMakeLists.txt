@@ -85,6 +85,10 @@ qt_add_qml_module(konsoll
     SOURCES
         src/AboutDialog.h
         src/AboutDialog.mm
+        src/AgentCommands.cpp
+        src/AgentCommands.h
+        src/AgentIntegrations.cpp
+        src/AgentIntegrations.h
         src/AgentStatus.cpp
         src/AgentStatus.h
         src/AppQuitGuard.h
@@ -93,6 +97,8 @@ qt_add_qml_module(konsoll
         src/BackgroundJobs.h
         src/KeyEncoder.cpp
         src/KeyEncoder.h
+        src/McpServer.cpp
+        src/McpServer.h
         src/NativeDialogs.h
         src/NativeKeyTracker.cpp
         src/NativeKeyTracker.h
@@ -168,6 +174,7 @@ qt_add_resources(konsoll "/"
         shell-integration/konsoll.bash
         shell-integration/konsoll.fish
         shell-integration/konsoll-agent-hook
+        integrations/opencode/konsoll.js
 )
 
 add_subdirectory(resources/icons)

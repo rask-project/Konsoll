@@ -245,6 +245,9 @@ public:
     AgentState agentStateValue() const { return m_agentState; }
     QString agentName() const { return m_agentName; }
     QString agentMessage() const { return m_agentMessage; }
+    // The session's secret (KONSOLL_SESSION_TOKEN in its environment): agent
+    // hooks and notifications name the session by it.
+    QString sessionToken() const { return m_remoteHostToken; }
     // A status report from the agent's hooks; None clears it.
     void setAgentStatus(AgentState state, const QString &agent, const QString &message);
     // The default colors, or the ones the application set (OSC 10/11/12).

@@ -311,6 +311,14 @@ Window {
     }
 
     Action {
+        id: agentsAction
+
+        text: qsTr("AI Agents")
+        shortcut: "Ctrl+Shift+A"
+        onTriggered: appWindow.windowManager.backgroundWindow.present(appWindow.windowManager.backgroundWindow.agentsSection)
+    }
+
+    Action {
         id: clearScreenAction
 
         text: qsTr("Clear")
@@ -502,8 +510,8 @@ Window {
             id: windowMenu
 
             // Items above the window list (New Window, Close Window,
-            // Background Commands, separator).
-            readonly property int windowListOffset: 4
+            // Background Commands, AI Agents, separator).
+            readonly property int windowListOffset: 5
 
             title: qsTr("Window")
 
@@ -517,6 +525,10 @@ Window {
 
             MenuItem {
                 action: backgroundCommandsAction
+            }
+
+            MenuItem {
+                action: agentsAction
             }
 
             MenuSeparator {}

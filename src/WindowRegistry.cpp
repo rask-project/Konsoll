@@ -49,6 +49,21 @@ bool WindowRegistry::anySessionHasRunningCommand() const
     });
 }
 
+bool WindowRegistry::activateSessionWithToken(const QString &token) const
+{
+    return std::ranges::any_of(m_managers, [&token](TerminalManager *manager) {
+        return manager->activateSessionWithToken(token);
+    });
+}
+
+TerminalManager *WindowRegistry::managerWithToken(const QString &token) const
+{
+    const auto found = std::ranges::find_if(m_managers, [&token](const TerminalManager *manager) {
+        return manager->sessionWithToken(token) != nullptr;
+    });
+    return found != m_managers.end() ? *found : nullptr;
+}
+
 void WindowRegistry::closeSession(QObject *session) const
 {
     const auto owner = std::ranges::find_if(m_managers, [session](const TerminalManager *manager) {

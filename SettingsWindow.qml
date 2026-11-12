@@ -38,8 +38,15 @@ Window {
         {
             title: qsTr("Security"),
             iconName: "security"
+        },
+        {
+            title: qsTr("AI Agents"),
+            iconName: "kind-agent"
         }
     ]
+    readonly property int agentsSection: 5
+    // Why the last Connect / Remove failed (empty when it worked).
+    property string agentError
 
     // Appearance tokens approximating AppKit's semantic colors.
     readonly property bool dark: Qt.styleHints.colorScheme === Qt.ColorScheme.Dark
@@ -51,7 +58,10 @@ Window {
     // Height of the title bar + empty toolbar the content extends under.
     readonly property real titleBarHeight: Math.max(control.SafeArea.margins.top, 28)
 
-    function present() {
+    function present(section) {
+        if (section !== undefined)
+            control.selectedSection = section;
+        AgentIntegrations.refresh();
         control.show();
         control.raise();
         control.requestActivate();
@@ -502,6 +512,126 @@ Window {
 
                     Item {
                         Layout.fillHeight: true
+                    }
+                }
+
+                // AI agents: connect their hooks to the tab status, and
+                // Konsoll's MCP server. Taller than the window: scrolls.
+                ScrollView {
+                    id: agentsScroll
+
+                    contentWidth: availableWidth
+
+                    ColumnLayout {
+                        width: agentsScroll.availableWidth
+                        spacing: 6
+
+                        Controls.FormGroup {
+                            Repeater {
+                                model: AgentIntegrations.agents
+
+                                delegate: Controls.FormRow {
+                                    id: agentRow
+
+                                    required property var modelData
+                                    required property int index
+
+                                    label: modelData.name
+                                    detail: modelData.viaPlugin ? qsTr("Connected through the Konsoll plugin") : modelData.installed ? qsTr("Connected: %1").arg(modelData.path) : modelData.available ? qsTr("Not connected") : qsTr("Not found on this Mac")
+                                    showSeparator: index > 0
+
+                                    Button {
+                                        visible: !agentRow.modelData.viaPlugin
+                                        enabled: agentRow.modelData.installed || agentRow.modelData.available
+                                        text: agentRow.modelData.installed ? qsTr("Remove") : qsTr("Connect")
+                                        onClicked: control.agentError = agentRow.modelData.installed ? AgentIntegrations.uninstall(agentRow.modelData.id) : AgentIntegrations.install(agentRow.modelData.id)
+                                    }
+                                }
+                            }
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 10
+                            Layout.rightMargin: 10
+
+                            visible: control.agentError !== ""
+                            text: control.agentError
+                            font.pointSize: 11
+                            color: control.dark ? "#ff453a" : "#ff3b30"
+                            wrapMode: Text.Wrap
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 10
+                            Layout.rightMargin: 10
+
+                            text: qsTr("Connecting adds hooks to the agent's settings file (the previous file is kept next to it as .konsoll-backup); opencode gets a plugin file. The tab then shows whether the agent is working, waiting for you, done or failed. Agents already running pick it up when restarted, and Codex runs new hooks only after you trust them with /hooks.")
+                            font.pointSize: 11
+                            color: control.secondaryTextColor
+                            wrapMode: Text.Wrap
+                        }
+
+                        // Konsoll's MCP server: tools for the agents.
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.topMargin: 12
+                            Layout.leftMargin: 10
+
+                            text: qsTr("Konsoll tools for agents (MCP)")
+                            font.pointSize: 11
+                            font.weight: Font.DemiBold
+                            color: control.secondaryTextColor
+                        }
+
+                        Controls.FormGroup {
+                            Repeater {
+                                model: AgentIntegrations.agents
+
+                                delegate: Controls.FormRow {
+                                    id: mcpRow
+
+                                    required property var modelData
+                                    required property int index
+
+                                    label: modelData.name
+                                    detail: modelData.id === "codex" || modelData.id === "opencode" ? qsTr("Copy the configuration and add it to the agent's settings") : qsTr("Copy the command and run it once in a terminal")
+                                    showSeparator: index > 0
+
+                                    Button {
+                                        text: qsTr("Copy")
+                                        onClicked: AgentIntegrations.copyToClipboard(AgentIntegrations.mcpSetup(mcpRow.modelData.id))
+                                    }
+                                }
+                            }
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 10
+                            Layout.rightMargin: 10
+
+                            text: qsTr("With Konsoll's MCP server an agent can open a pane next to its own for a dev server or a watcher, and run background commands it can check on later. It only works for agents running in Konsoll, and only for the pane they run in.")
+                            font.pointSize: 11
+                            color: control.secondaryTextColor
+                            wrapMode: Text.Wrap
+                        }
+
+                        Controls.FormGroup {
+                            Layout.topMargin: 12
+
+                            Controls.FormRow {
+                                label: qsTr("Notify when an agent needs you")
+                                detail: qsTr("When it waits for you, finishes or fails while you look elsewhere")
+                                showSeparator: false
+
+                                Switch {
+                                    checked: control.preferences.agentNotifications
+                                    onToggled: control.preferences.agentNotifications = checked
+                                }
+                            }
+                        }
                     }
                 }
             }

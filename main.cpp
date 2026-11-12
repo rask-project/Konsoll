@@ -7,11 +7,15 @@
 #include <span>
 #include <string_view>
 
+#include "AgentCommands.h"
+#include "AgentStatus.h"
 #include "AppQuitGuard.h"
 #include "BackgroundJobs.h"
+#include "McpServer.h"
 #include "NativeKeyTracker.h"
 #include "Notifications.h"
 #include "ShellFunctions.h"
+#include "WindowRegistry.h"
 #include "renderdump.h"
 #include "screendump.h"
 #include "selftest.h"
@@ -29,6 +33,12 @@ int main(int argc, char *argv[])
     // Headless parser harness (tools/vtdrive.py): no Qt application needed.
     if (argc > 1 && std::string_view(argv[1]) == "--screen-dump") {
         return konsoll::runScreenDump(std::span(argv, static_cast<std::size_t>(argc)));
+    }
+
+    // MCP server an agent starts (konsoll --mcp): stdio, no GUI.
+    if (argc > 1 && std::string_view(argv[1]) == "--mcp") {
+        const QCoreApplication mcp(argc, argv);
+        return konsoll::runMcpServer();
     }
 
     // Headless multi-session validation (konsoll --selftest).
@@ -63,6 +73,12 @@ int main(int argc, char *argv[])
         qWarning("Konsoll: %s", qUtf8Printable(installed.error()));
     }
 
+    // A clicked notification about a session (an agent waiting, a program's
+    // OSC 9) shows that session's tab.
+    konsoll::setNotificationActivationHandler([](const QString &token) {
+        konsoll::WindowRegistry::instance().activateSessionWithToken(token);
+    });
+
     // Declared before the engine so it outlives every QML view of its jobs.
     const auto backgroundJobs = std::make_unique<konsoll::BackgroundJobs>();
     QObject::connect(
@@ -75,6 +91,11 @@ int main(int argc, char *argv[])
             );
         }
     );
+    // Tool calls from agents' MCP servers (konsoll --mcp).
+    konsoll::AgentCommands agentCommands(backgroundJobs.get());
+    konsoll::AgentStatusServer::instance().setRequestHandler([&agentCommands](const QJsonObject &request) {
+        return agentCommands.handle(request);
+    });
     QQmlApplicationEngine engine;
 
     QObject::connect(
@@ -87,5 +108,8 @@ int main(int argc, char *argv[])
     engine.loadFromModule("konsoll", "Main");
     QTimer::singleShot(0, [] { konsoll::installQuitGuard(); });
 
-    return QGuiApplication::exec();
+    const int exitCode = QGuiApplication::exec();
+    // The socket server outlives main()'s locals.
+    konsoll::AgentStatusServer::instance().setRequestHandler({});
+    return exitCode;
 }

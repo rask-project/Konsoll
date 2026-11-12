@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QSaveFile>
@@ -22,8 +23,9 @@ namespace konsoll
 namespace
 {
 
-// A status line is short; anything longer is not a hook talking.
-constexpr qsizetype kMaxLineLength = 8192;
+// A status line or a tool request is short; anything longer is not a hook
+// or Konsoll's MCP server talking.
+constexpr qsizetype kMaxLineLength = 65536;
 constexpr qsizetype kMaxAgentNameLength = 32;
 constexpr qsizetype kMaxMessageLength = 200;
 
@@ -139,6 +141,11 @@ AgentStatusServer::~AgentStatusServer()
     }
 }
 
+void AgentStatusServer::setRequestHandler(RequestHandler handler)
+{
+    m_requestHandler = std::move(handler);
+}
+
 bool AgentStatusServer::listening() const
 {
     return m_server->isListening();
@@ -164,6 +171,15 @@ void AgentStatusServer::readStatus(QLocalSocket *socket)
         return;
     }
     const QByteArray line = socket->readLine(kMaxLineLength);
+    if (line.startsWith('{')) {
+        const QJsonObject request = QJsonDocument::fromJson(line).object();
+        const QJsonObject reply = m_requestHandler
+                                      ? m_requestHandler(request)
+                                      : QJsonObject{{QStringLiteral("error"), tr("Konsoll cannot do that")}};
+        socket->write(QJsonDocument(reply).toJson(QJsonDocument::Compact) + '\n');
+        socket->disconnectFromServer(); // after the reply is written
+        return;
+    }
     socket->disconnectFromServer();
     if (const auto status = parseAgentStatus(line)) {
         emit statusReceived(status->token, status->agent, status->state(), status->message);
