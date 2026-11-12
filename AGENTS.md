@@ -47,14 +47,22 @@ Guidance for AI agents working in this repository.
   and the `Terminal`/`Screen` model stay on the GUI thread — never share
   mutable `Terminal` or `Screen` state across threads.
 - **Session lifecycle:** `Created → Starting → Running → Stopping → Stopped`
-  (or `Failed`). Close is bounded: close the master fd, SIGHUP the process
-  group, 1.5 s grace, SIGKILL, reap; the GUI waits at most 3 s for the thread
-  and otherwise keeps the objects and retries when it finishes. Objects that
+  (or `Failed`). Close is bounded and never blocks the worker: SIGHUP every
+  process group of the shell's session (its jobs run in groups of their
+  own), close the master fd, poll the reap; after a 1.5 s grace SIGKILL what
+  is left of the session, and 1 s later release it regardless. The GUI waits
+  at most 3 s for the thread and otherwise keeps the objects and retries
+  when it finishes. Objects that
   queued signals or QML may still reference are destroyed with
   `deleteLater()`, and QML-supplied session pointers are matched by address
   (they may dangle), never `qobject_cast`.
 - **Fork/exec:** the child environment is built before `forkpty`; only
-  async-signal-safe calls run between fork and exec.
+  async-signal-safe calls run between fork and exec. The child closes every
+  inherited fd above 2 and the master is `FD_CLOEXEC`: a master leaked into
+  another shell keeps its terminal from hanging up, so its tab cannot close.
+- **PTY input** is never dropped: what the input queue (~1 KiB) cannot take
+  is buffered and written as it drains (a lost bracketed-paste end marker
+  leaves the program stuck in paste mode).
 - **State on relaunch:** only the last active window's geometry is restored,
   into one window with fresh sessions.
 

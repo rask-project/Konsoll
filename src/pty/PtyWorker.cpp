@@ -2,7 +2,6 @@
 
 #include <algorithm>
 
-#include <QEventLoop>
 #include <QThread>
 #include <QTimer>
 
@@ -82,10 +81,10 @@ void PtyWorker::outputDelivered(qint64 bytes)
 
 void PtyWorker::onEof()
 {
-    // The child's write side is closed; reap it here (worker thread) so the
-    // read path never blocks.
-    const int code = m_pty ? m_pty->waitForExit() : -1;
-    emit processExited(code);
+    // The child's write side is closed; it is exiting. Reap it without
+    // blocking: a waitpid here would stall the thread, so a later shutdown
+    // could never run if the child took long to go.
+    startReaping();
 }
 
 void PtyWorker::shutdown()
@@ -94,35 +93,74 @@ void PtyWorker::shutdown()
         emit shutdownComplete();
         return; // Idempotent: m_pty is null once shutdown has run.
     }
+    if (shuttingDown()) {
+        return; // Already in progress; shutdownComplete follows.
+    }
     if (m_foregroundTimer) {
         m_foregroundTimer->stop();
     }
-    // Close the master descriptor (the kernel sends SIGHUP to the slave's
-    // foreground process group), then send an explicit SIGHUP for processes
-    // that outlive the tty.
-    m_pty->close();
+    // SIGHUP the whole session (the shell and its jobs) while the terminal
+    // still has its foreground group, then close the master descriptor.
     m_pty->terminate();
-    if (!m_pty->hasExited()) {
-        // Bounded graceful period: let the shell and its process group exit
-        // on SIGHUP before escalating to SIGKILL. The master read side is
-        // closed, so no read event can signal the exit; poll for the reap
-        // instead. The single-shot timer bounds the wait.
-        QEventLoop loop;
-        QTimer graceTimer;
-        graceTimer.setInterval(25);
-        connect(&graceTimer, &QTimer::timeout, [this, &loop]() {
-            if ((m_pty != nullptr) && m_pty->tryReap()) {
-                loop.quit();
-            }
-        });
-        QTimer::singleShot(1500, &loop, &QEventLoop::quit);
-        graceTimer.start();
-        loop.exec();
-        if (!m_pty->hasExited()) {
-            m_pty->kill();
-        }
+    m_pty->close();
+    m_killDeadline = QDeadlineTimer(kGracePeriod);
+    m_abandonDeadline = QDeadlineTimer(kGracePeriod + kKillPeriod);
+    startReaping();
+    pollReap(); // Done at once when everything exited on the SIGHUP.
+}
+
+void PtyWorker::startReaping()
+{
+    if (!m_reapTimer) {
+        m_reapTimer = std::make_unique<QTimer>(this);
+        m_reapTimer->setInterval(kReapInterval);
+        connect(m_reapTimer.get(), &QTimer::timeout, this, &PtyWorker::pollReap);
     }
-    m_pty->waitForExit();
+    if (!m_reapTimer->isActive()) {
+        m_reapTimer->start();
+    }
+}
+
+void PtyWorker::pollReap()
+{
+    if (!m_pty) {
+        m_reapTimer->stop();
+        return;
+    }
+    const std::optional<int> exitCode = m_pty->tryReap();
+    if (!shuttingDown()) {
+        // After EOF: wait for the exit for as long as it takes.
+        if (exitCode) {
+            m_reapTimer->stop();
+            emit processExited(*exitCode);
+        }
+        return;
+    }
+    // Closing the tab ends everything in it: not only the shell, which may
+    // exit on the SIGHUP at once, but its jobs too, one of which may ignore
+    // SIGHUP and keep running (writing to a terminal that is gone).
+    if (exitCode && !m_pty->sessionHasProcesses()) {
+        finishShutdown();
+        return;
+    }
+    if (!killed() && m_killDeadline.hasExpired()) {
+        m_pty->kill();
+        m_killDeadline = QDeadlineTimer(QDeadlineTimer::Forever);
+    } else if (killed() && exitCode) {
+        finishShutdown(); // SIGKILL sent to what is left of the session.
+    } else if (killed() && m_abandonDeadline.hasExpired()) {
+        // Stuck in the kernel even after SIGKILL. Release the session anyway
+        // so its tab closes; the destructor makes a last non-blocking try.
+        qWarning("Konsoll: shell %d was not reaped after SIGKILL; releasing the session", m_pty->pid());
+        finishShutdown();
+    }
+}
+
+void PtyWorker::finishShutdown()
+{
+    if (m_reapTimer) {
+        m_reapTimer->stop();
+    }
     m_pty.reset();
     m_undelivered = 0;
     emit shutdownComplete();

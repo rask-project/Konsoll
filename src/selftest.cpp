@@ -771,6 +771,86 @@ int runSelfTest()
         check(failures, elapsedMs < 3000, "fast close/reopen: close bounded");
     }
 
+    // 5a. Input larger than the PTY input queue (~1 KiB) arrives whole: the
+    // rest used to be dropped, and with it a bracketed paste's closing
+    // ESC[201~, which left the program (Codex) stuck in paste mode.
+    {
+        manager.addWorkspace();
+        auto *s = activeSession(manager);
+        // The digits of the count map to letters (20000 -> caaaa) so the
+        // echoed command line cannot match the result.
+        s->writeText("stty -icanon -echo; echo PASTE_RE''ADY; head -c 20000 | wc -c | tr 0-9 a-j\n");
+        check(
+            failures,
+            waitFor(
+                "paste: reader ready",
+                [s]() { return s->bufferText().contains("PASTE_READY"); },
+                15000
+            ),
+            "large input: reader started"
+        );
+        s->writeText(QString(20000, QLatin1Char('x')));
+        check(
+            failures,
+            waitFor(
+                "paste: all bytes read",
+                [s]() { return s->bufferText().contains("caaaa"); },
+                15000
+            ),
+            "large input: every byte reaches the program"
+        );
+        manager.closeSession(s);
+    }
+
+    // 5c. Closing a tab whose job ignores SIGHUP and keeps writing, while a
+    // tab opened after it is still running. That later shell used to
+    // inherit the first tab's PTY master, so closing it hung nothing up: the
+    // job ran on, the killed shell blocked in exit and the tab never closed.
+    {
+        constexpr const char *kMarker = "KONSOLL_SELFTEST_IGNORES_HUP";
+        manager.addWorkspace();
+        auto *stubborn = activeSession(manager);
+        manager.addWorkspace();
+        auto *later = activeSession(manager);
+        const int sessionsBefore = manager.sessionCount();
+        stubborn->writeText(
+            QStringLiteral("perl -e '$SIG{HUP}=q(IGNORE); $|=1; while (1) { print qq(x) x 80, qq(\\n) }' %1\n")
+                .arg(QLatin1StringView(kMarker))
+        );
+        check(
+            failures,
+            waitFor(
+                "hup: job running",
+                [kMarker]() { return pgrepCount(kMarker) > 0; },
+                15000
+            ),
+            "close session: SIGHUP-ignoring job started"
+        );
+        QElapsedTimer timer;
+        timer.start();
+        manager.closeSession(stubborn);
+        check(
+            failures,
+            waitFor(
+                "hup: session removed",
+                [&manager, &sessionsBefore]() { return manager.sessionCount() == sessionsBefore - 1; },
+                5000
+            ),
+            "close session: removed despite a job ignoring SIGHUP"
+        );
+        check(failures, timer.elapsed() < 5000, "close session: bounded with a job ignoring SIGHUP");
+        check(
+            failures,
+            waitFor(
+                "hup: job killed",
+                [kMarker]() { return pgrepCount(kMarker) == 0; },
+                5000
+            ),
+            "close session: the tab's jobs are killed"
+        );
+        manager.closeSession(later);
+    }
+
     // 5b. Moving a workspace to another window keeps its shells running.
     {
         TerminalManager other(nullptr);

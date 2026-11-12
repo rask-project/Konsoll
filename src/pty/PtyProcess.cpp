@@ -24,6 +24,7 @@
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/param.h>
+#include <sys/resource.h>
 #include <sys/sysctl.h>
 #include <sys/wait.h>
 #include <termios.h>
@@ -190,14 +191,37 @@ std::vector<QByteArray> buildPtyEnvironment(
     return envp;
 }
 
+// The highest descriptor number the child closes before exec, read in the
+// parent (getrlimit is not async-signal-safe). Capped so a huge or
+// unlimited soft limit does not cost a long close() loop per launch.
+int inheritedDescriptorLimit()
+{
+    constexpr rlim_t kMaxDescriptors = 65536;
+    struct rlimit limit{};
+    if (::getrlimit(RLIMIT_NOFILE, &limit) != 0 || limit.rlim_cur == RLIM_INFINITY) {
+        return static_cast<int>(kMaxDescriptors);
+    }
+    return static_cast<int>(std::min(limit.rlim_cur, kMaxDescriptors));
+}
+
 void execShellInChild(
     const QByteArray &shellBytes,
     const std::vector<char *> &argv,
     std::vector<QByteArray> &envp,
     const QByteArray &initialDirectory,
-    const QByteArray &homePath
+    const QByteArray &homePath,
+    int descriptorLimit
 )
 {
+    // Keep only the slave on 0-2. Everything else Konsoll has open — above
+    // all the other sessions' PTY masters — would otherwise leak into this
+    // shell and its jobs: a leaked master keeps that terminal from hanging
+    // up when its tab closes, so its shell blocks in exit and never reaps.
+    // close() is async-signal-safe.
+    std::ranges::for_each(
+        std::views::iota(STDERR_FILENO + 1, std::max(descriptorLimit, STDERR_FILENO + 1)),
+        [](int fd) { ::close(fd); }
+    );
     // Child: exec the shell as a login shell (argv[0] = "-<name>").
     // forkpty leaves software flow control enabled by default. Disable
     // it on the slave before the shell starts, so Ctrl+Q reaches Neovim
@@ -213,8 +237,8 @@ void execShellInChild(
         ::chdir(homePath.constData());
     }
     // The environment was built in the parent; pass it through execve so
-    // the child runs only async-signal-safe calls (tcgetattr, tcsetattr,
-    // chdir, execve) between fork() and exec(). The shell path is always
+    // the child runs only async-signal-safe calls (close, tcgetattr,
+    // tcsetattr, chdir, execve) between fork() and exec(). The shell path is always
     // absolute (from detectDefaultShell), so execve needs no PATH search.
     std::vector<char *> envPtrs;
     envPtrs.reserve(envp.size() + 1);
@@ -254,6 +278,52 @@ QStringList processArguments(pid_t pid)
     return arguments;
 }
 
+// The exit code waitpid reported, -1 when the process did not exit normally.
+int exitCodeOf(int status)
+{
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
+
+// Non-blocking waitpid that retries on EINTR. Returns the pid once reaped
+// (or -1 when it is not our child any more), 0 while it still runs.
+pid_t reapWithoutBlocking(pid_t pid, int &status)
+{
+    pid_t result = ::waitpid(pid, &status, WNOHANG);
+    while (result < 0 && errno == EINTR) {
+        result = ::waitpid(pid, &status, WNOHANG);
+    }
+    return result;
+}
+
+// Every process group with a process in session `session` (the shell is
+// the session leader, so its pid is the session id). Empty when the
+// session has no processes left or cannot be read.
+std::vector<pid_t> sessionProcessGroups(pid_t session)
+{
+    std::array<int, 4> mib{CTL_KERN, KERN_PROC, KERN_PROC_SESSION, static_cast<int>(session)};
+    std::size_t size = 0;
+    if (::sysctl(mib.data(), mib.size(), nullptr, &size, nullptr, 0) != 0 || size == 0) {
+        return {};
+    }
+    // Room for processes started between the two calls.
+    std::vector<kinfo_proc> processes((size / sizeof(kinfo_proc)) + 8);
+    size = processes.size() * sizeof(kinfo_proc);
+    if (::sysctl(mib.data(), mib.size(), processes.data(), &size, nullptr, 0) != 0) {
+        return {};
+    }
+    processes.resize(size / sizeof(kinfo_proc));
+    const pid_t ownGroup = ::getpgrp();
+    std::vector<pid_t> groups;
+    std::ranges::transform(processes, std::back_inserter(groups), [](const kinfo_proc &process) {
+        return process.kp_eproc.e_pgid;
+    });
+    std::erase_if(groups, [ownGroup](pid_t group) { return group <= 1 || group == ownGroup; });
+    std::ranges::sort(groups);
+    const auto duplicates = std::ranges::unique(groups);
+    groups.erase(duplicates.begin(), duplicates.end());
+    return groups;
+}
+
 } // namespace
 
 namespace konsoll
@@ -263,27 +333,21 @@ PtyProcess::PtyProcess(QObject *parent) : QObject(parent) {}
 
 PtyProcess::~PtyProcess()
 {
+    // Normally the worker's bounded shutdown has signalled the whole
+    // session and reaped the child already. Otherwise SIGKILL the shell
+    // (its group and itself; no allocation here, so not the session walk)
+    // without waiting: a process stuck in the kernel must not block the
+    // thread destroying this object.
+    if (m_pid > 0) {
+        const auto shell = static_cast<pid_t>(m_pid);
+        ::kill(-shell, SIGKILL);
+        ::kill(shell, SIGKILL);
+    }
     closeMaster();
     if (m_pid > 0) {
-        const pid_t pid = static_cast<pid_t>(m_pid);
-        if (::kill(-pid, SIGHUP) < 0) {
-            ::kill(pid, SIGHUP);
-        }
-
         int status = 0;
-        pid_t result = ::waitpid(pid, &status, WNOHANG);
-        while (result < 0 && errno == EINTR) {
-            result = ::waitpid(pid, &status, WNOHANG);
-        }
-
-        if (result == 0) {
-            if (::kill(-pid, SIGKILL) < 0) {
-                ::kill(pid, SIGKILL);
-            }
-            result = ::waitpid(pid, &status, 0);
-            while (result < 0 && errno == EINTR) {
-                result = ::waitpid(pid, &status, 0);
-            }
+        if (reapWithoutBlocking(static_cast<pid_t>(m_pid), status) == 0) {
+            qWarning("Konsoll: shell %d did not exit after SIGKILL; leaving it unreaped", m_pid);
         }
         m_pid = -1;
     }
@@ -349,18 +413,22 @@ bool PtyProcess::start(
     int master = 0;
     // Let forkpty configure the slave's normal terminal defaults. Passing a
     // zero-initialized termios here disables canonical input and echo.
+    const int descriptorLimit = inheritedDescriptorLimit();
     const pid_t pid = ::forkpty(&master, nullptr, nullptr, &ws);
     if (pid < 0) {
         return false;
     }
 
     if (pid == 0) {
-        execShellInChild(shellBytes, argv, envp, initialDirectory, homePath);
+        execShellInChild(shellBytes, argv, envp, initialDirectory, homePath, descriptorLimit);
     }
 
-    // Parent.
+    // Parent. Shells started later close inherited descriptors themselves;
+    // close-on-exec also keeps the master out of anything else Konsoll runs.
+    ::fcntl(master, F_SETFD, FD_CLOEXEC);
     m_masterFd = master;
     m_pid = pid;
+    m_session = pid;
 
     // Non-blocking reads so the notifier never blocks the GUI thread.
     const int fl = fcntl(m_masterFd, F_GETFL, 0);
@@ -369,27 +437,56 @@ bool PtyProcess::start(
 
     m_notifier = std::make_unique<QSocketNotifier>(m_masterFd, QSocketNotifier::Read, this);
     connect(m_notifier.get(), &QSocketNotifier::activated, this, &PtyProcess::onReadable);
+    m_writeNotifier = std::make_unique<QSocketNotifier>(m_masterFd, QSocketNotifier::Write, this);
+    m_writeNotifier->setEnabled(false);
+    connect(m_writeNotifier.get(), &QSocketNotifier::activated, this, &PtyProcess::onWritable);
     return true;
 }
 
-void PtyProcess::write(const QByteArray &data) const
+void PtyProcess::write(const QByteArray &data)
 {
     if (m_masterFd < 0 || data.isEmpty()) {
         return;
     }
+    // Behind earlier input still waiting, so bytes never reorder.
+    m_pendingInput.append(data);
+    flushPendingInput();
+}
 
-    int off = 0;
-    const auto len = data.size();
-    while (off < len) {
-        const ssize_t n = ::write(m_masterFd, data.constData() + off, static_cast<size_t>(len - off));
+void PtyProcess::onWritable()
+{
+    flushPendingInput();
+}
+
+void PtyProcess::flushPendingInput()
+{
+    // The PTY input queue is small (about 1 KiB on macOS): a paste larger
+    // than that fills it until the program reads. Dropping the rest would
+    // also drop a bracketed paste's closing ESC[201~ and leave the program
+    // stuck in paste mode, so keep it and resume when the queue drains.
+    bool wouldBlock = false;
+    while (m_masterFd >= 0 && !wouldBlock && m_pendingOffset < m_pendingInput.size()) {
+        const ssize_t n = ::write(
+            m_masterFd,
+            m_pendingInput.constData() + m_pendingOffset,
+            static_cast<std::size_t>(m_pendingInput.size() - m_pendingOffset)
+        );
         if (n > 0) {
-            off += static_cast<int>(n);
-            continue;
+            m_pendingOffset += static_cast<int>(n);
+        } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            wouldBlock = true;
+        } else if (n == 0 || errno != EINTR) {
+            // The slave side is gone; the read side reports EOF.
+            m_pendingInput.clear();
+            m_pendingOffset = 0;
         }
-        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-            break; // Master buffer full; drop the remainder (MVP).
-        }
-        break;
+    }
+    if (m_pendingOffset >= m_pendingInput.size()) {
+        m_pendingInput.clear();
+        m_pendingOffset = 0;
+    }
+    if (m_writeNotifier) {
+        m_writeNotifier->setEnabled(!m_pendingInput.isEmpty());
     }
 }
 
@@ -408,55 +505,53 @@ void PtyProcess::resize(int cols, int rows) const // NOLINT: cols/rows are inher
 
 void PtyProcess::terminate() const
 {
-    if (m_pid > 0) {
-        const pid_t pid = static_cast<pid_t>(m_pid);
-        if (::kill(-pid, SIGHUP) < 0) {
-            ::kill(pid, SIGHUP);
-        }
-    }
+    signalSession(SIGHUP);
 }
 
 void PtyProcess::kill() const
 {
+    signalSession(SIGKILL);
+}
+
+bool PtyProcess::sessionHasProcesses() const
+{
+    return m_pid > 0 || (m_session > 0 && !sessionProcessGroups(static_cast<pid_t>(m_session)).empty());
+}
+
+void PtyProcess::signalSession(int signal) const
+{
+    if (m_session <= 0) {
+        return;
+    }
+    // The shell's group alone misses its jobs: job control runs each in a
+    // group of its own (ssh, codex, vim), reached otherwise only by the
+    // terminal hangup and by the shell forwarding SIGHUP, and a job that
+    // ignores SIGHUP or outlives a killed shell would keep running.
+    const auto session = static_cast<pid_t>(m_session);
+    std::vector<pid_t> groups = sessionProcessGroups(session);
+    if (m_pid > 0 && std::ranges::find(groups, session) == groups.end()) {
+        groups.push_back(session);
+    }
+    std::ranges::for_each(groups, [signal](pid_t group) { ::kill(-group, signal); });
     if (m_pid > 0) {
-        const pid_t pid = static_cast<pid_t>(m_pid);
-        if (::kill(-pid, SIGKILL) < 0) {
-            ::kill(pid, SIGKILL);
-        }
+        // The shell itself, should it have changed its group.
+        ::kill(static_cast<pid_t>(m_pid), signal);
     }
 }
 
-int PtyProcess::waitForExit()
+std::optional<int> PtyProcess::tryReap()
 {
     if (m_pid <= 0) {
         return -1;
     }
     int status = 0;
-    const pid_t pid = static_cast<pid_t>(m_pid);
-    pid_t result = ::waitpid(pid, &status, 0);
-    while (result < 0 && errno == EINTR) {
-        result = ::waitpid(pid, &status, 0);
+    const pid_t result = reapWithoutBlocking(static_cast<pid_t>(m_pid), status);
+    if (result == 0) {
+        return std::nullopt;
     }
     m_pid = -1;
-    return (result > 0 && WIFEXITED(status)) ? WEXITSTATUS(status) : -1;
-}
-
-bool PtyProcess::tryReap()
-{
-    if (m_pid <= 0) {
-        return true;
-    }
-    int status = 0;
-    const pid_t pid = static_cast<pid_t>(m_pid);
-    pid_t result = ::waitpid(pid, &status, WNOHANG);
-    while (result < 0 && errno == EINTR) {
-        result = ::waitpid(pid, &status, WNOHANG);
-    }
-    if (result > 0) {
-        m_pid = -1;
-        return true;
-    }
-    return false;
+    // result < 0: no longer our child (ECHILD); nothing left to wait for.
+    return result > 0 ? exitCodeOf(status) : -1;
 }
 
 void PtyProcess::close()
@@ -553,6 +648,11 @@ void PtyProcess::closeMaster()
     if (m_notifier) {
         m_notifier->setEnabled(false);
     }
+    if (m_writeNotifier) {
+        m_writeNotifier->setEnabled(false);
+    }
+    m_pendingInput.clear();
+    m_pendingOffset = 0;
     if (m_masterFd >= 0) {
         ::close(m_masterFd);
         m_masterFd = -1;
