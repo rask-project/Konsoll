@@ -50,6 +50,18 @@ Guidance for AI agents working in this repository.
   re-wrapped; past 50k history lines `TerminalView` applies a width change
   once the window size settles (120 ms), not on every drag step. The limit
   is `ScrollbackSettings` (0 = unlimited).
+- **AI agent status** (`AgentStatus`): agents report their state from
+  their hooks with `shell-integration/konsoll-agent-hook` (exported as
+  `KONSOLL_AGENT_HOOK`). Hooks may run without a controlling terminal
+  (Claude Code starts them in a session of their own), so they cannot write
+  escape sequences: the script sends `<token> <agent> <state> [base64
+  message]` to `AgentStatusServer`'s Unix socket (`KONSOLL_AGENT_SOCKET`,
+  user-only), and the `TerminalBackend` whose token
+  (`KONSOLL_SESSION_TOKEN`) matches takes it. The state clears when the
+  command ends (OSC 133 ; D) or the prompt returns. The workspace shows the
+  most urgent pane's state. The script is zsh (`zsocket`): `nc` can linger
+  after the write. Agent adapters live in `integrations/` (the Claude Code
+  plugin; `.claude-plugin/marketplace.json` lists it).
 - **Threading:** each session has a `PtyWorker` on its own `QThread` that
   alone touches the PTY descriptor, its notifier and the child process. PTY
   writes, resizes and shutdown go to it as queued calls; output comes back as

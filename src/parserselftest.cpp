@@ -1,5 +1,6 @@
 #include "selftest.h"
 
+#include "AgentStatus.h"
 #include "KeyEncoder.h"
 #include "NativeKeyTracker.h"
 #include "ProcessKind.h"
@@ -1346,6 +1347,27 @@ void tabIndicators(int &failures)
             processKindName(ProcessKind::None).isEmpty(),
         "process kind: executable names, version suffixes and case"
     );
+    {
+        const auto waiting = parseAgentStatus("tok claude waiting QXBwcm92ZT8=\n");
+        const auto ended = parseAgentStatus("tok opencode ended");
+        const auto failsWith = [](QByteArrayView line, AgentStatusError error) {
+            const auto status = parseAgentStatus(line);
+            return !status && status.error() == error;
+        };
+        selfTestCheck(
+            failures,
+            waiting && waiting->token == QStringLiteral("tok") && waiting->agent == QStringLiteral("claude") &&
+                waiting->state() == AgentState::Waiting && waiting->message == QStringLiteral("Approve?") && ended &&
+                ended->state() == AgentState::None && ended->message.isEmpty() &&
+                failsWith("tok claude sleeping", AgentStatusError::UnknownState) &&
+                failsWith("tok Claude! idle", AgentStatusError::BadAgentName) &&
+                failsWith("tok claude", AgentStatusError::Malformed) &&
+                failsWith("tok claude idle not*base64", AgentStatusError::Malformed) &&
+                agentStateName(AgentState::Idle) == QStringLiteral("idle") &&
+                agentStateName(AgentState::None).isEmpty(),
+            "agent status: status lines, states, names and messages"
+        );
+    }
     selfTestCheck(
         failures,
         programName(QStringLiteral("/opt/homebrew/bin/nvim")) == QStringLiteral("nvim") &&

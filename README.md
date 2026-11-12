@@ -352,6 +352,41 @@ Background**.
   <img src="docs/images/move-to-background.gif" alt="Sending a tab running a dev server to the background and opening it again as a tab" width="900">
 </p>
 
+### AI agents
+
+Konsoll recognizes AI coding agents (Claude Code, Codex, opencode, Qwen Code,
+Gemini CLI, …) and gives their tab the agent icon. With its hooks connected,
+an agent also reports what it is doing, and the tab shows it:
+
+| Icon | State |
+| --- | --- |
+| Sparkle (accent color) | Working on a turn |
+| Speech bubble (amber) | Waiting for you: a permission prompt or a question |
+| Sparkle with a check | Done with the turn |
+| Sparkle with a cross (red) | Failed |
+
+A tab in the background flags a waiting agent like the bell, a finished turn
+with ✓ and a failure with ✗; hovering the tab shows the agent's message
+(what it needs permission for). With several panes in a tab, the pane that
+most needs you sets the icon.
+
+**Claude Code:** install the Konsoll plugin once, in your shell:
+
+```bash
+claude plugin marketplace add rask-project/Konsoll
+claude plugin install konsoll@konsoll
+```
+
+Its hooks do nothing outside Konsoll.
+
+Any other tool can report a state the same way: Konsoll exports
+`KONSOLL_AGENT_HOOK`, a script that takes the agent's name, the state
+(`working`, `waiting`, `idle`, `error` or `ended`) and an optional message:
+
+```bash
+"$KONSOLL_AGENT_HOOK" my-agent waiting "Approve the migration?"
+```
+
 ### Settings
 
 Open Settings with ⌘, (**Konsoll ▸ Settings…**). Changes apply to every
@@ -415,6 +450,8 @@ An in-house VT500-style state machine (no `libvterm`), validated against
 - `OSC 8` hyperlinks (⌘-click), `OSC 4/10/11/12` color control
 - `OSC 52` clipboard (reads ask first by default)
 - `OSC 9` / `OSC 777` desktop notifications, `OSC 9;4` progress in the tab
+- AI agent state in the tab (working, waiting for you, done, failed) from the
+  agent's hooks, with a Claude Code plugin in `integrations/claude-code`
 - `OSC 7` working directory, `OSC 133` / `OSC 633` command blocks, and the
   iTerm2 `OSC 1337` commands (user variables, current directory, …)
 - `OSC 22` mouse pointer shapes

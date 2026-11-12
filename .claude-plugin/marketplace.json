@@ -1,0 +1,14 @@
+{
+  "name": "konsoll",
+  "description": "Konsoll terminal integrations for Claude Code",
+  "owner": {
+    "name": "rask-project"
+  },
+  "plugins": [
+    {
+      "name": "konsoll",
+      "source": "./integrations/claude-code",
+      "description": "Shows Claude's state (working, waiting for you, done, failed) on its Konsoll tab"
+    }
+  ]
+}

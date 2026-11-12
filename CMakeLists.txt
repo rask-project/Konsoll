@@ -37,7 +37,7 @@ endif()
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.12 REQUIRED COMPONENTS Quick QuickControls2 QuickDialogs2 Svg)
+find_package(Qt6 6.12 REQUIRED COMPONENTS Quick QuickControls2 QuickDialogs2 Svg Network)
 
 qt_standard_project_setup(REQUIRES 6.12)
 
@@ -85,6 +85,8 @@ qt_add_qml_module(konsoll
     SOURCES
         src/AboutDialog.h
         src/AboutDialog.mm
+        src/AgentStatus.cpp
+        src/AgentStatus.h
         src/AppQuitGuard.h
         src/AppQuitGuard.mm
         src/BackgroundJobs.cpp
@@ -165,6 +167,7 @@ qt_add_resources(konsoll "/"
         shell-integration/konsoll.zsh
         shell-integration/konsoll.bash
         shell-integration/konsoll.fish
+        shell-integration/konsoll-agent-hook
 )
 
 add_subdirectory(resources/icons)
@@ -191,7 +194,7 @@ target_compile_definitions(konsoll PRIVATE
 )
 
 target_link_libraries(konsoll
-    PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::QuickDialogs2 Qt6::Svg
+    PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::QuickDialogs2 Qt6::Svg Qt6::Network
     "-framework QuartzCore"
     "-framework UserNotifications"
     z

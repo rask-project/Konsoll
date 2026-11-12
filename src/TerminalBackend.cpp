@@ -101,6 +101,17 @@ QRgb readableForeground(QRgb foreground, QRgb background)
 TerminalBackend::TerminalBackend(QObject *parent) : QObject(parent)
 {
     m_remoteHostToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    // Agent hooks name the session by its token (KONSOLL_SESSION_TOKEN).
+    connect(
+        &AgentStatusServer::instance(),
+        &AgentStatusServer::statusReceived,
+        this,
+        [this](const QString &token, const QString &agent, AgentState state, const QString &message) {
+            if (token == m_remoteHostToken) {
+                setAgentStatus(state, agent, message);
+            }
+        }
+    );
     m_frameTimer.setTimerType(Qt::CoarseTimer);
     m_frameTimer.setInterval(kFrameDelay);
     m_frameTimer.setSingleShot(true);
@@ -417,6 +428,8 @@ void TerminalBackend::emitTerminalEvents()
 {
     if (m_terminal->commandFinished()) {
         m_terminal->clearCommandFinished();
+        // The command that ran the agent ended, whatever it last reported.
+        setAgentStatus(AgentState::None, {}, {});
         emit commandFinished(m_terminal->lastExitCode());
     }
     if (m_terminal->bellPending()) {
@@ -485,6 +498,24 @@ void TerminalBackend::onForegroundChanged(const QString &name)
     emit foregroundProcessChanged();
     emit displayTitleChanged();
     updateProcessKind();
+    // Back at the prompt: an agent that was killed (Ctrl+C, a crash) never
+    // reported its end.
+    if (!hasForegroundProcess()) {
+        setAgentStatus(AgentState::None, {}, {});
+    }
+}
+
+void TerminalBackend::setAgentStatus(AgentState state, const QString &agent, const QString &message)
+{
+    const QString name = state == AgentState::None ? QString{} : agent;
+    const QString text = state == AgentState::None ? QString{} : message;
+    if (state == m_agentState && name == m_agentName && text == m_agentMessage) {
+        return;
+    }
+    m_agentState = state;
+    m_agentName = name;
+    m_agentMessage = text;
+    emit agentStatusChanged();
 }
 
 QString TerminalBackend::displayTitle() const

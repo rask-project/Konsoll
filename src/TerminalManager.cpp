@@ -18,6 +18,24 @@ namespace konsoll
 
 namespace
 {
+// How much a pane's agent state wants the user, for the workspace's icon.
+int agentUrgency(AgentState state)
+{
+    switch (state) {
+    case AgentState::Waiting:
+        return 4;
+    case AgentState::Error:
+        return 3;
+    case AgentState::Working:
+        return 2;
+    case AgentState::Idle:
+        return 1;
+    case AgentState::None:
+        break;
+    }
+    return 0;
+}
+
 // Removes the matching objects from `objects` (keeping the order of the rest)
 // and destroys them on the next event-loop turn instead of right away. QML may
 // still hold them on the current JS stack -- e.g. the tab's close handler that
@@ -174,11 +192,21 @@ void TerminalWorkspaceModel::refreshStatus()
     const int progressState = session != nullptr ? session->progressState() : 0;
     const int progressValue = session != nullptr ? session->progressValue() : 0;
     const auto flags = static_cast<unsigned char>(busy ? (m_flags | BusyFlag) : (m_flags & ~BusyFlag));
+    // The agent shown is the one that most wants the user, in any pane.
+    const auto agent = std::ranges::max_element(sessions, {}, [](const TerminalBackend *candidate) {
+        return agentUrgency(candidate->agentStateValue());
+    });
+    const AgentState agentState = agent != sessions.end() ? (*agent)->agentStateValue() : AgentState::None;
+    const QString agentName = agent != sessions.end() ? (*agent)->agentName() : QString{};
+    const QString agentMessage = agent != sessions.end() ? (*agent)->agentMessage() : QString{};
 
     if (kind == m_processKind && progressState == m_progressState && progressValue == m_progressValue &&
-        flags == m_flags) {
+        flags == m_flags && agentState == m_agentState && agentName == m_agentName && agentMessage == m_agentMessage) {
         return;
     }
+    m_agentState = agentState;
+    m_agentName = agentName;
+    m_agentMessage = agentMessage;
     m_processKind = kind;
     m_progressState = static_cast<unsigned char>(progressState);
     m_progressValue = progressValue;
@@ -377,6 +405,25 @@ void TerminalManager::connectSession(TerminalBackend *sessionPtr)
     connect(sessionPtr, &TerminalBackend::foregroundProcessChanged, this, refreshStatus);
     connect(sessionPtr, &TerminalBackend::commandRunningChanged, this, refreshStatus);
     connect(sessionPtr, &TerminalBackend::progressChanged, this, refreshStatus);
+    // An agent waiting for the user, done with its turn or failed flags its
+    // background tab like a bell or a finished command.
+    connect(sessionPtr, &TerminalBackend::agentStatusChanged, this, [refreshStatus, raise, sessionPtr]() {
+        refreshStatus();
+        switch (sessionPtr->agentStateValue()) {
+        case AgentState::Waiting:
+            raise(TerminalWorkspaceModel::Attention::Bell);
+            break;
+        case AgentState::Idle:
+            raise(TerminalWorkspaceModel::Attention::Success);
+            break;
+        case AgentState::Error:
+            raise(TerminalWorkspaceModel::Attention::Failure);
+            break;
+        case AgentState::Working:
+        case AgentState::None:
+            break;
+        }
+    });
     const auto notifyWorkspaceTitle = [this, sessionPtr]() {
         std::ranges::for_each(m_workspaces, [sessionPtr](const auto &workspace) {
             workspace->notifySessionTitleChanged(sessionPtr);

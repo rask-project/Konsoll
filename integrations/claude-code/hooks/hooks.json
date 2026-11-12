@@ -1,0 +1,83 @@
+{
+  "description": "Reports Claude's state to the Konsoll tab it runs in (a no-op outside Konsoll)",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" claude working || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" claude working || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" claude waiting @message || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" claude waiting @message || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" claude idle || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" claude error || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" claude ended || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

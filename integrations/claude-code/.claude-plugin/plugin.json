@@ -1,0 +1,10 @@
+{
+  "name": "konsoll",
+  "description": "Shows Claude's state (working, waiting for you, done, failed) on its Konsoll tab",
+  "version": "1.0.0",
+  "author": {
+    "name": "rask-project"
+  },
+  "homepage": "https://github.com/rask-project/Konsoll",
+  "license": "MIT"
+}

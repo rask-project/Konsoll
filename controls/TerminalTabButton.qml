@@ -32,11 +32,15 @@ TabButton {
     readonly property string processKind: tab.workspace ? tab.workspace.processKind : ""
     readonly property bool busy: tab.workspace ? tab.workspace.busy : false
     readonly property string attention: tab.workspace ? tab.workspace.attention : ""
+    // AI agent state from its hooks (AgentStatus.h): it replaces the kind
+    // icon, as it says more (working, waiting for you, done, failed).
+    readonly property string agentState: tab.workspace ? tab.workspace.agentState : ""
+    readonly property string agentMessage: tab.workspace ? tab.workspace.agentMessage : ""
     // Quick commands finish before the running icon would flash.
     property bool runningDue: false
     // OSC 9;4 state 3 is indeterminate progress: shown as running.
     readonly property bool determinateProgress: tab.progressState > 0 && tab.progressState !== 3
-    readonly property string leadingMode: tab.determinateProgress ? "progress" : (tab.processKind !== "" ? "kind" : ((tab.busy && tab.runningDue) || tab.progressState === 3 ? "running" : "shell"))
+    readonly property string leadingMode: tab.determinateProgress ? "progress" : tab.agentState !== "" ? "agent" : (tab.processKind !== "" ? "kind" : ((tab.busy && tab.runningDue) || tab.progressState === 3 ? "running" : "shell"))
 
     readonly property color successColor: "#30d158"
     readonly property color failureColor: "#ff453a"
@@ -59,6 +63,12 @@ TabButton {
             "package": qsTr("Package manager"),
             search: qsTr("Search"),
             wait: qsTr("Waiting")
+        })
+    readonly property var agentStateNames: ({
+            working: qsTr("AI agent working"),
+            waiting: qsTr("AI agent waiting for you"),
+            idle: qsTr("AI agent done"),
+            error: qsTr("AI agent failed")
         })
     readonly property var attentionNames: ({
             activity: qsTr("New output"),
@@ -184,7 +194,8 @@ TabButton {
     ToolTip {
         id: titleToolTip
 
-        visible: tab.hovered && tabLabel.implicitWidth > tabLabel.width
+        // Also shown for an agent's message (what it waits for, its error).
+        visible: tab.hovered && (tabLabel.implicitWidth > tabLabel.width || tab.agentMessage !== "")
 
         x: (tab.width - width) / 2
         y: tab.height + 6
@@ -197,7 +208,7 @@ TabButton {
         horizontalPadding: 12
         verticalPadding: 8
 
-        text: tab.tabTitle
+        text: tab.agentMessage !== "" ? tab.tabTitle + "\n" + tab.agentMessage : tab.tabTitle
         font.pixelSize: 13
 
         contentItem: Text {
@@ -260,14 +271,14 @@ TabButton {
             anchors.verticalCenter: parent.verticalCenter
 
             Accessible.role: Accessible.Indicator
-            Accessible.name: tab.leadingMode === "kind" ? (tab.kindNames[tab.processKind] || "") : tab.leadingMode === "progress" ? qsTr("Progress %1%").arg(tab.progressValue) : tab.leadingMode === "running" ? qsTr("Running") : qsTr("Shell")
+            Accessible.name: tab.leadingMode === "agent" ? (tab.agentStateNames[tab.agentState] || "") : tab.leadingMode === "kind" ? (tab.kindNames[tab.processKind] || "") : tab.leadingMode === "progress" ? qsTr("Progress %1%").arg(tab.progressValue) : tab.leadingMode === "running" ? qsTr("Running") : qsTr("Shell")
 
             IconImage {
                 anchors.fill: parent
                 visible: tab.leadingMode !== "progress"
-                name: tab.leadingMode === "kind" ? "kind-" + tab.processKind : (tab.leadingMode === "running" ? "kind-running" : "kind-shell")
+                name: tab.leadingMode === "agent" ? (tab.agentState === "working" ? "kind-agent" : "agent-" + tab.agentState) : tab.leadingMode === "kind" ? "kind-" + tab.processKind : (tab.leadingMode === "running" ? "kind-running" : "kind-shell")
                 sourceSize: Qt.size(16, 16)
-                color: tab.processKind === "privileged" ? tab.warningColor : systemPalette.windowText
+                color: tab.leadingMode === "agent" ? (tab.agentState === "waiting" ? tab.warningColor : tab.agentState === "error" ? tab.failureColor : tab.agentState === "working" ? tab.systemAccent : systemPalette.windowText) : (tab.processKind === "privileged" ? tab.warningColor : systemPalette.windowText)
             }
 
             Controls.TabActivityIndicator {

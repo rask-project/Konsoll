@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AgentStatus.h"
 #include "ProcessKind.h"
 #include "pty/PtyWorker.h"
 #include "term/Terminal.h"
@@ -71,6 +72,12 @@ class TerminalBackend : public QObject
     // OSC 9 ; 4 progress: Terminal::ProgressState and 0-100.
     Q_PROPERTY(int progressState READ progressState NOTIFY progressChanged)
     Q_PROPERTY(int progressValue READ progressValue NOTIFY progressChanged)
+    // What an AI agent in this session reported through its hooks
+    // (AgentStatus.h): "working", "waiting", "idle", "error" or empty, the
+    // agent's name ("claude", ...) and an optional message.
+    Q_PROPERTY(QString agentState READ agentState NOTIFY agentStatusChanged)
+    Q_PROPERTY(QString agentName READ agentName NOTIFY agentStatusChanged)
+    Q_PROPERTY(QString agentMessage READ agentMessage NOTIFY agentStatusChanged)
     // OSC 22: the Qt::CursorShape the program asked for, or -1 (default).
     Q_PROPERTY(int pointerShape READ pointerShape NOTIFY pointerShapeChanged)
     Q_PROPERTY(unsigned int backgroundColor READ backgroundColor NOTIFY colorSchemeChanged)
@@ -234,6 +241,12 @@ public:
     ProcessKind processKindValue() const { return m_processKind; }
     int progressState() const { return m_terminal ? m_terminal->progressState() : 0; }
     int progressValue() const { return m_terminal ? m_terminal->progressValue() : 0; }
+    QString agentState() const { return agentStateName(m_agentState); }
+    AgentState agentStateValue() const { return m_agentState; }
+    QString agentName() const { return m_agentName; }
+    QString agentMessage() const { return m_agentMessage; }
+    // A status report from the agent's hooks; None clears it.
+    void setAgentStatus(AgentState state, const QString &agent, const QString &message);
     // The default colors, or the ones the application set (OSC 10/11/12).
     unsigned int backgroundColor() const;
     unsigned int foregroundColor() const;
@@ -265,6 +278,7 @@ signals:
     void foregroundProcessChanged();
     void processKindChanged();
     void progressChanged();
+    void agentStatusChanged();
     // The program rang the bell (BEL).
     void bellRang();
     // The program wrote output.
@@ -361,6 +375,8 @@ private:
     QString m_remoteHost;
     QString m_remoteHostToken;
     QString m_foregroundProcess;
+    QString m_agentName;
+    QString m_agentMessage;
     AbsPos m_selAnchor{.line = -1, .col = 0};
     AbsPos m_selCurrent{.line = -1, .col = 0};
     int m_highlightStart{-1};
@@ -376,7 +392,9 @@ private:
     unsigned int m_defaultBg{0xff141414};
     bool m_focused{true};
     SessionState m_state{SessionState::Created};
-    ProcessKind m_processKind{ProcessKind::None};
+    // One byte for both (-Wpadded): 18 kinds, 5 agent states.
+    ProcessKind m_processKind : 5 {ProcessKind::None};
+    AgentState m_agentState : 3 {AgentState::None};
     unsigned char m_reportedKeyboardFlags{0}; // keyboardFlags last signalled to QML
 };
 

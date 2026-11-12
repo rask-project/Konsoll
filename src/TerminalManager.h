@@ -73,6 +73,12 @@ class TerminalWorkspaceModel final : public QObject
     Q_PROPERTY(bool busy READ busy NOTIFY statusChanged)
     Q_PROPERTY(int progressState READ progressState NOTIFY statusChanged)
     Q_PROPERTY(int progressValue READ progressValue NOTIFY statusChanged)
+    // The most urgent AI agent state among the workspace's panes (a pane
+    // waiting for the user wins over one working): "working", "waiting",
+    // "idle", "error" or empty, with that pane's agent name and message.
+    Q_PROPERTY(QString agentState READ agentState NOTIFY statusChanged)
+    Q_PROPERTY(QString agentName READ agentName NOTIFY statusChanged)
+    Q_PROPERTY(QString agentMessage READ agentMessage NOTIFY statusChanged)
     Q_PROPERTY(QObject *rootNode READ rootNode NOTIFY layoutChanged)
 
 public:
@@ -103,6 +109,9 @@ public:
     bool busy() const { return (m_flags & BusyFlag) != 0; }
     int progressState() const { return m_progressState; }
     int progressValue() const { return m_progressValue; }
+    QString agentState() const { return agentStateName(m_agentState); }
+    QString agentName() const { return m_agentName; }
+    QString agentMessage() const { return m_agentMessage; }
     // Recomputes the status properties from the sessions in the tree.
     void refreshStatus();
     QObject *rootNode() const { return m_root.get(); }
@@ -125,10 +134,14 @@ private:
     TerminalBackend *m_lastActiveSession{};
     QString m_title;
     QString m_customTitle;
+    QString m_agentName;
+    QString m_agentMessage;
     QElapsedTimer m_inactiveTimer; // since the workspace was left
     int m_progressValue{};
     unsigned char m_progressState{};
-    ProcessKind m_processKind{ProcessKind::None};
+    // One byte for both (-Wpadded): 18 kinds, 5 agent states.
+    ProcessKind m_processKind : 5 {ProcessKind::None};
+    AgentState m_agentState : 3 {AgentState::None};
     Attention m_attention{Attention::None};
     unsigned char m_flags{};
 };

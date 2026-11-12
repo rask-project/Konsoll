@@ -1,5 +1,6 @@
 #include "PtyProcess.h"
 
+#include "AgentStatus.h"
 #include "ProcessKind.h"
 #include "ShellFunctions.h"
 
@@ -173,6 +174,10 @@ std::vector<QByteArray> buildPtyEnvironment(
     setEnvironmentVariable("PATH", "/usr/bin:/bin:/usr/sbin:/sbin:" + qgetenv("PATH"));
     if (!remoteHostToken.isEmpty()) {
         setEnvironmentVariable("KONSOLL_REMOTE_HOST_TOKEN", remoteHostToken.toUtf8());
+        // AI agent hooks report their state with it (AgentStatus.h).
+        setEnvironmentVariable("KONSOLL_SESSION_TOKEN", remoteHostToken.toUtf8());
+        setEnvironmentVariable("KONSOLL_AGENT_SOCKET", konsoll::agentStatusSocketPath().toLocal8Bit());
+        setEnvironmentVariable("KONSOLL_AGENT_HOOK", konsoll::agentHookPath().toLocal8Bit());
     }
     if (!integration.integrationFile.isEmpty()) {
         const QByteArray integrationPath = integration.integrationFile.toLocal8Bit();

@@ -156,6 +156,34 @@ void checkTabIndicators(int &failures, TerminalManager &manager, TerminalBackend
         ),
         "indicators: agent script interrupted"
     );
+    // Agent hooks report through Konsoll's socket with the session token:
+    // a wrong token is ignored, the state and message reach the workspace,
+    // and returning to the prompt clears them.
+    u->writeText("KONSOLL_SESSION_TOKEN=bogus \"$KONSOLL_AGENT_HOOK\" codex error </dev/null; "
+                 "\"$KONSOLL_AGENT_HOOK\" codex waiting 'Approve the edit?' </dev/null; sleep 30\n");
+    check(
+        failures,
+        waitFor(
+            "agent status: waiting",
+            [u, uWorkspace]() {
+                return u->agentState() == QStringLiteral("waiting") && u->agentName() == QStringLiteral("codex") &&
+                       uWorkspace->agentState() == QStringLiteral("waiting") &&
+                       uWorkspace->agentMessage() == QStringLiteral("Approve the edit?");
+            },
+            10000
+        ),
+        "agent status: hook state and message reach the session and workspace"
+    );
+    u->writeText("\x03");
+    check(
+        failures,
+        waitFor(
+            "agent status: cleared",
+            [u, uWorkspace]() { return u->agentState().isEmpty() && uWorkspace->agentState().isEmpty(); },
+            10000
+        ),
+        "agent status: cleared back at the prompt"
+    );
     // The icon follows the pane worked in last.
     u->writeText("less /etc/hosts\n");
     check(
