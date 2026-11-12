@@ -246,6 +246,37 @@ Window {
         }
     }
 
+    // A git worktree of the active pane's repository on a branch, and an AI
+    // agent started there in a new tab: agents in parallel, apart from the
+    // user's checkout.
+    Action {
+        id: newAgentWorktreeAction
+
+        text: qsTr("New Agent in Worktree…")
+        enabled: sessionManager.activeSession !== null
+        onTriggered: {
+            const root = AgentIntegrations.gitRoot(sessionManager.activeSession.currentDirectory);
+            if (root === "") {
+                NativeDialogs.showWarning(qsTr("Not in a git repository"), qsTr("Open the agent's worktree from a pane whose directory is in a git repository."));
+                return;
+            }
+            const agents = AgentIntegrations.agents.filter(agent => agent.available);
+            if (agents.length === 0) {
+                NativeDialogs.showWarning(qsTr("No AI agent found"), qsTr("Install Claude Code, Codex, Qwen Code or opencode first."));
+                return;
+            }
+            const choice = NativeDialogs.promptAgentWorktree(agents.map(agent => agent.name), root);
+            if (!choice.accepted)
+                return;
+            const plan = AgentIntegrations.worktreePlan(root, choice.branch, agents[choice.agentIndex].id);
+            if (plan.error) {
+                NativeDialogs.showWarning(qsTr("Could not start the agent"), plan.error);
+                return;
+            }
+            sessionManager.addWorkspaceRunning(choice.branch, root, plan.command);
+        }
+    }
+
     Action {
         id: newWorkspaceAction
 
@@ -437,6 +468,10 @@ Window {
 
             MenuItem {
                 action: newWorkspaceAction
+            }
+
+            MenuItem {
+                action: newAgentWorktreeAction
             }
 
             MenuSeparator {}

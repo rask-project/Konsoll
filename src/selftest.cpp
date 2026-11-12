@@ -405,6 +405,44 @@ void checkAgentConnectOffer(int &failures)
     );
 }
 
+// New Agent in Worktree: the repository's top, a worktree beside it on a new
+// branch (reused the next time), and bad branch names refused.
+void checkAgentWorktree(int &failures)
+{
+    const QTemporaryDir directory;
+    const QString repository = directory.filePath(QStringLiteral("repo"));
+    const auto run = [](const QString &command) {
+        QProcess shell;
+        shell.start(QStringLiteral("/bin/sh"), {QStringLiteral("-c"), command});
+        return shell.waitForFinished(10000) && shell.exitCode() == 0;
+    };
+    const bool made = QDir().mkpath(repository + QStringLiteral("/sub")) &&
+                      run(QStringLiteral("cd '%1' && git init -q && git -c user.email=t@t -c user.name=t commit -q "
+                                         "--allow-empty -m init")
+                              .arg(repository));
+    const konsoll::AgentIntegrations integrations;
+    const QString root = integrations.gitRoot(repository + QStringLiteral("/sub"));
+    const QVariantMap plan = integrations.worktreePlan(root, QStringLiteral("feat/x"), QStringLiteral("claude"));
+    const QString path = plan.value(QStringLiteral("path")).toString();
+    QString command = plan.value(QStringLiteral("command")).toString();
+    command.replace(QStringLiteral("&& claude"), QStringLiteral("&& pwd"));
+    const bool created =
+        run(QStringLiteral("cd '%1' && %2").arg(root, command)) && QFileInfo(path + QStringLiteral("/.git")).exists();
+    const QString again = integrations.worktreePlan(root, QStringLiteral("feat/x"), QStringLiteral("claude"))
+                              .value(QStringLiteral("command"))
+                              .toString();
+    check(
+        failures,
+        made && QFileInfo(root).canonicalFilePath() == QFileInfo(repository).canonicalFilePath() &&
+            path.endsWith(QStringLiteral("/repo-worktrees/feat-x")) && created &&
+            again.startsWith(QStringLiteral("cd ")) && again.endsWith(QStringLiteral("&& claude")) &&
+            integrations.worktreePlan(root, QStringLiteral("bad..name"), QStringLiteral("claude"))
+                .contains(QStringLiteral("error")) &&
+            integrations.gitRoot(directory.path()).isEmpty(),
+        "agent worktree: a worktree beside the repository on a new branch, reused, bad names refused"
+    );
+}
+
 // recent_commands, list_panes and read_pane: the agent's own pane's commands
 // (with their status), the window's panes, and another pane read only once
 // the user allows it.
@@ -1016,6 +1054,7 @@ int runSelfTest()
     runParserSelfTest(failures);
     checkAgentIntegrations(failures);
     checkAgentConnectOffer(failures);
+    checkAgentWorktree(failures);
 
     // 1. Concurrent output: three sessions produce output at the same time.
     auto *a = activeSession(manager);

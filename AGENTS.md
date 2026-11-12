@@ -73,6 +73,10 @@ Guidance for AI agents working in this repository.
   Send to Agent (the pane's context menu) pastes the selection or the last
   command block (`lastCommandText`) into `TerminalManager::agentSessionFor`
   (an agent pane in the same tab first) with `pasteText`.
+  New Agent in Worktree (Shell menu) asks with
+  `NativeDialogs::promptAgentWorktree`; `AgentIntegrations::worktreePlan`
+  builds the command (`git worktree add` beside the repository, then the
+  agent) that `TerminalManager::addWorkspaceRunning` types in a new tab.
   The script is zsh (`zsocket`): `nc` can linger after the write.
 - **Agent integrations** (`AgentIntegrations`, QML singleton, Settings ▸ AI
   Agents): merges Konsoll's hooks into Claude Code / Codex / Qwen Code JSON

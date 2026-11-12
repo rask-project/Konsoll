@@ -346,9 +346,16 @@ void TerminalManager::addNamedWorkspace(const QString &title)
     createWorkspace(title);
 }
 
-void TerminalManager::createWorkspace(const QString &customTitle)
+void TerminalManager::addWorkspaceRunning(const QString &title, const QString &directory, const QString &command)
 {
-    const QString workingDirectory = (m_activeSession != nullptr) ? m_activeSession->currentDirectory() : QString{};
+    createWorkspace(title, directory)->writeText(command + QLatin1Char('\n'));
+}
+
+TerminalBackend *TerminalManager::createWorkspace(const QString &customTitle, const QString &directory)
+{
+    const QString workingDirectory = !directory.isEmpty()           ? directory
+                                     : (m_activeSession != nullptr) ? m_activeSession->currentDirectory()
+                                                                    : QString{};
     TerminalBackend *session = createSession();
     auto workspace = std::make_unique<TerminalWorkspaceModel>(
         QStringLiteral("Workspace %1").arg(m_nextWorkspaceNumber++),
@@ -360,6 +367,7 @@ void TerminalManager::createWorkspace(const QString &customTitle)
     emit activeWorkspaceChanged();
     setActiveSession(session, true);
     session->start(workingDirectory);
+    return session;
 }
 
 void TerminalManager::renameWorkspace(QObject *workspaceObject, const QString &title)

@@ -4,6 +4,8 @@
 
 #include <QByteArray>
 
+#include <algorithm>
+
 namespace konsoll
 {
 
@@ -110,6 +112,54 @@ QVariantMap NativeDialogs::promptWorkspaceRename(const QString &currentTitle)
 QVariantMap NativeDialogs::promptWorkspaceName()
 {
     return workspaceNamePrompt("New Workspace", "Enter a name for the new workspace.", "Create", QString{});
+}
+
+QVariantMap NativeDialogs::promptAgentWorktree(const QStringList &agentNames, const QString &repository)
+{
+    NSAlert *const alert = [[NSAlert alloc] init];
+    [alert setAlertStyle:NSAlertStyleInformational];
+    [alert setMessageText:@"New Agent in Worktree"];
+    [alert setInformativeText:[NSString stringWithFormat:@"Konsoll creates a git worktree of %@ on the branch "
+                                                         @"(new or existing) and starts the agent there in a new tab, "
+                                                         @"so it works apart from your checkout.",
+                                                         toNSString(repository)]];
+    [alert addButtonWithTitle:@"Start"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    NSView *const accessory = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 280, 58)];
+    NSPopUpButton *const agentButton = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 32, 280, 26) pullsDown:NO];
+    std::ranges::for_each(agentNames, [agentButton](const QString &name) {
+        [agentButton addItemWithTitle:toNSString(name)];
+    });
+    NSTextField *const branchField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 280, 24)];
+    [branchField setPlaceholderString:@"Branch, e.g. fix-login"];
+    [accessory addSubview:agentButton];
+    [accessory addSubview:branchField];
+    [alert setAccessoryView:accessory];
+    [[alert window] setInitialFirstResponder:branchField];
+
+    const bool accepted = [alert runModal] == NSAlertFirstButtonReturn;
+    const QVariantMap result{
+        {QStringLiteral("accepted"), accepted},
+        {QStringLiteral("agentIndex"), static_cast<int>([agentButton indexOfSelectedItem])},
+        {QStringLiteral("branch"), toQString([branchField stringValue]).trimmed()},
+    };
+    [branchField release];
+    [agentButton release];
+    [accessory release];
+    [alert release];
+    return result;
+}
+
+void NativeDialogs::showWarning(const QString &message, const QString &informative)
+{
+    NSAlert *const alert = [[NSAlert alloc] init];
+    [alert setAlertStyle:NSAlertStyleWarning];
+    [alert setMessageText:toNSString(message)];
+    [alert setInformativeText:toNSString(informative)];
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+    [alert release];
 }
 
 void NativeDialogs::approveQuit()

@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QSaveFile>
 #include <QSettings>
 #include <QVariantMap>
@@ -16,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <iterator>
+#include <optional>
 #include <ranges>
 
 namespace konsoll
@@ -245,6 +247,28 @@ bool claudePluginEnabled(const QJsonObject &settings)
     });
 }
 
+constexpr int kGitTimeoutMs = 5000;
+
+// Runs git (the system's: the app may not have the user's PATH) and returns
+// its trimmed output, or nothing when it fails.
+std::optional<QString> runGit(const QStringList &arguments)
+{
+    QProcess git;
+    git.start(QStringLiteral("/usr/bin/git"), arguments);
+    if (!git.waitForFinished(kGitTimeoutMs) || git.exitStatus() != QProcess::NormalExit || git.exitCode() != 0) {
+        return std::nullopt;
+    }
+    return QString::fromUtf8(git.readAllStandardOutput()).trimmed();
+}
+
+// `text` as one shell word, for zsh, bash and fish alike.
+QString shellQuoted(const QString &text)
+{
+    QString quoted = text;
+    quoted.replace(QLatin1Char('\''), QStringLiteral("'\\''"));
+    return QLatin1Char('\'') + quoted + QLatin1Char('\'');
+}
+
 // The agents whose connect offer the user turned down.
 constexpr QLatin1StringView kDeclinedKey{"AgentIntegrations/declinedOffers"};
 
@@ -472,6 +496,49 @@ void AgentIntegrations::declineOffer(const QString &id)
     declined.append(id);
     QSettings().setValue(kDeclinedKey, declined);
     emit agentsChanged();
+}
+
+QString AgentIntegrations::gitRoot(const QString &directory) const
+{
+    if (directory.isEmpty()) {
+        return {};
+    }
+    return runGit({QStringLiteral("-C"), directory, QStringLiteral("rev-parse"), QStringLiteral("--show-toplevel")})
+        .value_or(QString{});
+}
+
+QVariantMap AgentIntegrations::worktreePlan(const QString &root, const QString &branch, const QString &id) const
+{
+    const auto failure = [](const QString &error) { return QVariantMap{{QStringLiteral("error"), error}}; };
+    if (findAgent(id) == nullptr) {
+        return failure(tr("Unknown agent: %1").arg(id));
+    }
+    if (branch.isEmpty() ||
+        !runGit({QStringLiteral("check-ref-format"), QStringLiteral("--branch"), branch}).has_value()) {
+        return failure(tr("“%1” is not a valid branch name.").arg(branch));
+    }
+    const QFileInfo repository(root);
+    QString folder = branch;
+    folder.replace(QLatin1Char('/'), QLatin1Char('-'));
+    const QString path =
+        repository.absolutePath() + QLatin1Char('/') + repository.fileName() + QStringLiteral("-worktrees/") + folder;
+    const bool exists = runGit({QStringLiteral("-C"),
+                                root,
+                                QStringLiteral("show-ref"),
+                                QStringLiteral("--verify"),
+                                QStringLiteral("--quiet"),
+                                QStringLiteral("refs/heads/") + branch})
+                            .has_value();
+    // A worktree made before is reused; otherwise a new branch, or the
+    // existing one, is checked out there.
+    const QString create =
+        QFileInfo::exists(path) ? QString{}
+        : exists ? QStringLiteral("git worktree add %1 %2 && ").arg(shellQuoted(path), shellQuoted(branch))
+                 : QStringLiteral("git worktree add -b %1 %2 && ").arg(shellQuoted(branch), shellQuoted(path));
+    return {
+        {QStringLiteral("command"), create + QStringLiteral("cd %1 && %2").arg(shellQuoted(path), id)},
+        {QStringLiteral("path"), path},
+    };
 }
 
 QString AgentIntegrations::mcpSetup(const QString &id) const

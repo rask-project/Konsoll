@@ -179,6 +179,9 @@ public:
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void addWorkspace();
+    // A new tab titled `title`, its shell in `directory`, running `command`
+    // (New Agent in Worktree).
+    Q_INVOKABLE void addWorkspaceRunning(const QString &title, const QString &directory, const QString &command);
     Q_INVOKABLE void addNamedWorkspace(const QString &title);
     Q_INVOKABLE void renameWorkspace(QObject *workspace, const QString &title);
     Q_INVOKABLE void closeWorkspace(QObject *workspace);
@@ -284,7 +287,7 @@ private:
     void finishPaneMove(TerminalManager *target, TerminalBackend *session);
     // Drops a session that left this window from the activation history.
     void forgetSession(TerminalBackend *session);
-    void createWorkspace(const QString &customTitle);
+    TerminalBackend *createWorkspace(const QString &customTitle, const QString &directory = {});
     TerminalLayoutNode *findLeaf(TerminalLayoutNode *node, TerminalBackend *session) const;
     TerminalBackend *firstSession(TerminalLayoutNode *node) const;
     TerminalBackend *mostRecentlyActiveSession() const;

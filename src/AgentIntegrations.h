@@ -88,6 +88,14 @@ public:
     Q_INVOKABLE QString mcpSetup(const QString &id) const;
     Q_INVOKABLE void copyToClipboard(const QString &text) const;
 
+    // The top of the git repository `directory` is in, or empty.
+    Q_INVOKABLE QString gitRoot(const QString &directory) const;
+    // New Agent in Worktree: the shell command a new tab in `root` runs to
+    // create (or reuse) a worktree for `branch` beside the repository
+    // (<repo>-worktrees/<branch>) and start agent `id` in it.
+    // {command, path} or {error}.
+    Q_INVOKABLE QVariantMap worktreePlan(const QString &root, const QString &branch, const QString &id) const;
+
 signals:
     void agentsChanged();
 };

@@ -26,6 +26,11 @@ public:
     Q_INVOKABLE bool confirmQuit(int sessionCount);
     Q_INVOKABLE QVariantMap promptWorkspaceRename(const QString &currentTitle);
     Q_INVOKABLE QVariantMap promptWorkspaceName();
+    // New Agent in Worktree: which agent (an index into `agentNames`) and the
+    // branch for the worktree of `repository`. {accepted, agentIndex, branch}.
+    Q_INVOKABLE QVariantMap promptAgentWorktree(const QStringList &agentNames, const QString &repository);
+    // A warning alert with one OK button.
+    Q_INVOKABLE void showWarning(const QString &message, const QString &informative);
     Q_INVOKABLE void approveQuit();
     Q_INVOKABLE void terminateApplication();
     static bool consumeQuitApproval();

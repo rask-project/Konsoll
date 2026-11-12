@@ -366,6 +366,12 @@ connected, it also reports what it is doing, and the tab shows it:
 | Sparkle with a check | Done with the turn |
 | Sparkle with a cross (red) | Failed |
 
+- **Agents in parallel.** **Shell ▸ New Agent in Worktree…** asks for an
+  agent and a branch, creates a git worktree of the current pane's
+  repository on it (beside the repository, in `<repo>-worktrees/`; an
+  existing branch or worktree is reused) and starts the agent there in a new
+  tab. Each agent works apart from your checkout, and Window ▸ AI Agents
+  lists them all.
 - **Send to Agent.** Right-click a pane: **Send Selection to Agent** and
   **Send Last Command to Agent** (the command, its exit status and output)
   paste into the agent's pane — the one in the same tab first — as its next
