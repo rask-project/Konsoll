@@ -5,6 +5,7 @@
 #include "ProcessKind.h"
 #include "screendump.h"
 #include "term/Grapheme.h"
+#include "term/Scrollback.h"
 #include "term/Terminal.h"
 
 #include <QBuffer>
@@ -14,6 +15,10 @@
 #include <QImage>
 #include <QRegularExpression>
 #include <QString>
+#include <QStringList>
+
+#include <algorithm>
+#include <ranges>
 
 namespace konsoll
 {
@@ -1534,6 +1539,180 @@ void fixtureRegressions(int &failures)
     });
 }
 
+// The whole buffer as logical lines: soft-wrapped rows joined, trailing
+// blanks trimmed, trailing empty lines dropped.
+QStringList logicalLines(const Screen &screen)
+{
+    QStringList lines;
+    QString current;
+    Line cells;
+    for (int index = 0; index < screen.totalLines(); ++index) {
+        screen.copyLine(index, cells);
+        if (index > 0 && !screen.isWrappedContinuation(index)) {
+            lines.append(current.trimmed());
+            current.clear();
+        }
+        std::ranges::for_each(cells, [&current](const Cell &cell) {
+            if ((cell.flags & CellFlag::WideSpacer) == 0u) {
+                const auto cp = static_cast<char32_t>(cell.ch);
+                current += QString::fromUcs4(&cp, 1);
+            }
+        });
+    }
+    lines.append(current.trimmed());
+    while (!lines.isEmpty() && lines.back().isEmpty()) {
+        lines.removeLast();
+    }
+    return lines;
+}
+
+// Lines covering every encoded field: styles, truecolor, links, wide pairs,
+// styled trailing spaces, blank lines and two widths.
+Line sampleLine(int index)
+{
+    const int width = index % 7 == 0 ? 33 : 20;
+    Line line(static_cast<std::size_t>(width), Cell{});
+    const int used = index % 5 == 0 ? 0 : 1 + (index % width);
+    std::ranges::for_each(std::views::iota(0, used), [&](int col) {
+        Cell &cell = line[static_cast<std::size_t>(col)];
+        cell.ch =
+            col % 9 == 0 ? 0x1F600u + static_cast<unsigned int>(index % 50) : 'a' + static_cast<unsigned int>(col % 26);
+        cell.fg = col % 4 == 0 ? 0x80000000u | static_cast<unsigned int>(index * 7919 % 0xFFFFFF)
+                               : static_cast<unsigned int>(col % 3);
+        cell.bg = col > used / 2 ? 41u : 0u;
+        cell.ul = index % 11 == 0 ? 0x80123456u : 0u;
+        cell.link = static_cast<unsigned short>(index % 13 == 0 ? 3 : 0);
+        cell.flags = static_cast<unsigned char>(col % 6 == 0 ? CellFlag::Bold : CellFlag::None);
+        cell.attrs = static_cast<unsigned char>(col % 8 == 0 ? CellAttr::Italic : CellAttr::None);
+    });
+    if (index % 3 == 0) {
+        line.back().bg = 44u; // a styled trailing space is content
+    }
+    return line;
+}
+
+// The compacted scrollback: lossless, indexed across blocks, compact.
+void scrollbackStorage(int &failures)
+{
+    constexpr int kLines = 1300; // more than two blocks
+    Scrollback history;
+    std::ranges::for_each(std::views::iota(0, kLines), [&](int index) {
+        history.pushBack(sampleLine(index), index % 4 == 1);
+    });
+    Line decoded;
+    const auto intact = [&](int offset) {
+        return std::ranges::all_of(std::views::iota(0, static_cast<int>(history.size())), [&](int index) {
+            history.line(static_cast<std::size_t>(index), decoded);
+            return decoded == sampleLine(index + offset) &&
+                   history.wrapped(static_cast<std::size_t>(index)) == ((index + offset) % 4 == 1);
+        });
+    };
+    selfTestCheck(failures, history.size() == kLines && intact(0), "scrollback: lines decode exactly as stored");
+    const auto contentful =
+        std::ranges::count_if(std::views::iota(0, kLines), [](int index) { return index % 5 != 0 || index % 3 == 0; });
+    selfTestCheck(
+        failures,
+        history.contentLines() == static_cast<std::size_t>(contentful) && history.uniformWidth() == -1,
+        "scrollback: content lines and mixed widths are tracked"
+    );
+    std::ranges::for_each(std::views::iota(0, 700), [&history](int) { history.popFront(); });
+    selfTestCheck(
+        failures,
+        history.size() == kLines - 700 && intact(700),
+        "scrollback: dropping the oldest keeps the rest"
+    );
+    const bool lastWrapped = history.takeBack(decoded);
+    selfTestCheck(
+        failures,
+        decoded == sampleLine(kLines - 1) && lastWrapped == ((kLines - 1) % 4 == 1) && intact(700),
+        "scrollback: taking the newest line"
+    );
+    history.clear();
+    selfTestCheck(failures, history.empty() && history.memoryUsage() == 0, "scrollback: clear frees everything");
+
+    Line yes(140, Cell{});
+    yes.front().ch = 'y';
+    std::ranges::for_each(std::views::iota(0, 20000), [&](int) { history.pushBack(yes, false); });
+    const std::size_t raw = std::size_t{20000} * 140 * sizeof(Cell);
+    selfTestCheck(
+        failures,
+        history.memoryUsage() * 100 < raw && history.uniformWidth() == 140,
+        "scrollback: a short line costs a few bytes, not a full row of cells"
+    );
+}
+
+// Re-wrapping streams the compacted history and leaves it alone when only
+// the height changes.
+void reflowHistory(int &failures)
+{
+    QByteArray output;
+    std::ranges::for_each(std::views::iota(0, 300), [&output](int index) {
+        output += "line " + QByteArray::number(index) + (index % 10 == 0 ? QByteArray(45, 'w') : QByteArray()) + "\r\n";
+    });
+    {
+        Terminal term = feed(output, 10, 20);
+        const QStringList before = logicalLines(term.screen());
+        term.resize(10, 7);
+        const QStringList narrow = logicalLines(term.screen());
+        term.resize(10, 33);
+        term.resize(10, 20);
+        selfTestCheck(
+            failures,
+            before.size() == 300 && narrow == before && logicalLines(term.screen()) == before,
+            "reflow: narrowing and widening keep every logical line"
+        );
+    }
+    {
+        Terminal term = feed(output + "\x1b[44m \x1b[0m\r\n" + output + "end", 10, 20);
+        const auto styledLine = [&term] {
+            const auto lines = std::views::iota(0, term.screen().totalLines());
+            const auto found = std::ranges::find_if(lines, [&term](int index) {
+                return term.screen().lineAt(index).front().bg != 0u;
+            });
+            return found == lines.end() ? -1 : *found;
+        };
+        const int styled = styledLine();
+        term.resize(4, 20);
+        const int shorter = styledLine();
+        term.resize(12, 20);
+        selfTestCheck(
+            failures,
+            styled > 0 && shorter == styled && styledLine() == styled &&
+                logicalLines(term.screen()).back() == QStringLiteral("end"),
+            "reflow: a height change keeps history lines as they are"
+        );
+    }
+    {
+        Terminal term = feed(output, 10, 20);
+        std::vector<Line> before;
+        std::ranges::for_each(std::views::iota(0, term.screen().scrollbackSize()), [&](int index) {
+            before.push_back(term.screen().lineAt(index));
+        });
+        term.write("\x1b[?1049hvim\x1b[?1049l");
+        const bool same = std::ranges::all_of(std::views::iota(0, static_cast<int>(before.size())), [&](int index) {
+            return term.screen().lineAt(index) == before[static_cast<std::size_t>(index)];
+        });
+        selfTestCheck(
+            failures,
+            same && term.screen().scrollbackSize() == static_cast<int>(before.size()),
+            "reflow: leaving the alternate screen keeps the history"
+        );
+    }
+    {
+        Terminal term = feed(output, 10, 20);
+        term.screen().setMaxScrollback(50);
+        const QStringList kept = logicalLines(term.screen());
+        selfTestCheck(
+            failures,
+            term.screen().scrollbackSize() == 50 && kept.back() == QStringLiteral("line 299"),
+            "scrollback: a lower limit drops the oldest lines"
+        );
+        term.screen().setMaxScrollback(0);
+        term.write(output);
+        selfTestCheck(failures, term.screen().scrollbackSize() > 300, "scrollback: 0 means unlimited");
+    }
+}
+
 } // namespace
 
 void runParserSelfTest(int &failures)
@@ -1558,6 +1737,8 @@ void runParserSelfTest(int &failures)
     mouseExtras(failures);
     reverseWraparound(failures);
     reflowAnchors(failures);
+    scrollbackStorage(failures);
+    reflowHistory(failures);
     notifications(failures);
     tabIndicators(failures);
     itermProtocol(failures);

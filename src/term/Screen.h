@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Cell.h"
+#include "Scrollback.h"
 
 #include <algorithm>
 #include <array>
-#include <deque>
 #include <optional>
 #include <ranges>
 #include <utility>
@@ -12,8 +12,6 @@
 
 namespace konsoll
 {
-
-using Line = std::vector<Cell>;
 
 // The terminal screen model: a grid of cells plus cursor, scrollback and
 // alternate-screen state. The ANSI parser (Terminal) drives it.
@@ -155,8 +153,10 @@ public:
 
     // Scrollback (main screen only).
     int scrollbackSize() const { return static_cast<int>(m_scrollback.size()); }
-    const Line &scrollbackLine(int index) const; // 0 = oldest
+    Line scrollbackLine(int index) const; // 0 = oldest
     void clearScrollback();
+    // Bytes held by the compacted scrollback.
+    std::size_t scrollbackMemory() const { return m_scrollback.memoryUsage(); }
 
     // Scrollback limit: 0 = unlimited, > 0 = max lines.
     void setMaxScrollback(int max);
@@ -172,7 +172,10 @@ public:
     void scrollToBottom();
     int scrollOffset() const { return m_scrollOffset; }
     bool atBottom() const { return m_scrollOffset == 0; }
-    const Line &lineAt(int index) const;
+    // A history line is decoded from the compacted scrollback, so lines come
+    // by value; copyLine() reuses `out`'s storage (for per-frame callers).
+    Line lineAt(int index) const;
+    void copyLine(int index, Line &out) const;
     // True when this physical row continues the logical line above it.
     bool isWrappedContinuation(int index) const;
 
@@ -237,11 +240,6 @@ private:
         int state{0}; // SavedPendingWrap | SavedOriginMode
     };
 
-    struct ReflowedScreen {
-        std::vector<Line> lines;
-        std::vector<bool> wrapped;
-    };
-
     void scrollUpOne(int top, int bottom);
     void scrollDownOne(int top, int bottom);
     void blankLine(int row);
@@ -270,37 +268,15 @@ private:
     void breakWideAt(int col);
     void pushScrollback(const Line &line, bool wrapped);
     void lineFeedImpl(bool soft);
+    struct ReflowStream;
     void reflow();
-    void collectPhysicalLines(std::vector<Line> &phys, std::vector<bool> &wrapped) const;
-    std::vector<std::vector<Cell>> buildLogicalLines(
-        const std::vector<Line> &phys,
-        const std::vector<bool> &wrapped,
-        size_t cursorPhys,
-        size_t &cursorLogical,
-        size_t &cursorLogicalCol
-    ) const;
-    ReflowedScreen rewrapLogicalLines(
-        const std::vector<std::vector<Cell>> &logical,
-        size_t cursorLogical,
-        size_t cursorLogicalCol,
-        size_t &cursorNewPhys,
-        size_t &cursorNewCol,
-        std::vector<size_t> &logicalStarts
-    ) const;
-    void remapAfterReflow(
-        const std::vector<Line> &phys,
-        const std::vector<bool> &wrapped,
-        const std::vector<size_t> &logicalStarts,
-        size_t keepFrom
-    );
-    void wrapLogicalLine(const std::vector<Cell> &log, ReflowedScreen &out, std::vector<size_t> &chunkStarts) const;
-    void redistribute(
-        const ReflowedScreen &rewrapped,
-        size_t cursorNewPhys,
-        size_t cursorNewCol,
-        size_t &keepFrom,
-        size_t &screenStart
-    );
+    std::size_t reflowScreenRows() const;
+    std::size_t reflowStart() const;
+    Scrollback takeReflowInput(std::size_t keep, std::size_t screenRows);
+    void feedReflow(ReflowStream &stream, Line &phys, bool wrapped) const;
+    void flushReflow(ReflowStream &stream) const;
+    void wrapLogicalLine(const Line &log, ReflowStream &stream) const;
+    void redistribute(ReflowStream &stream, std::size_t &keepFrom);
     std::vector<Line> &grid() { return m_inAlt ? m_alt : m_main; }
     const std::vector<Line> &grid() const { return m_inAlt ? m_alt : m_main; }
 
@@ -309,13 +285,12 @@ private:
     std::vector<Line> m_main;
     std::vector<Line> m_alt;
     std::vector<Line> m_mainSaved;
-    std::deque<Line> m_scrollback;
+    Scrollback m_scrollback;
     // Reflow bookkeeping: `wrapped[i]` marks a physical line that is a soft
     // continuation of the line above it (right-margin wrap, not an explicit
-    // CR/LF). Kept parallel to the grid rows and the scrollback so a resize
-    // can re-wrap logical lines to the new width.
+    // CR/LF). Kept parallel to the grid rows (the scrollback stores its own)
+    // so a resize can re-wrap logical lines to the new width.
     std::vector<bool> m_mainWrapped;
-    std::deque<bool> m_scrollbackWrapped;
     std::vector<bool> m_mainSavedWrapped;
     std::vector<bool> m_tabStops; // per column: a tab stop is set
     // Line sizes of the current grid's rows, and the main grid's while the

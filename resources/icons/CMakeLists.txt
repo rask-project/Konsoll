@@ -27,6 +27,7 @@ set(ICONS_SRC
     konsoll/svg/status-failure.svg
     konsoll/svg/status-success.svg
     konsoll/svg/security.svg
+    konsoll/svg/terminal.svg
     konsoll/svg/window.svg
 )
 

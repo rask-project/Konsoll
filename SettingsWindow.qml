@@ -28,6 +28,10 @@ Window {
             iconName: "window"
         },
         {
+            title: qsTr("Terminal"),
+            iconName: "terminal"
+        },
+        {
             title: qsTr("Keyboard"),
             iconName: "keyboard"
         },
@@ -338,6 +342,60 @@ Window {
                         Layout.rightMargin: 10
 
                         text: qsTr("These settings apply to all windows and are saved automatically.")
+                        font.pointSize: 11
+                        color: control.secondaryTextColor
+                        wrapMode: Text.Wrap
+                    }
+
+                    Item {
+                        Layout.fillHeight: true
+                    }
+                }
+
+                // Terminal: how much history each session keeps.
+                ColumnLayout {
+                    spacing: 6
+
+                    Controls.FormGroup {
+                        Controls.FormRow {
+                            label: qsTr("Unlimited scrollback")
+                            detail: qsTr("Keep every line of output")
+                            showSeparator: false
+
+                            Switch {
+                                checked: ScrollbackSettings.maxLines === 0
+                                onToggled: ScrollbackSettings.maxLines = checked ? 0 : control.preferences.scrollbackLimit
+                            }
+                        }
+
+                        Controls.FormRow {
+                            label: qsTr("Scrollback lines")
+                            detail: qsTr("Older lines are dropped past the limit")
+                            enabled: ScrollbackSettings.maxLines !== 0
+                            opacity: enabled ? 1 : 0.5
+
+                            SpinBox {
+                                Layout.preferredWidth: 150
+
+                                from: 100
+                                to: 10000000
+                                stepSize: 1000
+                                editable: true
+                                value: control.preferences.scrollbackLimit
+                                onValueModified: {
+                                    control.preferences.scrollbackLimit = value;
+                                    ScrollbackSettings.maxLines = value;
+                                }
+                            }
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 10
+                        Layout.rightMargin: 10
+
+                        text: qsTr("History is stored compressed: a line of plain text takes about as many bytes as it has characters, so unlimited scrollback stays affordable. Clear Buffer frees it.")
                         font.pointSize: 11
                         color: control.secondaryTextColor
                         wrapMode: Text.Wrap

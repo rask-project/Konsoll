@@ -5,6 +5,7 @@
 #include "NativeKeyTracker.h"
 #include "Notifications.h"
 #include "ProcessKind.h"
+#include "ScrollbackSettings.h"
 #include "term/Grapheme.h"
 #include "term/Palette.h"
 
@@ -109,6 +110,14 @@ TerminalBackend::TerminalBackend(QObject *parent) : QObject(parent)
     // signal the renderer listens to.
     connect(this, &TerminalBackend::selectionChanged, this, &TerminalBackend::scheduleFrame);
     connect(this, &TerminalBackend::highlightChanged, this, &TerminalBackend::scheduleFrame);
+    // Settings > Terminal: a lower limit trims the history right away.
+    connect(&ScrollbackSettings::shared(), &ScrollbackSettings::maxLinesChanged, this, [this] {
+        if (m_terminal) {
+            m_terminal->screen().setMaxScrollback(ScrollbackSettings::shared().maxLines());
+            emit scrollOffsetChanged();
+            scheduleFrame();
+        }
+    });
     connect(&m_transferProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
         const TransferJob completed = std::exchange(m_activeTransfer, TransferJob{});
         if (completed.removeLocal()) {
@@ -182,8 +191,12 @@ void TerminalBackend::handleRequests()
     if (!m_terminal) {
         return;
     }
+    const std::vector<TerminalRequest> requests = m_terminal->takeRequests();
+    if (requests.empty()) {
+        return; // the common case: runs after every chunk of output
+    }
     const QSettings settings;
-    std::ranges::for_each(m_terminal->takeRequests(), [this, &settings](const TerminalRequest &request) {
+    std::ranges::for_each(requests, [this, &settings](const TerminalRequest &request) {
         switch (request.kind) {
         case TerminalRequest::ClipboardRead:
             answerClipboardRead(request.data);
@@ -265,6 +278,7 @@ void TerminalBackend::startWorker(const QString &workingDirectory, const QString
     }
 
     m_terminal = std::make_unique<Terminal>(m_rows, m_cols, m_remoteHostToken);
+    m_terminal->screen().setMaxScrollback(ScrollbackSettings::shared().maxLines());
     m_terminal->setDefaultColors(m_defaultFg, m_defaultBg);
     m_terminal->setCellPixelSize(m_cellPixelWidth, m_cellPixelHeight);
     m_worker = std::make_unique<PtyWorker>();
@@ -298,6 +312,7 @@ void TerminalBackend::startReplay(int cols, int rows, const QByteArray &bytes)
     m_cols = cols;
     m_rows = rows;
     m_terminal = std::make_unique<Terminal>(m_rows, m_cols, m_remoteHostToken);
+    m_terminal->screen().setMaxScrollback(ScrollbackSettings::shared().maxLines());
     m_terminal->setDefaultColors(m_defaultFg, m_defaultBg);
     m_terminal->setCellPixelSize(m_cellPixelWidth, m_cellPixelHeight);
     m_state = SessionState::Running;
@@ -949,8 +964,9 @@ int TerminalBackend::search(const QString &query, bool regex)
         scheduleFrame();
         return -1;
     }
+    Line line;
     for (int lineIndex = 0; lineIndex < screen.totalLines(); ++lineIndex) {
-        const Line &line = screen.lineAt(lineIndex);
+        screen.copyLine(lineIndex, line);
         QString text;
         QVector<int> offsetToCell;
         text.reserve(static_cast<qsizetype>(line.size()));
@@ -1437,8 +1453,9 @@ QString TerminalBackend::bufferText() const
     const Screen &screen = m_terminal->screen();
     QString text;
     const int totalLines = screen.totalLines();
+    Line cells;
     std::ranges::for_each(std::views::iota(0, totalLines), [&](int line) {
-        const Line &cells = screen.lineAt(line);
+        screen.copyLine(line, cells);
         const auto reversedCells = std::views::reverse(cells);
         const auto lastContent = std::ranges::find_if(reversedCells, [](const Cell &cell) { return cell.ch != ' '; });
         const int end =
@@ -1747,10 +1764,8 @@ void TerminalBackend::visibleRowCells(int row, std::vector<Cell> &out) const
     }
     // The visible window is the last `rows` lines, shifted up by the scroll
     // offset (0 = at the bottom). Short lines are padded with blank cells.
-    const Line &line = m_terminal->screen().lineAt(visibleStart() + row);
-    const auto cols = static_cast<std::size_t>(gridCols());
-    out.resize(cols);
-    std::ranges::copy(line | std::views::take(cols), out.begin());
+    m_terminal->screen().copyLine(visibleStart() + row, out);
+    out.resize(static_cast<std::size_t>(gridCols()));
     std::ranges::transform(out, out.begin(), [this](const Cell &cell) { return resolvedCell(cell); });
 }
 
@@ -1964,8 +1979,9 @@ std::optional<TerminalBackend::VisibleImage> TerminalBackend::placeholderSlice(
 // consecutive cells of one image row become one rectangle.
 void TerminalBackend::appendPlaceholderImages(std::vector<VisibleImage> &out) const
 {
+    Line line;
     std::ranges::for_each(std::views::iota(0, m_rows), [&](int row) {
-        const Line &line = m_terminal->screen().lineAt(visibleStart() + row);
+        m_terminal->screen().copyLine(visibleStart() + row, line);
         PlaceholderCell previous;
         int previousCol = -2;
         std::ranges::for_each(std::views::iota(0, static_cast<int>(line.size())), [&](int col) {

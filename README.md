@@ -359,6 +359,7 @@ window right away and are saved automatically.
 | --- | --- |
 | **Appearance** | Font (family, size, weight, italic), cursor style (block, underline, bar, hollow block), blinking cursor |
 | **Window** | Background blur, background opacity |
+| **Terminal** | Scrollback: unlimited (the default) or a line limit |
 | **Keyboard** | Use Option as Meta key |
 | **Security** | What programs may do: read the clipboard (`OSC 52`: never / ask / always), read the window title, show desktop notifications, move and resize the window |
 
@@ -377,7 +378,8 @@ window right away and are saved automatically.
   coalescing; cell size measured from the font
 - Window resize reflected into the PTY (`TIOCSWINSZ`)
 - Unlimited scrollback with reflow on resize (images and double-size lines
-  stay with their text)
+  stay with their text), stored compressed: a line of plain text costs about
+  one byte per character, and clearing the buffer returns the memory
 - Unicode: wide characters (CJK, emoji) take two cells, zero-width marks take
   none, combining marks compose, and grapheme clusters (ZWJ sequences,
   skin tones, flags) are one cell with mode 2027

@@ -98,6 +98,8 @@ qt_add_qml_module(konsoll
         src/ProcessKind.h
         src/ShellFunctions.cpp
         src/ShellFunctions.h
+        src/ScrollbackSettings.cpp
+        src/ScrollbackSettings.h
         src/Notifications.h
         src/Notifications.mm
         src/TerminalBackend.cpp
@@ -130,6 +132,8 @@ qt_add_qml_module(konsoll
         src/term/Palette.h
         src/term/Screen.cpp
         src/term/Screen.h
+        src/term/Scrollback.cpp
+        src/term/Scrollback.h
         src/term/ScreenRect.cpp
         src/term/Terminal.cpp
         src/term/Terminal.h

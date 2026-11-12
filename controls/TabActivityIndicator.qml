@@ -67,15 +67,20 @@ Item {
                 }
             }
         }
-
-        RotationAnimator on rotation {
-            running: indicator.spinning && indicator.visible
-            from: 0
-            to: 360
-            duration: 900
-            loops: Animation.Infinite
-            onRunningChanged: if (!running)
-                arc.rotation = 0
-        }
     }
+
+    // Spin in 45° steps, eight a second, rather than with a per-frame
+    // animator: every step makes the whole window render, so a smooth spin
+    // cost ~120 renders a second for as long as a job ran. In a window that
+    // is not active the arc stands still (still a busy mark) and costs no
+    // renders at all.
+    Timer {
+        running: indicator.spinning && indicator.visible && indicator.Window.active
+        interval: 125
+        repeat: true
+        onTriggered: arc.rotation = (arc.rotation + 45) % 360
+    }
+
+    onSpinningChanged: if (!spinning)
+        arc.rotation = 0
 }

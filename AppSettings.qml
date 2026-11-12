@@ -12,6 +12,9 @@ Settings {
     // Cursor until a program picks one: 0 block, 1 underline, 2 bar, 3 hollow block.
     property int cursorShape: 0
     property bool cursorBlink: false
+    // Settings > Terminal: the line count used when scrollback is limited
+    // (the limit itself is ScrollbackSettings.maxLines, 0 = unlimited).
+    property int scrollbackLimit: 10000
 
     // Settings > Security: what applications in the terminal may do.
     property int clipboardRead: 1 // OSC 52 read: 0 never, 1 ask, 2 always

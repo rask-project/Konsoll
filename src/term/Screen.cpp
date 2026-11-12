@@ -155,18 +155,14 @@ void Screen::resize(int rows, int cols)
         ensureRows(m_mainSaved, rows, oldCols);
         ensureWrappedFlags(m_mainSavedWrapped, m_mainSaved.size());
     } else {
-        if (std::ranges::all_of(m_scrollback, isBlankLine)) {
+        if (m_scrollback.contentLines() == 0 && !m_scrollback.empty()) {
             m_scrollback.clear();
-            m_scrollbackWrapped.clear();
             m_scrollOffset = 0;
         }
-        const bool emptyScreen =
-            std::ranges::all_of(m_scrollback, isBlankLine) && std::ranges::all_of(m_main, isBlankLine);
+        const bool emptyScreen = m_scrollback.empty() && std::ranges::all_of(m_main, isBlankLine);
         if (emptyScreen) {
             // A smaller pane must not turn unused blank screen rows into
             // scrollback; that makes an idle terminal appear scrollable.
-            m_scrollback.clear();
-            m_scrollbackWrapped.clear();
             m_scrollOffset = 0;
             m_main = makeGrid(rows, cols);
             m_mainWrapped.assign(rows, false);
@@ -775,22 +771,19 @@ void Screen::insertColumns(int count)
     m_pendingWrap = false;
 }
 
-const Line &Screen::scrollbackLine(int index) const
+Line Screen::scrollbackLine(int index) const
 {
-    static const Line kEmpty;
-    if (index < 0 || index >= static_cast<int>(m_scrollback.size())) {
-        return kEmpty;
+    Line line;
+    if (index >= 0) {
+        m_scrollback.line(static_cast<std::size_t>(index), line);
     }
-    auto it = m_scrollback.begin();
-    std::advance(it, index);
-    return *it;
+    return line;
 }
 
 void Screen::clearScrollback()
 {
     m_droppedLines += static_cast<long long>(m_scrollback.size());
     m_scrollback.clear();
-    m_scrollbackWrapped.clear();
     m_scrollOffset = 0;
 }
 
@@ -886,15 +879,13 @@ void Screen::scrollUpOne(int top, int bottom) // NOLINT: top/bottom are inherent
     } else if (top == 0) {
         ++m_altScrolled; // images on the alternate screen scroll with it
     }
-    for (int r = top; r < bottom; ++r) {
-        g[r] = g[r + 1];
-    }
+    // Rotate, not copy: the rows swap their buffers and the old top row is
+    // reused (blanked) as the new bottom one.
+    std::rotate(g.begin() + top, g.begin() + top + 1, g.begin() + bottom + 1);
     blankLine(bottom);
     rotateLineSizes(top, bottom, 1);
     if (!m_inAlt) {
-        for (int r = top; r < bottom; ++r) {
-            m_mainWrapped[r] = m_mainWrapped[r + 1];
-        }
+        std::rotate(m_mainWrapped.begin() + top, m_mainWrapped.begin() + top + 1, m_mainWrapped.begin() + bottom + 1);
         // m_mainWrapped[bottom] is set by the caller (lineFeedImpl / scrollUp).
     }
 }
@@ -906,15 +897,11 @@ void Screen::scrollDownOne(int top, int bottom) // NOLINT: top/bottom are inhere
         return;
     }
     auto &g = grid();
-    for (int r = bottom; r > top; --r) {
-        g[r] = g[r - 1];
-    }
+    std::rotate(g.begin() + top, g.begin() + bottom, g.begin() + bottom + 1);
     blankLine(top);
     rotateLineSizes(top, bottom, -1);
     if (!m_inAlt) {
-        for (int r = bottom; r > top; --r) {
-            m_mainWrapped[r] = m_mainWrapped[r - 1];
-        }
+        std::rotate(m_mainWrapped.begin() + top, m_mainWrapped.begin() + bottom, m_mainWrapped.begin() + bottom + 1);
         m_mainWrapped[top] = false; // fresh top row is a hard break.
     }
 }
@@ -933,8 +920,7 @@ Cell Screen::eraseCell() const
 
 void Screen::pushScrollback(const Line &line, bool wrapped)
 {
-    m_scrollback.push_back(line);
-    m_scrollbackWrapped.push_back(wrapped);
+    m_scrollback.pushBack(line, wrapped);
     // A new line lands at the bottom: if the view is scrolled up, keep it on
     // the same absolute line (the offset grows with the bottom).
     if (m_scrollOffset > 0) {
@@ -943,8 +929,7 @@ void Screen::pushScrollback(const Line &line, bool wrapped)
 
     // Cap only when a limit is set (0 = unlimited).
     while (m_maxScrollback > 0 && static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
-        m_scrollback.pop_front();
-        m_scrollbackWrapped.pop_front();
+        m_scrollback.popFront();
         ++m_droppedLines;
         // Popping the oldest line shifts the view down by one; keep it on the
         // same absolute line.
@@ -959,8 +944,7 @@ void Screen::setMaxScrollback(int max)
     m_maxScrollback = std::max(0, max);
     // Trim if the new limit is smaller than the current scrollback.
     while (m_maxScrollback > 0 && static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
-        m_scrollback.pop_front();
-        m_scrollbackWrapped.pop_front();
+        m_scrollback.popFront();
         ++m_droppedLines;
         if (m_scrollOffset > 0) {
             --m_scrollOffset;
@@ -999,21 +983,29 @@ void Screen::scrollToBottom()
     m_scrollOffset = 0;
 }
 
-const Line &Screen::lineAt(int index) const
+Line Screen::lineAt(int index) const
 {
-    static const Line kEmpty;
+    Line line;
+    copyLine(index, line);
+    return line;
+}
+
+void Screen::copyLine(int index, Line &out) const
+{
     if (index < 0 || index >= totalLines()) {
-        return kEmpty;
+        out.clear();
+        return;
     }
     if (m_inAlt) {
-        return m_alt[index];
+        out = m_alt[static_cast<std::size_t>(index)];
+        return;
     }
-    if (index < static_cast<int>(m_scrollback.size())) {
-        auto it = m_scrollback.begin();
-        std::advance(it, index);
-        return *it;
+    const int history = static_cast<int>(m_scrollback.size());
+    if (index < history) {
+        m_scrollback.line(static_cast<std::size_t>(index), out);
+        return;
     }
-    return m_main[index - static_cast<int>(m_scrollback.size())];
+    out = m_main[static_cast<std::size_t>(index - history)];
 }
 
 bool Screen::isWrappedContinuation(int index) const
@@ -1023,42 +1015,71 @@ bool Screen::isWrappedContinuation(int index) const
     }
     const int scrollbackLines = static_cast<int>(m_scrollback.size());
     if (index < scrollbackLines) {
-        return m_scrollbackWrapped[index];
+        return m_scrollback.wrapped(static_cast<std::size_t>(index));
     }
     return m_mainWrapped[index - scrollbackLines];
 }
+
+// Re-wrap state. Logical lines are assembled from the old physical lines
+// one at a time and re-wrapped at the new width straight into the compacted
+// `out`, so the history is never held uncompressed (a resize used to copy it
+// three times at full width).
+struct Screen::ReflowStream {
+    static constexpr std::size_t Open = 1u;          // a logical line is being assembled
+    static constexpr std::size_t CursorPending = 2u; // the cursor is on it
+
+    Scrollback out;
+    Line logical;
+    Line chunk;
+    // Output line (relative to the map base) where each input line starts.
+    std::vector<long long> anchors;
+    std::vector<std::size_t> chunkStarts;
+    std::size_t logicalStart = 0; // output line of the logical line's first row
+    std::size_t offset = 0;       // column of the current input line in it
+    std::size_t previousSize = 0; // width of the previous input line
+    std::size_t input = 0;        // input lines fed so far
+    std::size_t cursorInput = 0;  // input line holding the cursor
+    std::size_t cursorCol = 0;    // cursor column in the logical line
+    std::size_t cursorNewPhys = 0;
+    std::size_t cursorNewCol = 0;
+    std::size_t state = 0;
+};
 
 void Screen::reflow()
 {
     if (m_inAlt) {
         return;
     }
-    std::vector<Line> phys;
-    std::vector<bool> wrapped;
-    collectPhysicalLines(phys, wrapped);
-    const size_t cursorPhys = m_scrollback.size() + static_cast<size_t>(m_cursorRow);
-    size_t cursorLogical = 0;
-    size_t cursorLogicalCol = 0;
-    const std::vector<std::vector<Cell>> logical =
-        buildLogicalLines(phys, wrapped, cursorPhys, cursorLogical, cursorLogicalCol);
-    size_t cursorNewPhys = 0;
-    size_t cursorNewCol = 0;
-    std::vector<size_t> logicalStarts;
-    const ReflowedScreen rewrapped =
-        rewrapLogicalLines(logical, cursorLogical, cursorLogicalCol, cursorNewPhys, cursorNewCol, logicalStarts);
+    const std::size_t screenRows = reflowScreenRows();
+    const std::size_t oldHistory = m_scrollback.size();
+    const std::size_t keep = reflowStart();
     const long long base = m_droppedLines;
     const std::vector<unsigned char> oldSizes = m_lineSizes;
-    const size_t oldHistory = m_scrollback.size();
-    size_t keepFrom = 0;
-    size_t screenStart = 0;
-    redistribute(rewrapped, cursorNewPhys, cursorNewCol, keepFrom, screenStart);
+
+    ReflowStream stream;
+    Scrollback input = takeReflowInput(keep, screenRows);
+    stream.out = std::move(m_scrollback); // the history lines kept as they are
+    stream.cursorInput = oldHistory - keep + static_cast<std::size_t>(m_cursorRow);
+    stream.anchors.reserve(input.size());
+    Line phys;
+    while (!input.empty()) {
+        const bool wrapped = input.takeFront(phys);
+        feedReflow(stream, phys, wrapped);
+    }
+    flushReflow(stream);
+
+    std::size_t keepFrom = 0;
+    redistribute(stream, keepFrom);
     m_droppedLines = base + static_cast<long long>(keepFrom);
-    remapAfterReflow(phys, wrapped, logicalStarts, keepFrom);
+    // Lines before `keep` did not move: the map starts after them.
+    std::ranges::transform(stream.anchors, stream.anchors.begin(), [base](long long line) { return base + line; });
+    m_reflowMap = ReflowMap{.base = base + static_cast<long long>(keep), .anchors = std::move(stream.anchors)};
+
     // Line sizes follow their rows: a double-size line keeps its size when
     // it is still on screen.
     m_lineSizes.assign(static_cast<std::size_t>(m_rows), SingleLine);
     std::ranges::for_each(std::views::iota(std::size_t{0}, oldSizes.size()), [&](std::size_t row) {
-        const std::size_t index = oldHistory + row;
+        const std::size_t index = oldHistory + row - keep;
         if (oldSizes[row] == SingleLine || index >= m_reflowMap.anchors.size()) {
             return;
         }
@@ -1069,151 +1090,141 @@ void Screen::reflow()
     });
 }
 
-// Records where every old physical line went (m_reflowMap): the first new
-// line of its logical line plus its offset in it, at the new width.
-void Screen::remapAfterReflow(
-    const std::vector<Line> &phys,
-    const std::vector<bool> &wrapped,
-    const std::vector<size_t> &logicalStarts,
-    size_t keepFrom
-)
+// Screen rows taking part in the reflow: down to the cursor or the last
+// non-blank row, whichever is lower.
+std::size_t Screen::reflowScreenRows() const
 {
-    const long long base = m_droppedLines - static_cast<long long>(keepFrom);
-    m_reflowMap = ReflowMap{.base = base, .anchors = {}};
-    m_reflowMap.anchors.reserve(phys.size());
-    std::size_t logicalIndex = 0;
-    std::size_t offset = 0;
-    std::ranges::for_each(std::views::iota(std::size_t{0}, phys.size()), [&](std::size_t i) {
-        if (i > 0 && wrapped[i]) {
-            offset += phys[i - 1].size();
-        } else if (i > 0) {
-            ++logicalIndex;
-            offset = 0;
-        }
-        const std::size_t start = logicalIndex < logicalStarts.size() ? logicalStarts[logicalIndex] : i;
-        m_reflowMap.anchors.push_back(
-            base + static_cast<long long>(start + (offset / static_cast<std::size_t>(m_cols)))
-        );
-    });
-}
-
-// 1. Collect physical lines: scrollback (oldest -> newest), then screen
-//    (top -> bottom).
-void Screen::collectPhysicalLines(std::vector<Line> &phys, std::vector<bool> &wrapped) const
-{
-    size_t screenRows = std::min(m_main.size(), static_cast<size_t>(m_cursorRow + 1));
-    for (size_t row = screenRows; row < m_main.size(); ++row) {
+    std::size_t screenRows = std::min(m_main.size(), static_cast<std::size_t>(m_cursorRow + 1));
+    for (std::size_t row = screenRows; row < m_main.size(); ++row) {
         if (!isBlankLine(m_main[row])) {
             screenRows = row + 1;
         }
     }
-    phys.reserve(m_scrollback.size() + screenRows);
-    wrapped.reserve(m_scrollback.size() + screenRows);
-    for (size_t i = 0; i < m_scrollback.size(); ++i) {
-        phys.push_back(m_scrollback[i]);
-        wrapped.push_back(m_scrollbackWrapped[i]);
-    }
-    for (size_t r = 0; r < screenRows; ++r) {
-        phys.push_back(m_main[r]);
-        wrapped.push_back(m_mainWrapped[r]);
-    }
+    return screenRows;
 }
 
-// 2. Build logical lines: merge soft continuations, then trim the trailing
-//    padding of each logical line. Spaces at a wrap point are content
-//    (they separate words), so only the end of the whole logical line is
-//    padding.
-std::vector<std::vector<Cell>> Screen::buildLogicalLines(
-    const std::vector<Line> &phys,
-    const std::vector<bool> &wrapped,
-    size_t cursorPhys,
-    size_t &cursorLogical,
-    size_t &cursorLogicalCol
-) const
+// First physical line that needs re-wrapping. History laid out at the
+// current width re-wraps to itself, so when only the height changed (or the
+// alternate screen closed) only the logical line reaching into the screen
+// and the screen itself are re-wrapped; leaving vim no longer walks the
+// whole history.
+std::size_t Screen::reflowStart() const
 {
-    auto const trimEnd = [](std::vector<Cell> &line) {
-        // A wide character's spacer is part of it, not trailing padding.
-        while (!line.empty() && line.back().ch == ' ' &&
-               (!hasFlag(line.back(), CellFlag::WideSpacer) || isWrapPadding(line, line.size() - 1))) {
-            line.pop_back();
-        }
-    };
-    std::vector<std::vector<Cell>> logical;
-    std::vector<Cell> cur;
-    bool curValid = false;
-    for (size_t i = 0; i < phys.size(); ++i) {
-        if (!curValid) {
-            cur = phys[i];
-            curValid = true;
-        } else if (wrapped[i]) {
-            if (!cur.empty() && isWrapPadding(cur, cur.size() - 1)) {
-                cur.pop_back();
-            }
-            cur.insert(cur.end(), phys[i].begin(), phys[i].end());
-        } else {
-            trimEnd(cur);
-            logical.push_back(std::move(cur));
-            cur = phys[i];
-            curValid = true;
-        }
-        if (i == cursorPhys) {
-            cursorLogical = logical.size();
-            cursorLogicalCol = (wrapped[i] ? cur.size() - phys[i].size() : 0) + static_cast<size_t>(m_cursorCol);
-        }
+    std::size_t start = m_scrollback.size();
+    if (m_scrollback.uniformWidth() != m_cols) {
+        return 0;
     }
-    if (curValid) {
-        trimEnd(cur);
-        logical.push_back(std::move(cur));
+    bool continues = !m_mainWrapped.empty() && m_mainWrapped.front();
+    while (continues && start > 0) {
+        --start;
+        continues = m_scrollback.wrapped(start);
     }
-    return logical;
+    return start;
 }
 
-// 3. Re-wrap each logical line at the new width. A wide character never
-//    straddles two rows: when its lead would land in the last column it moves
-//    to the next row and the gap becomes wrap padding.
-Screen::ReflowedScreen Screen::rewrapLogicalLines(
-    const std::vector<std::vector<Cell>> &logical,
-    size_t cursorLogical,
-    size_t cursorLogicalCol,
-    size_t &cursorNewPhys,
-    size_t &cursorNewCol,
-    std::vector<size_t> &logicalStarts
-) const
+// The physical lines to re-wrap, oldest first: history from `keep` on, then
+// the first `screenRows` screen rows. The whole history is moved, not copied.
+Scrollback Screen::takeReflowInput(std::size_t keep, std::size_t screenRows)
 {
-    ReflowedScreen rewrapped;
-    const auto cols = static_cast<size_t>(m_cols);
-    std::vector<size_t> chunkStarts;
-    logicalStarts.clear();
-    for (size_t logicalIndex = 0; logicalIndex < logical.size(); ++logicalIndex) {
-        const size_t logicalStart = rewrapped.lines.size();
-        logicalStarts.push_back(logicalStart);
-        chunkStarts.clear();
-        wrapLogicalLine(logical[logicalIndex], rewrapped, chunkStarts);
-        if (logicalIndex == cursorLogical) {
-            // Last chunk starting at or before the cursor column; columns past
-            // it (cursor beyond the trimmed text) spill onto following rows.
-            const auto chunk = std::ranges::upper_bound(chunkStarts, cursorLogicalCol) - 1;
-            const size_t offset = cursorLogicalCol - *chunk;
-            cursorNewPhys =
-                logicalStart + static_cast<size_t>(std::distance(chunkStarts.begin(), chunk)) + (offset / cols);
-            cursorNewCol = offset % cols;
-        }
+    Scrollback input;
+    if (keep == 0) {
+        input = std::move(m_scrollback);
+        m_scrollback = Scrollback{};
+    } else {
+        std::vector<std::pair<Line, bool>> tail(m_scrollback.size() - keep);
+        std::ranges::for_each(std::views::reverse(tail), [this](std::pair<Line, bool> &line) {
+            line.second = m_scrollback.takeBack(line.first);
+        });
+        std::ranges::for_each(tail, [&input](const std::pair<Line, bool> &line) {
+            input.pushBack(line.first, line.second);
+        });
     }
-    return rewrapped;
+    std::ranges::for_each(std::views::iota(std::size_t{0}, screenRows), [&](std::size_t row) {
+        input.pushBack(m_main[row], m_mainWrapped[row]);
+    });
+    return input;
 }
 
-void Screen::wrapLogicalLine(const std::vector<Cell> &log, ReflowedScreen &out, std::vector<size_t> &chunkStarts) const
+// Add the next physical line: it either continues the logical line being
+// assembled (soft wrap) or ends it and starts the next one.
+void Screen::feedReflow(ReflowStream &stream, Line &phys, bool wrapped) const
 {
-    const auto cols = static_cast<size_t>(m_cols);
-    size_t start = 0;
+    const std::size_t physSize = phys.size();
+    if ((stream.state & ReflowStream::Open) == 0u) {
+        stream.logical.swap(phys);
+        stream.logicalStart = stream.out.size();
+        stream.offset = 0;
+        stream.state |= ReflowStream::Open;
+    } else if (wrapped) {
+        if (!stream.logical.empty() && isWrapPadding(stream.logical, stream.logical.size() - 1)) {
+            stream.logical.pop_back();
+        }
+        stream.offset += stream.previousSize;
+        stream.logical.insert(stream.logical.end(), phys.begin(), phys.end());
+    } else {
+        flushReflow(stream);
+        stream.logical.swap(phys);
+        stream.logicalStart = stream.out.size();
+        stream.offset = 0;
+        stream.state |= ReflowStream::Open;
+    }
+    stream.previousSize = physSize;
+    stream.anchors.push_back(
+        static_cast<long long>(stream.logicalStart + (stream.offset / static_cast<std::size_t>(m_cols)))
+    );
+    if (stream.input == stream.cursorInput) {
+        stream.cursorCol = (wrapped ? stream.logical.size() - physSize : 0) + static_cast<std::size_t>(m_cursorCol);
+        stream.state |= ReflowStream::CursorPending;
+    }
+    ++stream.input;
+}
+
+// End the logical line: trim its trailing padding (spaces at a wrap point
+// are content, so only the end of the whole logical line is padding) and
+// re-wrap it, keeping the cursor on its column.
+void Screen::flushReflow(ReflowStream &stream) const
+{
+    if ((stream.state & ReflowStream::Open) == 0u) {
+        return;
+    }
+    Line &line = stream.logical;
+    // A wide character's spacer is part of it, not trailing padding.
+    while (!line.empty() && line.back().ch == ' ' &&
+           (!hasFlag(line.back(), CellFlag::WideSpacer) || isWrapPadding(line, line.size() - 1))) {
+        line.pop_back();
+    }
+    stream.chunkStarts.clear();
+    wrapLogicalLine(line, stream);
+    if ((stream.state & ReflowStream::CursorPending) != 0u) {
+        // Last chunk starting at or before the cursor column; columns past
+        // it (cursor beyond the trimmed text) spill onto following rows.
+        const auto cols = static_cast<std::size_t>(m_cols);
+        const auto chunk = std::ranges::upper_bound(stream.chunkStarts, stream.cursorCol) - 1;
+        const std::size_t offset = stream.cursorCol - *chunk;
+        stream.cursorNewPhys = stream.logicalStart +
+                               static_cast<std::size_t>(std::distance(stream.chunkStarts.begin(), chunk)) +
+                               (offset / cols);
+        stream.cursorNewCol = offset % cols;
+    }
+    stream.state = 0;
+}
+
+// Re-wrap one logical line at the new width. A wide character never
+// straddles two rows: when its lead would land in the last column it moves
+// to the next row and the gap becomes wrap padding.
+void Screen::wrapLogicalLine(const Line &log, ReflowStream &stream) const
+{
+    const auto cols = static_cast<std::size_t>(m_cols);
+    std::size_t start = 0;
     while (true) {
-        chunkStarts.push_back(start);
-        size_t take = std::min(cols, log.size() - start);
+        stream.chunkStarts.push_back(start);
+        std::size_t take = std::min(cols, log.size() - start);
         const bool more = start + take < log.size();
         if (more && take > 1 && hasFlag(log[start + take - 1], CellFlag::Wide)) {
             --take;
         }
-        Line line(
+        Line &line = stream.chunk;
+        line.assign(
             log.begin() + static_cast<std::ptrdiff_t>(start),
             log.begin() + static_cast<std::ptrdiff_t>(start + take)
         );
@@ -1221,8 +1232,7 @@ void Screen::wrapLogicalLine(const std::vector<Cell> &log, ReflowedScreen &out, 
             line.push_back(Cell{.fg = 0, .bg = 0, .ch = ' ', .flags = CellFlag::WideSpacer});
         }
         line.resize(cols, blankCell());
-        out.lines.push_back(std::move(line));
-        out.wrapped.push_back(start != 0);
+        stream.out.pushBack(line, start != 0);
         start += take;
         if (!more) {
             break;
@@ -1230,44 +1240,29 @@ void Screen::wrapLogicalLine(const std::vector<Cell> &log, ReflowedScreen &out, 
     }
 }
 
-// 4. Redistribute: last `rows` lines -> screen, the rest -> scrollback.
-// 5. Keep the cursor attached to its logical line and column. This keeps
-//    it in place when the window grows instead of anchoring it to the
-//    bottom row of the newly larger screen.
-void Screen::redistribute(
-    const ReflowedScreen &rewrapped,
-    size_t cursorNewPhys,
-    size_t cursorNewCol,
-    size_t &keepFrom,
-    size_t &screenStart
-)
+// The last `rows` re-wrapped lines become the screen, the rest the history
+// (trimmed to the limit). The cursor stays attached to its logical line and
+// column, which keeps it in place when the window grows instead of
+// anchoring it to the bottom row of the newly larger screen.
+void Screen::redistribute(ReflowStream &stream, std::size_t &keepFrom)
 {
-    const size_t total = rewrapped.lines.size();
+    Scrollback &out = stream.out;
+    const std::size_t total = out.size();
+    const auto rows = static_cast<std::size_t>(m_rows);
     // Cap only when a limit is set (0 = unlimited).
-    const size_t maxTotal =
-        m_maxScrollback > 0 ? static_cast<size_t>(m_rows) + static_cast<size_t>(m_maxScrollback) : total;
+    const std::size_t maxTotal = m_maxScrollback > 0 ? rows + static_cast<std::size_t>(m_maxScrollback) : total;
     keepFrom = total > maxTotal ? total - maxTotal : 0;
-    screenStart = total > static_cast<size_t>(m_rows) ? total - static_cast<size_t>(m_rows) : 0;
-    m_main.resize(static_cast<size_t>(m_rows));
-    m_mainWrapped.resize(static_cast<size_t>(m_rows), false);
-    m_scrollback.clear();
-    m_scrollbackWrapped.clear();
-    for (size_t i = keepFrom; i < screenStart; ++i) {
-        m_scrollback.push_back(rewrapped.lines[i]);
-        m_scrollbackWrapped.push_back(rewrapped.wrapped[i]);
-    }
-    for (int r = 0; r < m_rows; ++r) {
-        const size_t idx = screenStart + static_cast<size_t>(r);
-        if (idx < total) {
-            m_main[r] = rewrapped.lines[idx];
-            m_mainWrapped[r] = rewrapped.wrapped[idx];
-        } else {
-            m_main[r] = Line(m_cols, blankCell());
-            m_mainWrapped[r] = false;
-        }
-    }
-    m_cursorRow = std::clamp(static_cast<int>(cursorNewPhys) - static_cast<int>(screenStart), 0, m_rows - 1);
-    m_cursorCol = std::min(static_cast<int>(cursorNewCol), m_cols - 1);
+    const std::size_t screenStart = total > rows ? total - rows : 0;
+    m_main.assign(rows, Line(static_cast<std::size_t>(m_cols), blankCell()));
+    m_mainWrapped.assign(rows, false);
+    std::ranges::for_each(std::views::iota(screenStart, total) | std::views::reverse, [&](std::size_t index) {
+        const std::size_t row = index - screenStart;
+        m_mainWrapped[row] = out.takeBack(m_main[row]);
+    });
+    std::ranges::for_each(std::views::iota(std::size_t{0}, keepFrom), [&out](std::size_t) { out.popFront(); });
+    m_scrollback = std::move(out);
+    m_cursorRow = std::clamp(static_cast<int>(stream.cursorNewPhys) - static_cast<int>(screenStart), 0, m_rows - 1);
+    m_cursorCol = std::min(static_cast<int>(stream.cursorNewCol), m_cols - 1);
     m_pendingWrap = false;
     m_scrollOffset = 0;
 }

@@ -40,6 +40,14 @@ Guidance for AI agents working in this repository.
   scripts (`shell-integration/`) source them at startup and re-source at a
   prompt when the serial changes, so open tabs and `-i -c` background
   commands see them. `main()` rewrites them before the first shell starts.
+- **Scrollback** (`src/term/Scrollback`): history lines are stored
+  compacted (style runs + varint code points, trailing blanks dropped, width
+  kept) in `mmap`ed 256 KiB blocks, so unlimited history stays cheap and
+  freed blocks go back to the system (macOS malloc keeps freed memory).
+  `Screen::lineAt` returns lines by value; per-frame callers use `copyLine`.
+  Reflow streams the history block by block; when the width is unchanged
+  (height change, leaving the alternate screen) only the screen is
+  re-wrapped. The limit is `ScrollbackSettings` (0 = unlimited).
 - **Threading:** each session has a `PtyWorker` on its own `QThread` that
   alone touches the PTY descriptor, its notifier and the child process. PTY
   writes, resizes and shutdown go to it as queued calls; output comes back as
