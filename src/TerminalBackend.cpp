@@ -47,6 +47,8 @@ namespace
 
 // Quiet time after the last chunk of output before a frame is painted.
 constexpr std::chrono::milliseconds kFrameDelay{16};
+// How much of a command's output "Send Last Command to Agent" carries.
+constexpr qsizetype kSentOutputLength = 8000;
 
 double linearRgbChannel(int channel)
 {
@@ -1619,6 +1621,34 @@ bool TerminalBackend::saveTextToFile(const QUrl &url, bool selectionOnly) const
     const QString content = selectionOnly ? selectionText() : bufferText();
     const QByteArray encoded = content.toUtf8();
     return file.write(encoded) == encoded.size();
+}
+
+void TerminalBackend::pasteText(const QString &text)
+{
+    if (!m_worker || text.isEmpty()) {
+        return;
+    }
+    QByteArray pasted = text.toUtf8();
+    pasted.replace('\x1b', QByteArray{});
+    if (m_terminal && m_terminal->bracketedPasteEnabled()) {
+        pasted.prepend("\x1b[200~");
+        pasted.append("\x1b[201~");
+    }
+    writeToPty(pasted);
+}
+
+QString TerminalBackend::lastCommandText() const
+{
+    const QJsonArray commands = recentCommands(1, kSentOutputLength);
+    if (commands.isEmpty()) {
+        return {};
+    }
+    const QJsonObject command = commands.first().toObject();
+    const QString output = command.value(QLatin1String("output")).toString();
+    return tr("$ %1\n(exit status %2)\n%3")
+        .arg(command.value(QLatin1String("command")).toString())
+        .arg(command.value(QLatin1String("exitCode")).toInt(-1))
+        .arg(output);
 }
 
 void TerminalBackend::paste()

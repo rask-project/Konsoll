@@ -566,6 +566,37 @@ Item {
     Controls.Menu {
         id: contextMenu
 
+        // Read as the menu opens: the agent pane text would go to (same tab
+        // first), and what there is to send.
+        property var agentTarget: null
+        property string selectedText: ""
+        property string lastCommand: ""
+
+        onAboutToShow: {
+            agentTarget = view.session ? view.sessionManager.agentSessionFor(view.session) : null;
+            selectedText = agentTarget ? view.session.selectionText() : "";
+            lastCommand = agentTarget ? view.session.lastCommandText() : "";
+        }
+
+        Controls.MenuItem {
+            visible: contextMenu.agentTarget !== null && contextMenu.selectedText !== ""
+            height: visible ? implicitHeight : 0
+            text: qsTr("Send Selection to Agent")
+            onTriggered: view.sessionManager.sendToAgent(view.session, contextMenu.selectedText)
+        }
+
+        Controls.MenuItem {
+            visible: contextMenu.agentTarget !== null && contextMenu.lastCommand !== ""
+            height: visible ? implicitHeight : 0
+            text: qsTr("Send Last Command to Agent")
+            onTriggered: view.sessionManager.sendToAgent(view.session, contextMenu.lastCommand)
+        }
+
+        MenuSeparator {
+            visible: contextMenu.agentTarget !== null && (contextMenu.selectedText !== "" || contextMenu.lastCommand !== "")
+            height: visible ? implicitHeight : 0
+        }
+
         Controls.MenuItem {
             text: qsTr("Split Side by Side")
             onTriggered: {

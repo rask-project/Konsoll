@@ -366,6 +366,10 @@ connected, it also reports what it is doing, and the tab shows it:
 | Sparkle with a check | Done with the turn |
 | Sparkle with a cross (red) | Failed |
 
+- **Send to Agent.** Right-click a pane: **Send Selection to Agent** and
+  **Send Last Command to Agent** (the command, its exit status and output)
+  paste into the agent's pane — the one in the same tab first — as its next
+  prompt, ready for you to add a question and send.
 - **Answer permission prompts from the notification.** When an agent asks
   to run a tool, the notification shows what it wants (the command, the
   file) with **Allow** and **Deny**: the answer goes to the agent's pane as

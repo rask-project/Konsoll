@@ -233,6 +233,12 @@ public:
     // end of the tabs, named `title` when not empty, and activates it.
     void adoptSession(std::unique_ptr<TerminalBackend> session, const QString &title);
     Q_INVOKABLE void activateSession(QObject *session);
+    // The pane running an AI agent that text from `session` would go to: one
+    // in the same tab first, then any in the window; null when none runs.
+    Q_INVOKABLE QObject *agentSessionFor(QObject *session) const;
+    // Pastes `text` into that agent's pane (as its next prompt, not sent)
+    // and makes it the active pane. False when no agent runs.
+    Q_INVOKABLE bool sendToAgent(QObject *session, const QString &text);
     Q_INVOKABLE void setActiveWorkspace(int index);
     Q_INVOKABLE void splitActive(int orientation);
     Q_INVOKABLE void navigateActivationHistory(int direction);

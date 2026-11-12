@@ -70,6 +70,9 @@ Guidance for AI agents working in this repository.
   Dock badge counts waiting agents (`WindowRegistry::scheduleAgentBadgeUpdate`).
   Changing the hook specs makes installed hooks outdated (`agentHooksCurrent`):
   Settings offers Update.
+  Send to Agent (the pane's context menu) pastes the selection or the last
+  command block (`lastCommandText`) into `TerminalManager::agentSessionFor`
+  (an agent pane in the same tab first) with `pasteText`.
   The script is zsh (`zsocket`): `nc` can linger after the write.
 - **Agent integrations** (`AgentIntegrations`, QML singleton, Settings ▸ AI
   Agents): merges Konsoll's hooks into Claude Code / Codex / Qwen Code JSON

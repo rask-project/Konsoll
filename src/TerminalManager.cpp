@@ -498,6 +498,39 @@ void TerminalManager::onAgentStatusChanged(TerminalBackend *session, AgentState 
     );
 }
 
+QObject *TerminalManager::agentSessionFor(QObject *session) const
+{
+    TerminalBackend *const from = ownedSession(session);
+    const auto isAgent = [from](const TerminalBackend *candidate) {
+        return candidate != from &&
+               (candidate->agentStateValue() != AgentState::None || candidate->processKind() == QLatin1String("agent"));
+    };
+    if (TerminalWorkspaceModel *const workspace = from != nullptr ? workspaceOf(from) : nullptr) {
+        const QVariantList sameTab = workspaceSessions(workspace);
+        const auto found = std::ranges::find_if(sameTab, [&isAgent](const QVariant &value) {
+            const auto *const candidate = qobject_cast<const TerminalBackend *>(value.value<QObject *>());
+            return candidate != nullptr && isAgent(candidate);
+        });
+        if (found != sameTab.end()) {
+            return found->value<QObject *>();
+        }
+    }
+    const auto anywhere =
+        std::ranges::find_if(m_sessions, [&isAgent](const auto &candidate) { return isAgent(candidate.get()); });
+    return anywhere != m_sessions.end() ? anywhere->get() : nullptr;
+}
+
+bool TerminalManager::sendToAgent(QObject *session, const QString &text)
+{
+    auto *const agent = qobject_cast<TerminalBackend *>(agentSessionFor(session));
+    if (agent == nullptr || text.trimmed().isEmpty()) {
+        return false;
+    }
+    agent->pasteText(text);
+    activateSession(agent);
+    return true;
+}
+
 TerminalBackend *TerminalManager::sessionWithPaneId(int paneId) const
 {
     const auto found =

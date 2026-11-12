@@ -189,6 +189,12 @@ public:
     // Clipboard.
     Q_INVOKABLE void copySelection();
     Q_INVOKABLE void paste();
+    // Types `text` as a paste (bracketed when the program asked for it;
+    // escape characters dropped so the text cannot end the paste early).
+    Q_INVOKABLE void pasteText(const QString &text);
+    // The last command run at a prompt with its status and output, as text
+    // for an agent ("$ make" ...); empty without one.
+    Q_INVOKABLE QString lastCommandText() const;
     Q_INVOKABLE void pasteSelectionOrClipboard();
     Q_INVOKABLE bool saveTextToFile(const QUrl &url, bool selectionOnly) const;
     QString bufferText() const;

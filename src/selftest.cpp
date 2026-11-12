@@ -482,6 +482,25 @@ void checkAgentContextTools(
             agent->readRequest().isEmpty() && agent->agentState() != QStringLiteral("approval"),
         "agent tools: read_pane reads another pane only once the user allows it"
     );
+    // Send to Agent: text from another pane is pasted into the agent's pane
+    // (same tab first), which becomes active. A plain shell is no agent.
+    agent->setAgentStatus(konsoll::AgentState::None, {}, {}); // left working by read_pane's answer
+    const bool notYetAgent = manager.agentSessionFor(pane) != agent;
+    agent->setAgentStatus(konsoll::AgentState::Working, QStringLiteral("claude"), {});
+    manager.activateSession(pane);
+    const bool sent = manager.sendToAgent(pane, QStringLiteral("echo SENT_\x1bTO_AGENT"));
+    agent->writeText("\r");
+    check(
+        failures,
+        notYetAgent && sent && manager.agentSessionFor(pane) == agent && activeSession(manager) == agent &&
+            waitFor(
+                "agent tools: sent text runs",
+                [agent]() { return agent->bufferText().count(QStringLiteral("SENT_TO_AGENT")) >= 2; },
+                10000
+            ),
+        "agent tools: Send to Agent pastes into the agent's pane (escapes dropped) and activates it"
+    );
+    agent->setAgentStatus(konsoll::AgentState::None, {}, {});
 }
 
 // Konsoll's MCP server (konsoll --mcp), started from an agent's pane: its
@@ -493,8 +512,8 @@ void checkAgentTools(int &failures, TerminalManager &manager)
     BackgroundJobs jobs;
     konsoll::AgentCommands commands(&jobs);
     konsoll::AgentStatusServer::instance().setRequestHandler(
-        [&commands](const QJsonObject &request, konsoll::AgentStatusServer::Reply reply) {
-            commands.handle(request, std::move(reply));
+        [&commands](const QJsonObject &request, const konsoll::AgentStatusServer::Reply &reply) {
+            commands.handle(request, reply);
         }
     );
     manager.addWorkspace();
