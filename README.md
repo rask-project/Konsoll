@@ -79,22 +79,292 @@ is not the distribution artifact.
 On launch Konsoll detects your default shell (from the `passwd` entry) and
 starts it in a PTY.
 
-### Selecting command blocks
+## Using Konsoll
 
-Konsoll loads its OSC 133 shell integration automatically for zsh, bash, and
-fish in each PTY session; it does not edit shell startup files. Clicking a
-command or one of its output lines highlights the full block; Cmd+C or the Copy
-menu item copies its text. Other shells continue to run normally and retain
-single-line highlighting. This matches iTerm2's automatic integration for
-supported shells.
+<p align="center">
+  <img src="docs/images/overview.png" alt="A Konsoll window with three tabs and a workspace split into panes" width="900">
+</p>
 
-### Saving terminal text
+- [Keyboard shortcuts](#keyboard-shortcuts)
+- [Editing the command line (Option + arrows, Backspace, Delete)](#editing-the-command-line)
+- [Tabs (workspaces)](#tabs-workspaces)
+- [Split panes](#split-panes)
+- [Windows](#windows)
+- [Selecting, copying and searching](#selecting-copying-and-searching)
+- [Saving the buffer or a selection](#saving-the-buffer-or-a-selection)
+- [Background Commands](#background-commands)
+- [Settings](#settings)
 
-Choose **Save Buffer or Selection…** from the application menu or a terminal's
-context menu. With a mouse selection active, Konsoll saves that selected text
-(including selected words and lines); otherwise, it saves the complete
-scrollback and visible buffer. The file dialog lets you choose the filename
-and destination and opens in Downloads by default.
+### Keyboard shortcuts
+
+On macOS, ⌘ is Command, ⌥ is Option, ⌃ is Control and ⇧ is Shift.
+
+| Shortcut | Action | Menu |
+| --- | --- | --- |
+| ⌘N | New window | Window ▸ New Window |
+| ⌥⌘W | Close window | Window ▸ Close Window |
+| ⌘T | New tab (workspace) | Shell ▸ New Workspace… |
+| ⇧⌘T | New tab with a name | Shell ▸ New Named Workspace… |
+| ⌃Tab / ⌃⇧Tab | Next / previous tab, in the order you used them | — |
+| ⌘D | Split the active pane side by side | Shell ▸ Split Horizontally |
+| ⇧⌘D | Split the active pane top and bottom | Shell ▸ Split Vertically |
+| ⌘W | Close the active pane (the tab closes with its last pane) | Shell ▸ Close Session |
+| — | Close the whole tab | Shell ▸ Close Workspace |
+| — | Send the active pane to the background | Shell ▸ Move Session to Background |
+| ⇧⌘B | Open Background Commands | Window ▸ Background Commands |
+| ⌘C / ⌘V | Copy the selection / paste | Edit ▸ Copy / Paste |
+| ⌘A | Select everything (scrollback included) | Edit ▸ Select All |
+| — | Save the buffer or the selection to a file | Edit ▸ Save Buffer or Selection… |
+| ⌘F | Find in the scrollback | — |
+| ⌃L | Clear the screen | Shell ▸ Clear |
+| ⌃K | Clear the scrollback buffer | Shell ▸ Clear Buffer |
+| ⌘-click | Open a link (`OSC 8` hyperlinks and URLs) | — |
+| ⌘, | Settings | Konsoll ▸ Settings… |
+| ⌘Q | Quit (asks first while commands are running) | Konsoll ▸ Quit Konsoll |
+
+Konsoll asks before closing a pane, tab or window whose shell is still
+running a command.
+
+### Editing the command line
+
+Konsoll sends the keys macOS users expect to the shell's line editor, so word
+movement and word deletion work in zsh, bash and fish without any
+configuration:
+
+| Keys | Sends | What the shell does |
+| --- | --- | --- |
+| ⌥← | `Esc b` | Move the cursor one word left |
+| ⌥→ | `Esc f` | Move the cursor one word right |
+| ⌥⌫ (Option+Backspace) | `Esc DEL` | Delete the word before the cursor |
+| ⌥⌦ (Option+Delete, or fn⌥⌫ on laptops) | `Esc D` | Delete the word after the cursor |
+| ⌥. | `Esc .` | Insert the last argument of the previous command (repeat to go further back) |
+| ⌫ / ⌦ | `DEL` / `CSI 3 ~` | Delete the character before / under the cursor |
+| ⌃⌫ | `^H` | Backspace for the shell; editors such as Neovim can bind it on its own |
+| ⇧↩ | `LF` | A new line inside the prompt of Claude Code, Codex and other TUIs, without submitting |
+| ← → ↑ ↓, Home, End | cursor keys | Character movement, history, start / end of line |
+
+<p align="center">
+  <img src="docs/images/option-word-editing.gif" alt="Moving by words with Option+arrows and deleting words with Option+Backspace and Option+Delete" width="720">
+</p>
+
+These word shortcuts work whether or not **Use Option as Meta key** is on
+(Settings ▸ Keyboard). With it off (the default), Option+letter still types
+the macOS special characters (Option+2 = ™, accents with dead keys); turn it
+on when you want every Option+key to arrive as Alt/Meta in Emacs, tmux,
+readline or Neovim. Programs that enable the kitty keyboard protocol or
+xterm's modifyOtherKeys receive the full, unambiguous encoding of every key
+instead.
+
+### Tabs (workspaces)
+
+Every tab is a workspace: one shell, or several split panes, with its own
+running programs.
+
+<p align="center">
+  <img src="docs/images/tabs.png" alt="The tab strip with a system-monitor icon and new-output dot, a finished-command check mark, and the tab context menu" width="900">
+</p>
+
+- **Open** a tab with ⌘T or the **+** button at the end of the tab strip;
+  ⇧⌘T asks for a name first.
+- **Switch** by clicking a tab, or with ⌃Tab / ⌃⇧Tab, which walk through the
+  tabs in the order you last used them.
+- **Reorder** by pressing and holding a tab until it lifts, then dragging it
+  along the strip.
+- **Right-click a tab** for *New workspace*, *Rename workspace*, *Close
+  workspace*, *Move to background*, *Move to new window* and *Move to window
+  ▸*.
+- **Read the tab at a glance.** The icon shows the program running in the
+  tab's active pane (ssh, editors, git, containers, REPLs, database clients,
+  build tools, AI agents such as Claude Code…), a spinner while a command
+  runs and a progress ring when the program reports progress (`OSC 9;4`).
+  The title is the running command, or the shell's directory at the prompt.
+  A tab in the background tells you why it wants a look: new output, a
+  finished (✓) or failed (✗) command, or the bell.
+- Double-clicking empty space in the tab strip zooms the window, like a
+  title bar.
+
+### Split panes
+
+<p align="center">
+  <img src="docs/images/split-panes.png" alt="A workspace split into three panes, each with its own title bar, and a pane title-bar menu" width="900">
+</p>
+
+- **Split** the active pane with ⌘D (side by side) or ⇧⌘D (top and bottom),
+  from the **Shell** menu, or by right-clicking inside a pane (*Split Side by
+  Side* / *Split Top and Bottom*). Splits nest as deep as you like.
+- **Each pane** is an independent shell with its own title bar (running
+  command or directory) and close button. Right-click the title bar for
+  *Close tab*, *Divide horizontal*, *Divide vertical* and *Save Buffer*.
+- **Focus** a pane by clicking it; ⌘W closes the focused one.
+- **Rearrange** by dragging a pane by its title bar and dropping it on another
+  pane: drop on the left or right half to place them side by side, on the
+  top or bottom half to stack them — that is also how two panes swap between
+  a horizontal and a vertical split.
+- **Promote a pane to a tab** by dropping it on a tab strip — in this window
+  or another one — or tear it off into a new window by dropping it anywhere
+  outside the windows.
+
+<p align="center">
+  <img src="docs/images/drag-pane.gif" alt="Dragging a pane by its title bar to re-split it, then onto the tab strip to make it a tab" width="900">
+</p>
+
+Moving a pane or a tab never restarts anything: the shell, its running
+programs and its scrollback move with it.
+
+### Windows
+
+- **New window** with ⌘N. Every open window is listed in the **Window** menu;
+  pick one to bring it forward.
+- **Move a tab to another window** from its context menu (*Move to new
+  window*, *Move to window ▸ name*), or **press and hold the tab and drag it
+  out of the strip**: drop it on another window's tab strip to join its tabs,
+  or anywhere else to tear it off into a window of its own.
+- The last active window's size and position are restored on the next launch.
+- The window is **see-through**: the terminal background, the title bar and
+  the tab strip are tinted and blurred (native Liquid Glass on macOS 26).
+  Opacity and blur are set in Settings ▸ Window.
+
+<p align="center">
+  <img src="docs/images/tab-to-window.gif" alt="Dragging a tab out of the strip into a new window, then into another window" width="900">
+</p>
+
+### Selecting, copying and searching
+
+- **Select** by dragging; double-click selects a word, triple-click a line,
+  ⌘A everything including the scrollback. ⌘C copies, ⌘V or a middle click
+  pastes (as bracketed paste when the program asks for it).
+- **Command blocks.** Konsoll loads its shell integration (`OSC 133`)
+  automatically for zsh, bash and fish — it never edits your startup files.
+  Clicking a command or one of its output lines highlights the whole block,
+  and ⌘C copies it. Other shells keep single-line highlighting.
+
+  <p align="center">
+    <img src="docs/images/command-block.png" alt="A command and its output highlighted as one block after a click" width="720">
+  </p>
+
+- **Find** with ⌘F: type to search the whole scrollback — the counter shows
+  the current match and the total, ↩ / ⇧↩ jump to the next / previous one
+  (the view scrolls to it), `.*` switches to regular expressions and Esc
+  closes the bar.
+- **Images and files.** Pasting an image or dropping files into an SSH
+  session uploads them to the remote host and inserts their remote path.
+- The right-click menu inside a pane has Split, Save Buffer or Selection…,
+  Copy, Paste, Select All and Clear Buffer.
+
+<p align="center">
+  <img src="docs/images/search.png" alt="The find bar searching the scrollback for zip, on match 4 of 20" width="900">
+</p>
+
+### Saving the buffer or a selection
+
+Choose **Save Buffer or Selection…** from the **Edit** menu, from the
+right-click menu inside a pane, or **Save Buffer** from a pane's title-bar
+menu.
+
+- With a **selection** (dragged text, a word, a line, or a highlighted
+  command block), Konsoll saves just that text.
+- **Without a selection**, it saves the whole buffer: the complete scrollback
+  plus the visible screen.
+
+A save dialog opens in **Downloads**; pick the file name and folder. The text
+is written as UTF-8 (`.txt` by default).
+
+<p align="center">
+  <img src="docs/images/save-buffer.png" alt="Four selected lines of git log and the pane context menu with Save Buffer or Selection…" width="900">
+</p>
+
+<p align="center">
+  <img src="docs/images/save-dialog.png" alt="The save dialog, opened in Downloads" width="480">
+</p>
+
+### Background Commands
+
+Background Commands runs commands and shells **without a tab**: dev servers,
+build watchers, tunnels, long jobs. Open it with ⇧⌘B or **Window ▸ Background
+Commands**. Its sidebar has four sections.
+
+#### Running
+
+<p align="center">
+  <img src="docs/images/background-running.png" alt="The Running section with a command field, a list of jobs and the live output of the selected job" width="900">
+</p>
+
+1. Type a command in the field at the top (⇧↩ adds a line) and press
+   **Run** or ↩. It runs in your login shell as `$SHELL -i -c`, so your
+   aliases, `PATH` and the functions defined in Konsoll are available.
+2. Every job shows its state — *Running for…*, *Finished after…*, *Failed
+   with exit status N…*, *Stopped after…* — and the selected job's **live
+   output**.
+3. For the selected job: **Interrupt** sends ⌃C, **Stop** ends it, **Run
+   Again** restarts a finished command, **Save Output…** writes its output to
+   a file and **Open in Tab** turns a running job into a regular tab in the
+   active window.
+   **Remove** / **Remove Ended** clear finished jobs from the list.
+4. **Save…** next to Run opens the *Saved Commands* form with the command
+   filled in.
+
+A desktop notification tells you when a command ends on its own.
+
+#### Saved Commands
+
+<p align="center">
+  <img src="docs/images/background-saved-commands.png" alt="The Saved Commands section with the New Command form" width="900">
+</p>
+
+Keep the commands you start often and run them with one click:
+
+1. Click **Add Command…**.
+2. Fill in **Name** (optional — the command is shown when empty), **Command**
+   (one or more lines, run by your shell) and **Directory** (where it starts;
+   your home folder when empty, or **Choose…**).
+3. **Save** (⌘↩), or **Save and Run** to start it right away.
+
+Every saved command has **Run**, **Edit** and **Delete** buttons.
+
+#### Functions
+
+<p align="center">
+  <img src="docs/images/background-functions.png" alt="The Functions section with a function being edited" width="900">
+</p>
+
+Define shell functions in Konsoll instead of in your `.zshrc` / `.bashrc` /
+`config.fish`. Give each one a **Name**, an optional **Description** and a
+**Body** in your shell's language (`$1`, `$2`… and `$@` are its arguments).
+Every tab can call it — tabs that are already open pick it up at their next
+prompt — and so can background and saved commands. **Run in Background**
+runs a function as a background job.
+
+#### Sessions
+
+<p align="center">
+  <img src="docs/images/background-sessions.png" alt="The Sessions section listing every pane of every window" width="900">
+</p>
+
+Lists every pane of every window. **Show** brings one forward; **Move to
+Background** takes it out of its tab while it keeps running — it then appears
+under *Running*, where **Open in Tab** brings it back. The same move is in a
+tab's context menu (*Move to background*) and in **Shell ▸ Move Session to
+Background**.
+
+<p align="center">
+  <img src="docs/images/move-to-background.gif" alt="Sending a tab running a dev server to the background and opening it again as a tab" width="900">
+</p>
+
+### Settings
+
+Open Settings with ⌘, (**Konsoll ▸ Settings…**). Changes apply to every
+window right away and are saved automatically.
+
+| Section | Options |
+| --- | --- |
+| **Appearance** | Font (family, size, weight, italic), cursor style (block, underline, bar, hollow block), blinking cursor |
+| **Window** | Background blur, background opacity |
+| **Keyboard** | Use Option as Meta key |
+| **Security** | What programs may do: read the clipboard (`OSC 52`: never / ask / always), read the window title, show desktop notifications, move and resize the window |
+
+<p align="center">
+  <img src="docs/images/settings.png" alt="The four Settings sections: Appearance, Window, Keyboard and Security" width="900">
+</p>
 
 ## Features
 
@@ -138,7 +408,7 @@ An in-house VT500-style state machine (no `libvterm`), validated against
 
 - Images: kitty graphics protocol (with animation and Unicode placeholders),
   sixel, and iTerm2 `OSC 1337` inline images
-- `OSC 8` hyperlinks (Cmd+click), `OSC 4/10/11/12` color control
+- `OSC 8` hyperlinks (⌘-click), `OSC 4/10/11/12` color control
 - `OSC 52` clipboard (reads ask first by default)
 - `OSC 9` / `OSC 777` desktop notifications, `OSC 9;4` progress in the tab
 - `OSC 7` working directory, `OSC 133` / `OSC 633` command blocks, and the
@@ -147,12 +417,11 @@ An in-house VT500-style state machine (no `libvterm`), validated against
 
 ### Windows, tabs and split panes
 
-- Multiple windows (`Cmd+N`), listed in the Window menu; the last active
+- Multiple windows (`⌘N`), listed in the Window menu; the last active
   window's size and position are restored on the next launch
 - Multiple tabs (workspaces) per window, each an independent shell session
-  (`Cmd+T` / `Cmd+W`, named with `Cmd+Shift+T`, `Cmd+Tab` /
-  `Cmd+Shift+Tab` to move through activation history); press and hold a tab
-  to reorder it
+  (`⌘T` / `⌘W`, named with `⇧⌘T`, `⌃Tab` / `⌃⇧Tab` to move through
+  activation history); press and hold a tab to reorder it
 - **Tab indicators** — an icon for the program running in the tab's last
   active pane (ssh and mosh, editors, system monitors, containers, REPLs,
   database clients, sudo, pagers, git, build tools, tmux, AI agents such as
@@ -164,7 +433,7 @@ An in-house VT500-style state machine (no `libvterm`), validated against
   title-bar double-click setting). A background tab shows why it wants a look: new
   output, a finished (✓) or failed (✗) command (`OSC 133;D` exit status), or
   the bell
-- Nested horizontal/vertical split panes (`Cmd+D` / `Cmd+Shift+D`), each
+- Nested horizontal/vertical split panes (`⌘D` / `⇧⌘D`), each
   pane an independent session with its own title bar and close control
 - **Move a workspace to another window** — right-click a tab and choose
   *Move to new window* or *Move to window ▸*, or drag the tab out of the
@@ -185,36 +454,22 @@ An in-house VT500-style state machine (no `libvterm`), validated against
 - Text selection (drag, double-click word, triple-click line, Select All)
 - Clipboard copy/paste (text to the PTY; image paste uploads to an SSH host
   and inserts the remote image path; file drops upload to SSH sessions),
-  context menu, Clear Screen (`Cmd+L`) and
-  Clear Buffer (`Cmd+K`)
+  context menu, Clear Screen (`⌃L`) and Clear Buffer (`⌃K`)
 - Save the full terminal buffer or current selection to a UTF-8 text file
+- macOS word editing: `⌥←` / `⌥→`, `⌥⌫`, `⌥⌦` and `⌥.` — see
+  [Editing the command line](#editing-the-command-line)
 - Scrollback navigation by wheel and scrollbar
-- Scrollback search (literal or regular expression, next/previous match)
+- Scrollback search (`⌘F`; literal or regular expression, next/previous match)
 - Native macOS menu bar (App / Shell / Edit / Window) and About dialog
 
-### Background Commands
+### Background Commands and Settings
 
-A Settings-style window (`Cmd+Shift+B`, *Window ▸ Background Commands*)
-runs commands without a tab:
-
-- **Running** — start a command, see each job's state, elapsed time and exit
-  status, and its live output; Interrupt (⌃C), Stop, Run Again, save the
-  output to a file, or open it as a tab. A notification tells when a command ends on its own.
-- **Saved Commands** — name, command (one or more lines) and directory,
-  ready to run with one click.
-- **Functions** — shell functions defined in Konsoll instead of your rc file:
-  every tab can call them (open ones from their next prompt), and so can
-  background and saved commands.
-- **Sessions** — every pane of every window: bring one forward or send it to
-  the background. A tab's menu (*Move to background*) and *Shell ▸ Move
-  Session to Background* do the same; the shells keep running.
-
-### Settings
-
-A native-looking Settings window (`Cmd+,`) configures the font (family,
-size, weight, italic), window transparency and blur, Option as Meta, and
-what programs may do: clipboard reads (`OSC 52`), title reports and window
-operations (XTWINOPS), and desktop notifications.
+- Background Commands (`⇧⌘B`): running jobs with live output, saved
+  commands, shell functions defined in Konsoll, and every session of every
+  window — see [Background Commands](#background-commands)
+- A native-looking Settings window (`⌘,`): font, cursor, window opacity and
+  blur, Option as Meta, and what programs may do (clipboard reads, title
+  reports, window operations, notifications) — see [Settings](#settings)
 
 ### Window translucency
 
@@ -273,11 +528,14 @@ konsoll/
 ├── controls/                 # tab strip, menu, search bar, form/sidebar rows
 ├── shell-integration/        # OSC 133 snippets (zsh/bash/fish)
 ├── tests/fixtures/           # recorded regression fixtures
-├── tools/                    # vtdrive.py, regress.py
+├── tools/                    # vtdrive.py, regress.py, format-code.sh
+│   └── screenshots/          # docshot.sh: README screenshots and GIFs
 ├── resources/icons/          # SVG icon theme (add, arrows, close)
 ├── assets/                   # app icon (icns/png)
 ├── docs/
-│   └── RELEASE.md            # signing, notarization, packaging
+│   ├── RELEASE.md            # signing, notarization, packaging
+│   ├── SCREENSHOTS.md        # how the README screenshots and GIFs are made
+│   └── images/               # README screenshots and GIFs
 └── src/
     ├── TerminalBackend.h/.cpp   # QML<->C++ bridge per session
     ├── TerminalManager.h/.cpp   # a window's workspaces, splits and sessions
