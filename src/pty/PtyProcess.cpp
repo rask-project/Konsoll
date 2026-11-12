@@ -297,10 +297,12 @@ pid_t reapWithoutBlocking(pid_t pid, int &status)
 
 // Every process group with a process in session `session` (the shell is
 // the session leader, so its pid is the session id). Empty when the
-// session has no processes left or cannot be read.
+// session has no processes left or cannot be read. macOS answers
+// KERN_PROC_SESSION with ENOENT, even for a live session, and kinfo_proc
+// carries no session id: list the user's processes and ask getsid().
 std::vector<pid_t> sessionProcessGroups(pid_t session)
 {
-    std::array<int, 4> mib{CTL_KERN, KERN_PROC, KERN_PROC_SESSION, static_cast<int>(session)};
+    std::array<int, 4> mib{CTL_KERN, KERN_PROC, KERN_PROC_UID, static_cast<int>(::getuid())};
     std::size_t size = 0;
     if (::sysctl(mib.data(), mib.size(), nullptr, &size, nullptr, 0) != 0 || size == 0) {
         return {};
@@ -312,6 +314,9 @@ std::vector<pid_t> sessionProcessGroups(pid_t session)
         return {};
     }
     processes.resize(size / sizeof(kinfo_proc));
+    std::erase_if(processes, [session](const kinfo_proc &process) {
+        return ::getsid(process.kp_proc.p_pid) != session;
+    });
     const pid_t ownGroup = ::getpgrp();
     std::vector<pid_t> groups;
     std::ranges::transform(processes, std::back_inserter(groups), [](const kinfo_proc &process) {
