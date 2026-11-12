@@ -137,7 +137,10 @@ public:
 
     // Starts `command` in `directory` (home when empty; `~` is expanded),
     // listed as `title` (the command itself when empty).
-    Q_INVOKABLE QObject *run(const QString &command, const QString &directory = {}, const QString &title = {});
+    // `setup` runs before `command` in the same shell without being shown
+    // (AgentCommands turns pagers off with it).
+    Q_INVOKABLE QObject *
+    run(const QString &command, const QString &directory = {}, const QString &title = {}, const QString &setup = {});
     Q_INVOKABLE QObject *runSaved(int index);
     Q_INVOKABLE void interrupt(QObject *job) const;
     Q_INVOKABLE void stop(QObject *job);

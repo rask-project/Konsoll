@@ -18,6 +18,9 @@ namespace
 
 // How much of a background command's output a status reply carries.
 constexpr qsizetype kOutputTailLength = 6000;
+// No one reads an agent's background command as it runs, so a pager (git
+// log, man) would wait for a key forever. `export` works in zsh, bash, fish.
+constexpr auto kNoPagerSetup = "export PAGER=cat GIT_PAGER=cat; ";
 
 QJsonObject reply(const QString &text, bool isError = false)
 {
@@ -77,8 +80,9 @@ QJsonObject AgentCommands::runInBackground(const QString &token, const QJsonObje
     }
     const QString directory = arguments.value(QLatin1String("directory")).toString();
     const QString title = arguments.value(QLatin1String("title")).toString();
-    const auto *const job =
-        qobject_cast<const BackgroundJob *>(m_jobs->run(command, directory.isEmpty() ? cwd : directory, title));
+    const auto *const job = qobject_cast<const BackgroundJob *>(
+        m_jobs->run(command, directory.isEmpty() ? cwd : directory, title, QString::fromLatin1(kNoPagerSetup))
+    );
     if (job == nullptr) {
         return reply(QObject::tr("Konsoll could not start the command."), true);
     }

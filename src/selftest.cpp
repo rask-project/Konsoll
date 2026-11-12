@@ -350,7 +350,7 @@ void checkAgentTools(int &failures, TerminalManager &manager)
             "\n"
             R"({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"open_pane","arguments":{"command":"echo PANE_OK"}}})"
             "\n"
-            R"({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"run_in_background","arguments":{"command":"echo BG_AGENT_OK"}}})"
+            R"({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"run_in_background","arguments":{"command":"echo BG_AGENT_OK:$PAGER:$GIT_PAGER"}}})"
             "\n"
         ) > 0;
     requests.close();
@@ -401,9 +401,10 @@ void checkAgentTools(int &failures, TerminalManager &manager)
             status(agent->sessionToken())
                 .value(QStringLiteral("text"))
                 .toString()
-                .contains(QStringLiteral("BG_AGENT_OK")) &&
+                .contains(QStringLiteral("BG_AGENT_OK:cat:cat")) &&
+            job->command() == QLatin1String("echo BG_AGENT_OK:$PAGER:$GIT_PAGER") &&
             status(QStringLiteral("another-session")).value(QStringLiteral("isError")).toBool(),
-        "agent tools: job status with its output, for the agent that started it only"
+        "agent tools: job status with its output (pagers off, setup not shown), for the agent that started it only"
     );
     konsoll::AgentStatusServer::instance().setRequestHandler({});
     manager.closeWorkspace(workspace);

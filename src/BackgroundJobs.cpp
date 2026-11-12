@@ -320,7 +320,8 @@ void BackgroundJobs::eraseJob(BackgroundJob *job)
     notifyRunningCount();
 }
 
-QObject *BackgroundJobs::run(const QString &command, const QString &directory, const QString &title)
+QObject *
+BackgroundJobs::run(const QString &command, const QString &directory, const QString &title, const QString &setup)
 {
     const QString trimmed = command.trimmed();
     if (trimmed.isEmpty()) {
@@ -332,7 +333,7 @@ QObject *BackgroundJobs::run(const QString &command, const QString &directory, c
     session->setFocused(false);
     TerminalBackend *sessionPtr = session.get();
     BackgroundJob *job = addJob(std::move(session), title.trimmed(), trimmed, workingDirectory);
-    sessionPtr->startCommand(trimmed, workingDirectory);
+    sessionPtr->startCommand(setup.isEmpty() ? trimmed : setup + trimmed, workingDirectory);
     return job;
 }
 
