@@ -4,6 +4,10 @@ name: Release
 # self-contained app and publish it as a GitHub Release. The bundle is
 # ad-hoc signed (no Apple Developer ID), so it is not notarized: users clear
 # the quarantine flag once after downloading (see README "Install").
+#
+# A tag with a suffix (v3.6.0-beta.1, v3.6.0-rc.1) publishes a pre-release
+# instead: it can point at a feature branch's commit, and the latest release
+# stays the one users get (it is never marked Latest).
 on:
   push:
     tags: ["v*"]
@@ -98,6 +102,19 @@ jobs:
           Or open it, then allow it in **System Settings → Privacy & Security →
           Open Anyway**. Requires macOS 14.4+ on Apple Silicon.
           EOF
-          gh release create "$GITHUB_REF_NAME" out/* \
+          # A stable release lists the changes since the previous stable one,
+          # not since a pre-release in between.
+          PREVIOUS=$(git tag --list 'v*' --sort=-v:refname | grep -v -- - | grep -vxF "$GITHUB_REF_NAME" | head -n 1 || true)
+          FLAGS=(--latest)
+          if [ -n "$PREVIOUS" ]; then FLAGS+=(--notes-start-tag "$PREVIOUS"); fi
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            FLAGS=(--prerelease --latest=false)
+            {
+              echo
+              echo "> **Pre-release** built from \`${GITHUB_SHA::7}\` for testing; the latest"
+              echo "> release remains the stable version."
+            } >> "$RUNNER_TEMP/notes.md"
+          fi
+          gh release create "$GITHUB_REF_NAME" out/* "${FLAGS[@]}" \
             --title "Konsoll ${GITHUB_REF_NAME#v}" \
             --notes-file "$RUNNER_TEMP/notes.md" --generate-notes

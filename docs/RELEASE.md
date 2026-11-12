@@ -178,6 +178,20 @@ does not use a Developer ID, so the app is not notarized and users clear the
 quarantine flag once (README, "Install"). Steps 1–4 above remain the manual
 path for a Developer ID-signed, notarized build.
 
+A tag with a suffix (`v3.6.0-beta.1`, `v3.6.0-rc.1`) publishes a
+**pre-release** the same way, for trying a feature branch for a while
+before merging it. Tag the branch's commit and push the tag:
+
+```sh
+git tag v3.6.0-beta.1 && git push origin v3.6.0-beta.1
+```
+
+A pre-release is never marked Latest, so the stable release stays the one
+users get. The app shows the tag as its version (`git describe`); it has
+the release's bundle id, so installing it replaces the stable app until the
+next stable install. The notes of the next stable release start at the
+previous stable tag, skipping the pre-releases in between.
+
 The release notes open with `docs/releases/<tag>.md` (e.g.
 `docs/releases/v3.5.0.md`) when that file exists — what changed since the
 last release, for users — followed by the install instructions and GitHub's
