@@ -74,6 +74,7 @@ qt_add_qml_module(konsoll
         controls/TerminalTabStrip.qml
         controls/TerminalTabButton.qml
         controls/TabActivityIndicator.qml
+        controls/GlassSurface.qml
         controls/ToolButton.qml
         controls/SettingsSidebarItem.qml
         controls/FormGroup.qml

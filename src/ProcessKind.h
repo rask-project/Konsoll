@@ -22,7 +22,12 @@ enum class ProcessKind : std::uint8_t {
     Git,
     Build,
     Multiplexer,
-    Agent
+    Agent,
+    Network,
+    Archive,
+    Package,
+    Search,
+    Wait
 };
 
 // The kind of a foreground job from its executable name ("nvim" -> Editor,
@@ -42,7 +47,7 @@ bool isScriptInterpreter(const QString &executableName);
 QString programName(const QString &executablePath, const QStringList &arguments = {});
 
 // The name QML uses for a kind (and its icon): "remote", "editor", ...;
-// empty for None.
+// empty for None (a job of no known kind shows a generic running icon).
 QString processKindName(ProcessKind kind);
 
 } // namespace konsoll

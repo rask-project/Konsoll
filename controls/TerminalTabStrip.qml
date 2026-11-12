@@ -51,9 +51,10 @@ Rectangle {
     Component.onCompleted: updateWindowMovable()
 
     // The strip's background is native Liquid Glass (drawn behind the Qt
-    // content); a tinted fill here would wash it out. Without glass, fall
-    // back to the flat translucent fill.
-    color: stripGlass.supported ? "transparent" : Qt.rgba(systemPalette.window.r, systemPalette.window.g, systemPalette.window.b, 0.50)
+    // content) where the system has it; a tinted fill here would wash it
+    // out. Without it, the same look is emulated in QML over a light veil of
+    // the window color.
+    color: stripGlass.supported ? "transparent" : Qt.rgba(systemPalette.window.r, systemPalette.window.g, systemPalette.window.b, 0.30)
 
     GlassEffect {
         id: stripGlass
@@ -61,6 +62,24 @@ Rectangle {
         anchors.fill: parent
         visible: supported
         cornerRadius: 0
+    }
+
+    Controls.GlassSurface {
+        anchors.fill: parent
+        visible: !stripGlass.supported
+        radius: 0
+        density: 0.6
+        borderWidth: 0
+    }
+
+    // Hairline under the strip, where the glass meets the terminal.
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 1
+        visible: !stripGlass.supported
+        color: Application.styleHints.colorScheme === Qt.Dark ? Qt.rgba(0, 0, 0, 0.35) : Qt.rgba(0, 0, 0, 0.08)
     }
 
     SystemPalette {

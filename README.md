@@ -175,8 +175,10 @@ running programs.
   ▸*.
 - **Read the tab at a glance.** The icon shows the program running in the
   tab's active pane (ssh, editors, git, containers, REPLs, database clients,
-  build tools, AI agents such as Claude Code…), a spinner while a command
-  runs and a progress ring when the program reports progress (`OSC 9;4`).
+  build tools, downloads, archives, package managers, searches, AI agents
+  such as Claude Code…), a static "running" icon for any other command —
+  nothing spins, so a long job costs no redraws — and a progress ring when
+  the program reports progress (`OSC 9;4`).
   The title is the running command, or the shell's directory at the prompt.
   A tab in the background tells you why it wants a look: new output, a
   finished (✓) or failed (✗) command, or the bell.
@@ -364,7 +366,7 @@ window right away and are saved automatically.
 | **Security** | What programs may do: read the clipboard (`OSC 52`: never / ask / always), read the window title, show desktop notifications, move and resize the window |
 
 <p align="center">
-  <img src="docs/images/settings.png" alt="The four Settings sections: Appearance, Window, Keyboard and Security" width="900">
+  <img src="docs/images/settings.png" alt="The five Settings sections: Appearance, Window, Terminal, Keyboard and Security" width="900">
 </p>
 
 ## Features
@@ -426,10 +428,11 @@ An in-house VT500-style state machine (no `libvterm`), validated against
   activation history); press and hold a tab to reorder it
 - **Tab indicators** — an icon for the program running in the tab's last
   active pane (ssh and mosh, editors, system monitors, containers, REPLs,
-  database clients, sudo, pagers, git, build tools, tmux, AI agents such as
-  Claude Code, Codex and Qwen Code), a plain shell icon at the prompt,
-  a spinner while a job runs, and an
-  `OSC 9;4` progress ring. Next to it the tab (and the pane header) shows
+  database clients, sudo, pagers, git, build tools, tmux, network
+  transfers, archivers, package managers, searches, `sleep`, AI agents such
+  as Claude Code, Codex and Qwen Code), a plain shell icon at the prompt, a
+  static running icon for any other job, and an `OSC 9;4` progress ring.
+  The tabs are drawn as glass panes over the strip. Next to it the tab (and the pane header) shows
   the running command's name, else the shell's directory. Double-clicking
   empty tab-strip space zooms the window (or follows the system's
   title-bar double-click setting). A background tab shows why it wants a look: new

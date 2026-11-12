@@ -1335,6 +1335,13 @@ void tabIndicators(int &failures)
             processKind(QStringLiteral("zsh")) == ProcessKind::None &&
             processKind(QStringLiteral("42")) == ProcessKind::None && processKind(QString{}) == ProcessKind::None &&
             processKind(QStringLiteral("claude")) == ProcessKind::Agent &&
+            processKind(QStringLiteral("curl")) == ProcessKind::Network &&
+            processKind(QStringLiteral("tar")) == ProcessKind::Archive &&
+            processKind(QStringLiteral("pip3")) == ProcessKind::Package &&
+            processKind(QStringLiteral("rg")) == ProcessKind::Search &&
+            processKind(QStringLiteral("sleep")) == ProcessKind::Wait &&
+            processKind(QStringLiteral("watch")) == ProcessKind::Monitor &&
+            processKindName(ProcessKind::Wait) == QStringLiteral("wait") &&
             processKindName(ProcessKind::Multiplexer) == QStringLiteral("multiplexer") &&
             processKindName(ProcessKind::None).isEmpty(),
         "process kind: executable names, version suffixes and case"

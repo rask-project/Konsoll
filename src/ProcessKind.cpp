@@ -21,7 +21,7 @@ using namespace std::string_view_literals;
 constexpr auto kRemote = std::to_array({"et"sv, "mosh"sv, "mosh-client"sv, "sftp"sv, "ssh"sv, "telnet"sv});
 constexpr auto kEditor =
     std::to_array({"emacs"sv, "hx"sv, "kak"sv, "micro"sv, "nano"sv, "nvim"sv, "vi"sv, "view"sv, "vim"sv});
-constexpr auto kMonitor = std::to_array({"atop"sv, "btm"sv, "btop"sv, "glances"sv, "htop"sv, "top"sv});
+constexpr auto kMonitor = std::to_array({"atop"sv, "btm"sv, "btop"sv, "glances"sv, "htop"sv, "top"sv, "watch"sv});
 constexpr auto kContainer = std::to_array({"docker"sv, "k9s"sv, "kubectl"sv, "lazydocker"sv, "podman"sv});
 constexpr auto kRepl =
     std::to_array({"bun"sv, "deno"sv, "ghci"sv, "iex"sv, "ipython"sv, "irb"sv, "julia"sv, "lua"sv, "node"sv, "python"sv}
@@ -60,6 +60,15 @@ constexpr auto kAgent = std::to_array(
      "opencode"sv,
      "qwen"sv}
 );
+constexpr auto kNetwork = std::to_array(
+    {"aria2c"sv, "curl"sv, "http"sv, "nc"sv, "ping"sv, "rsync"sv, "scp"sv, "traceroute"sv, "wget"sv, "xh"sv}
+);
+constexpr auto kArchive =
+    std::to_array({"7z"sv, "bzip2"sv, "gunzip"sv, "gzip"sv, "tar"sv, "unrar"sv, "unzip"sv, "xz"sv, "zip"sv, "zstd"sv});
+constexpr auto kPackage =
+    std::to_array({"apt"sv, "brew"sv, "conda"sv, "gem"sv, "mas"sv, "pip"sv, "pipx"sv, "port"sv, "uv"sv});
+constexpr auto kSearch = std::to_array({"ag"sv, "fd"sv, "find"sv, "grep"sv, "locate"sv, "mdfind"sv, "rg"sv});
+constexpr auto kWait = std::to_array({"caffeinate"sv, "sleep"sv, "wait"sv});
 
 // Interpreters whose script argument names the program.
 constexpr auto kInterpreters = std::to_array({"bun"sv, "node"sv, "perl"sv, "python"sv, "ruby"sv});
@@ -82,7 +91,12 @@ constexpr auto kExecutables = std::to_array<std::span<const std::string_view>>(
      kGit,
      kBuild,
      kMultiplexer,
-     kAgent}
+     kAgent,
+     kNetwork,
+     kArchive,
+     kPackage,
+     kSearch,
+     kWait}
 );
 
 // processKindName(), indexed by ProcessKind.
@@ -99,10 +113,15 @@ constexpr auto kKindNames = std::to_array(
      "git"sv,
      "build"sv,
      "multiplexer"sv,
-     "agent"sv}
+     "agent"sv,
+     "network"sv,
+     "archive"sv,
+     "package"sv,
+     "search"sv,
+     "wait"sv}
 );
 
-constexpr std::size_t kKindCount = static_cast<std::size_t>(ProcessKind::Agent) + 1;
+constexpr std::size_t kKindCount = static_cast<std::size_t>(ProcessKind::Wait) + 1;
 static_assert(kExecutables.size() == kKindCount && kKindNames.size() == kKindCount);
 
 // `name` lowered and without a version suffix: "Python3.12" -> "python";

@@ -22,18 +22,21 @@ TabButton {
     readonly property color systemAccent: systemPalette.accent
 
     // Tab indicators (TerminalWorkspaceModel), from the workspace's last
-    // active pane: the leading slot shows OSC 9;4
-    // progress, else the kind of program running, else a spinner while a job
-    // runs, else a plain shell icon at the prompt; the trailing badge says
-    // why a background tab wants a look.
+    // active pane: the leading slot shows OSC 9;4 progress, else the kind of
+    // program running, else a generic running icon while a job runs, else a
+    // plain shell icon at the prompt. All of them are static: a spinner
+    // would make the window render for as long as the job ran. The trailing
+    // badge says why a background tab wants a look.
     readonly property int progressState: tab.workspace ? tab.workspace.progressState : 0
     readonly property int progressValue: tab.workspace ? tab.workspace.progressValue : 0
     readonly property string processKind: tab.workspace ? tab.workspace.processKind : ""
     readonly property bool busy: tab.workspace ? tab.workspace.busy : false
     readonly property string attention: tab.workspace ? tab.workspace.attention : ""
-    // Quick commands finish before the spinner would flash.
-    property bool spinnerDue: false
-    readonly property string leadingMode: tab.progressState > 0 ? "progress" : (tab.processKind !== "" ? "kind" : (tab.busy && tab.spinnerDue ? "spinner" : "shell"))
+    // Quick commands finish before the running icon would flash.
+    property bool runningDue: false
+    // OSC 9;4 state 3 is indeterminate progress: shown as running.
+    readonly property bool determinateProgress: tab.progressState > 0 && tab.progressState !== 3
+    readonly property string leadingMode: tab.determinateProgress ? "progress" : (tab.processKind !== "" ? "kind" : ((tab.busy && tab.runningDue) || tab.progressState === 3 ? "running" : "shell"))
 
     readonly property color successColor: "#30d158"
     readonly property color failureColor: "#ff453a"
@@ -50,7 +53,12 @@ TabButton {
             git: qsTr("Git"),
             build: qsTr("Build"),
             multiplexer: qsTr("Terminal multiplexer"),
-            agent: qsTr("AI agent")
+            agent: qsTr("AI agent"),
+            network: qsTr("Network transfer"),
+            archive: qsTr("Archive"),
+            "package": qsTr("Package manager"),
+            search: qsTr("Search"),
+            wait: qsTr("Waiting")
         })
     readonly property var attentionNames: ({
             activity: qsTr("New output"),
@@ -60,12 +68,12 @@ TabButton {
         })
 
     onBusyChanged: if (!busy)
-        spinnerDue = false
+        runningDue = false
 
     Timer {
         interval: 400
-        running: tab.busy && !tab.spinnerDue
-        onTriggered: tab.spinnerDue = true
+        running: tab.busy && !tab.runningDue
+        onTriggered: tab.runningDue = true
     }
 
     signal closeRequested
@@ -207,12 +215,15 @@ TabButton {
         }
     }
 
-    background: Rectangle {
-        radius: height / 2
-        color: tab.active ? Qt.rgba(tab.systemAccent.r, tab.systemAccent.g, tab.systemAccent.b, 0.05) : Qt.rgba(systemPalette.window.r, systemPalette.window.g, systemPalette.window.b, 0.25)
+    background: Controls.GlassSurface {
+        id: tabGlass
 
-        border.color: tab.attention === "bell" ? tab.warningColor : tab.attention === "failure" ? tab.failureColor : tab.attention === "success" ? tab.successColor : (tab.active ? Qt.rgba(tab.systemAccent.r, tab.systemAccent.g, tab.systemAccent.b, 0.8) : Qt.rgba(systemPalette.windowText.r, systemPalette.windowText.g, systemPalette.windowText.b, 0.05))
-        border.width: 1
+        radius: height / 2
+        // The active tab is a denser pane washed with the accent.
+        density: tab.active ? 1.3 : 1
+        tint: tab.systemAccent
+        tintStrength: tab.active ? 0.15 : 0
+        borderColor: tab.attention === "bell" ? tab.warningColor : tab.attention === "failure" ? tab.failureColor : tab.attention === "success" ? tab.successColor : (tab.active ? Qt.rgba(tab.systemAccent.r, tab.systemAccent.g, tab.systemAccent.b, 0.5) : (tabGlass.dark ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(0, 0, 0, 0.10)))
     }
 
     contentItem: Row {
@@ -249,12 +260,12 @@ TabButton {
             anchors.verticalCenter: parent.verticalCenter
 
             Accessible.role: Accessible.Indicator
-            Accessible.name: tab.leadingMode === "kind" ? (tab.kindNames[tab.processKind] || "") : tab.leadingMode === "progress" ? qsTr("Progress %1%").arg(tab.progressValue) : tab.leadingMode === "spinner" ? qsTr("Running") : qsTr("Shell")
+            Accessible.name: tab.leadingMode === "kind" ? (tab.kindNames[tab.processKind] || "") : tab.leadingMode === "progress" ? qsTr("Progress %1%").arg(tab.progressValue) : tab.leadingMode === "running" ? qsTr("Running") : qsTr("Shell")
 
             IconImage {
                 anchors.fill: parent
-                visible: tab.leadingMode === "kind" || tab.leadingMode === "shell"
-                name: tab.leadingMode === "shell" ? "kind-shell" : (tab.processKind !== "" ? "kind-" + tab.processKind : "")
+                visible: tab.leadingMode !== "progress"
+                name: tab.leadingMode === "kind" ? "kind-" + tab.processKind : (tab.leadingMode === "running" ? "kind-running" : "kind-shell")
                 sourceSize: Qt.size(16, 16)
                 color: tab.processKind === "privileged" ? tab.warningColor : systemPalette.windowText
             }
@@ -263,11 +274,10 @@ TabButton {
                 anchors.centerIn: parent
                 width: 13
                 height: 13
-                visible: tab.leadingMode === "progress" || tab.leadingMode === "spinner"
-                spinning: tab.leadingMode === "spinner" || tab.progressState === 3
+                visible: tab.leadingMode === "progress"
                 value: tab.progressValue
                 // ConEmu states: 2 error, 4 paused.
-                color: tab.progressState === 2 ? tab.failureColor : (tab.progressState === 4 ? tab.warningColor : (tab.leadingMode === "spinner" ? systemPalette.windowText : tab.systemAccent))
+                color: tab.progressState === 2 ? tab.failureColor : (tab.progressState === 4 ? tab.warningColor : tab.systemAccent)
                 trackColor: Qt.rgba(systemPalette.windowText.r, systemPalette.windowText.g, systemPalette.windowText.b, 0.15)
             }
         }

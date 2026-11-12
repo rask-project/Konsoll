@@ -11,6 +11,7 @@ set(ICONS_SRC
     konsoll/svg/close.svg
     konsoll/svg/keyboard.svg
     konsoll/svg/kind-agent.svg
+    konsoll/svg/kind-archive.svg
     konsoll/svg/kind-build.svg
     konsoll/svg/kind-container.svg
     konsoll/svg/kind-database.svg
@@ -18,11 +19,16 @@ set(ICONS_SRC
     konsoll/svg/kind-git.svg
     konsoll/svg/kind-monitor.svg
     konsoll/svg/kind-multiplexer.svg
+    konsoll/svg/kind-network.svg
+    konsoll/svg/kind-package.svg
     konsoll/svg/kind-pager.svg
     konsoll/svg/kind-privileged.svg
     konsoll/svg/kind-remote.svg
     konsoll/svg/kind-repl.svg
+    konsoll/svg/kind-running.svg
+    konsoll/svg/kind-search.svg
     konsoll/svg/kind-shell.svg
+    konsoll/svg/kind-wait.svg
     konsoll/svg/status-bell.svg
     konsoll/svg/status-failure.svg
     konsoll/svg/status-success.svg

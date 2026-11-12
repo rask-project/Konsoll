@@ -84,6 +84,11 @@ Guidance for AI agents working in this repository.
 - System Settings-style windows (Settings, Background Commands) share
   `controls/SettingsSidebarItem.qml`, `controls/FormGroup.qml` and
   `controls/FormRow.qml`; reuse them for new panes of that style.
+- The tabs are drawn with `controls/GlassSurface.qml`, a glass look emulated
+  in QML (the strip behind them is native Liquid Glass where available). Tab
+  indicators are static icons (`resources/icons/konsoll/svg/kind-*.svg`, one
+  per `ProcessKind`, plus `kind-running`): nothing in the tab strip may
+  animate continuously, as every animated frame renders the whole window.
 
 ## C++ rules
 
