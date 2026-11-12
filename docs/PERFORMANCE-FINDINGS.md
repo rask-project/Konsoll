@@ -227,6 +227,33 @@ discards it. iTerm2 costs less per extra tab; Konsoll idles near zero,
 stores history ~20× more compactly (~14 bytes per `yes` line against ~260)
 and gives the memory back on a clear.
 
+### iTerm2 with a minimal profile
+
+The default comparison ran iTerm2 with the user's profile, whose blinking
+cursor repaints the window continuously and whose Python API server is on;
+Konsoll's cursor does not blink by default. Re-run with an isolated copy of
+iTerm2 (its own bundle id, so its own preferences; removed afterwards) and
+the same profile minus those: no cursor blink, API server and update checks
+off, same font, colors, transparency, 48×199 window and unlimited
+scrollback. Konsoll re-measured on the current build.
+
+| Scenario | Konsoll | iTerm2, user profile | iTerm2, minimal profile |
+| --- | --- | --- | --- |
+| Idle, window active | 0.5% | 9.2% | 2.8% |
+| Idle, window not active | ~0% | 1.7% | 3.4% |
+| `sleep` (busy tab, no output) | 0.6% | 6.7% | 3.4% |
+| `top` redrawing at 1 Hz | 1.1% | 10.8% | 8.7% |
+| `yes > /dev/null` | 1.0% | 1.9% | 2.1% |
+| `yes \| head -n 5000000` (to the last byte parsed) | 6.7 s | 8.4 s | 7.7 s |
+| `yes` for 15 s: peak, after a clear | 466 MB, 97 MB | 13 GB, 885 MB | 12 GB, 473 MB |
+| Idle footprint | 94–192 MB | 242 MB | 269 MB |
+
+The blinking cursor explains most of iTerm2's idle cost; with it off
+Konsoll still idles at a fraction of iTerm2's CPU, redraws a TUI with an
+eighth of it, parses a burst ~13% faster and keeps scrollback in a
+fraction of the memory. Konsoll's idle footprint varies with the window's
+graphics memory (94 MB to 192 MB across runs of the same build).
+
 ## Reproduction notes
 
 - Launch the Release bundle, open N tabs, measure with
