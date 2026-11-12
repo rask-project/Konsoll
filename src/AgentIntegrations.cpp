@@ -289,6 +289,7 @@ QVariantMap agentEntry(const AgentInfo &agent)
         {QStringLiteral("id"), fromView(agent.id)},
         {QStringLiteral("name"), fromView(agent.name)},
         {QStringLiteral("path"), path},
+        {QStringLiteral("displayPath"), QStringLiteral("~/") + fromView(agent.file)},
         {QStringLiteral("available"), QFileInfo(homeFile(agent.configDirectory)).isDir()},
         {QStringLiteral("installed"), installed || viaPlugin},
         {QStringLiteral("viaPlugin"), viaPlugin && !installed},

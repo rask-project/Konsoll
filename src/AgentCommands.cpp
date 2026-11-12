@@ -171,7 +171,10 @@ void AgentCommands::readPane(const QString &token, const QJsonObject &arguments,
     }
     const QString name =
         AgentIntegrations().agentName(agent->agentName().isEmpty() ? agent->foregroundProcess() : agent->agentName());
-    const QString place = target->displayTitle() + QStringLiteral(" — ") + target->currentDirectory();
+    // The pane's title, and its directory when the title is something else.
+    const QString title = target->displayTitle();
+    const QString directory = target->currentDirectory();
+    const QString place = directory.isEmpty() || title == directory ? title : title + QStringLiteral(" — ") + directory;
     // Answered once: by the user, or refused if the agent's pane closes first.
     auto pending = std::make_shared<Reply>(answer);
     const bool asked = agent->requestRead(

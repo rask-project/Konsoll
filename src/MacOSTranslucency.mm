@@ -6,6 +6,7 @@
 #include <array>
 
 #include <QDebug>
+#include <QGuiApplication>
 #include "MacOSTranslucency.h"
 
 namespace
@@ -17,7 +18,10 @@ const char glassHostAssociationKey{};
 
 NSWindow *windowFromId(WId winId)
 {
-    NSView *const nsView = reinterpret_cast<NSView *>(winId);
+    // Only the Cocoa platform's window id is an NSView: under another one
+    // (offscreen, for self-tests and captures) there is no native window.
+    static const bool cocoa = QGuiApplication::platformName() == QLatin1String("cocoa");
+    NSView *const nsView = cocoa ? reinterpret_cast<NSView *>(winId) : nil;
     return (nsView != nullptr) ? [nsView window] : nil;
 }
 } // namespace

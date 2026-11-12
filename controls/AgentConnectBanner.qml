@@ -34,7 +34,7 @@ Rectangle {
     implicitHeight: content.implicitHeight + 24
     radius: 8
 
-    color: Qt.rgba(appPalette.window.r, appPalette.window.g, appPalette.window.b, 0.94)
+    color: Qt.rgba(appPalette.window.r, appPalette.window.g, appPalette.window.b, 0.98)
     border.color: appPalette.mid
     layer.enabled: true
 

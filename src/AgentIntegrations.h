@@ -54,7 +54,8 @@ class AgentIntegrations final : public QObject
     QML_NAMED_ELEMENT(AgentIntegrations)
     QML_SINGLETON
 
-    // One map per agent: id, name, path (the file Konsoll changes),
+    // One map per agent: id, name, path (the file Konsoll changes) and
+    // displayPath (the same from ~),
     // available (the agent's configuration directory exists), installed,
     // viaPlugin (Claude Code's Konsoll plugin is enabled instead), outdated
     // (connected with hooks an older Konsoll wrote) and declined (its

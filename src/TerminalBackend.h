@@ -198,7 +198,7 @@ public:
     Q_INVOKABLE void pasteSelectionOrClipboard();
     Q_INVOKABLE bool saveTextToFile(const QUrl &url, bool selectionOnly) const;
     QString bufferText() const;
-    QString selectionText() const;
+    Q_INVOKABLE QString selectionText() const;
 
     // One-frame snapshot of the visible grid for the QML renderer.
     Q_INVOKABLE QVariantList snapshot() const;
