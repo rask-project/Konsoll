@@ -47,6 +47,15 @@ namespace
 
 // Quiet time after the last chunk of output before a frame is painted.
 constexpr std::chrono::milliseconds kFrameDelay{16};
+// A "prompt" the agent itself sends to wake up (Claude Code's
+// <task-notification> when a background command ends, <system-reminder>,
+// ...): not the user's task.
+bool isAgentSystemMessage(const QString &text)
+{
+    static const QRegularExpression tag(QStringLiteral("^<[a-z][a-z_-]*>"));
+    return tag.match(text).hasMatch();
+}
+
 // How much of a command's output "Send Last Command to Agent" carries.
 constexpr qsizetype kSentOutputLength = 8000;
 
@@ -529,7 +538,7 @@ void TerminalBackend::setAgentStatus(AgentState state, const QString &agent, con
     }
     if (state == AgentState::None) {
         m_agentTask.clear();
-    } else if (state == AgentState::Working && !text.isEmpty()) {
+    } else if (state == AgentState::Working && !text.isEmpty() && !isAgentSystemMessage(text)) {
         m_agentTask = text; // a new prompt (UserPromptSubmit)
     }
     m_agentState = state;

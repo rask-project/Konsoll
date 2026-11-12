@@ -199,6 +199,7 @@ void checkTabIndicators(int &failures, TerminalManager &manager, TerminalBackend
     // A permission prompt (approval) answered from Konsoll: Enter reaches the
     // agent's pane, the state moves on and the prompt's task stays.
     u->writeText("\"$KONSOLL_AGENT_HOOK\" claude working 'Fix the build' </dev/null; "
+                 "\"$KONSOLL_AGENT_HOOK\" claude working '<task-notification> <task-id>x</task-id>' </dev/null; "
                  "\"$KONSOLL_AGENT_HOOK\" claude approval 'rm -rf build' </dev/null; "
                  "read answer; echo \"ANSWER[$answer]\"; sleep 30\n");
     const bool asked = waitFor(
