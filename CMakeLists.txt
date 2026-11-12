@@ -182,9 +182,18 @@ add_subdirectory(resources/icons)
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
 # explicit, fixed bundle identifier manually though.
+# Debug builds get a bundle id of their own: with the release installed too,
+# macOS would otherwise resolve the shared id to the other copy (a click on a
+# notification launches it) and share its notification permission.
+# QSettings is keyed by the organization domain (main.cpp), not this id.
+set(KONSOLL_BUNDLE_ID com.github.rask-project.konsoll)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    string(APPEND KONSOLL_BUNDLE_ID ".debug")
+endif()
+
 set_target_properties(konsoll PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME "Konsoll"
-    MACOSX_BUNDLE_GUI_IDENTIFIER com.github.rask-project.konsoll
+    MACOSX_BUNDLE_GUI_IDENTIFIER ${KONSOLL_BUNDLE_ID}
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     MACOSX_BUNDLE TRUE
