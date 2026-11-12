@@ -1,9 +1,11 @@
-// A full-screen, click-through dark gradient for the built-in display.
+// A full-screen, click-through background for the built-in display: a dark
+// gradient, or an image (the desktop wallpaper, from `docshot.sh wallpaper`).
 //
 // Konsoll's window is see-through, so screenshots show whatever is behind it.
-// Run this behind the app so every shot gets the same neutral background.
+// Run this behind the app so every shot gets the same background and no
+// other window shows through.
 //
-// Usage: backdrop        (runs until killed)
+// Usage: backdrop [IMAGE]        (runs until killed)
 import Cocoa
 
 final class GradientView: NSView {
@@ -21,7 +23,15 @@ app.setActivationPolicy(.accessory)
 // global coordinates screencapture -R and CGWindowList use.
 let window = NSWindow(contentRect: NSScreen.screens[0].frame, styleMask: .borderless,
                       backing: .buffered, defer: false)
-window.contentView = GradientView()
+let arguments = CommandLine.arguments
+if arguments.count > 1, let image = NSImage(contentsOfFile: arguments[1]) {
+    let view = NSImageView()
+    view.image = image
+    view.imageScaling = .scaleAxesIndependently
+    window.contentView = view
+} else {
+    window.contentView = GradientView()
+}
 window.level = .normal
 window.isOpaque = true
 window.ignoresMouseEvents = true

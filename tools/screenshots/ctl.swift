@@ -49,6 +49,19 @@ case "windows":
         ]
         print(fields.map { "\($0)" }.joined(separator: " "))
     }
+case "wallpaper":
+    // The window number of the wallpaper on the built-in display (0,0), for
+    // screencapture -l: the picture alone, without windows or desktop icons.
+    let list = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] ?? []
+    let wallpaper = list.first { info in
+        let bounds = info[kCGWindowBounds as String] as? [String: Double] ?? [:]
+        return (info[kCGWindowName as String] as? String) == "Wallpaper" && bounds["X"] == 0 && bounds["Y"] == 0
+    }
+    guard let number = wallpaper?[kCGWindowNumber as String] else {
+        FileHandle.standardError.write("no wallpaper window\n".data(using: .utf8)!)
+        exit(1)
+    }
+    print(number)
 case "click":
     let at = point(2)
     let count = args.count > 4 ? Int64(number(4)) : 1

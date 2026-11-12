@@ -9,7 +9,11 @@
 #   launch                   start the copy with a fake HOME and neutral prompt
 #   stop                     quit the copy, the backdrop and the HUD
 #
-#   backdrop on|off          neutral full-screen background behind the app
+#   wallpaper                capture the desktop wallpaper (no windows, no
+#                            icons) to $DIR/wallpaper.png
+#   backdrop on [IMAGE|wallpaper] | off
+#                            full-screen background behind the app: a neutral
+#                            gradient, an image or the captured wallpaper
 #   hud show X Y             caption pill, bottom-center at X,Y
 #   hud say TEXT...          set the caption ("" hides it)
 #   hud off
@@ -220,7 +224,12 @@ write_demo_settings() {
     font=$(defaults read "$REAL_DOMAIN" General.fontFamily 2>/dev/null || true)
     [[ -n $font ]] && defaults write "$DOMAIN" General.fontFamily "$font"
     defaults write "$DOMAIN" General.fontPointSize -int 14
-    defaults write "$DOMAIN" General.windowAlpha -float 1.0
+    # The see-through window as you use it: your opacity and blur.
+    local alpha blur
+    alpha=$(defaults read "$REAL_DOMAIN" General.windowAlpha 2>/dev/null || echo 0.85)
+    blur=$(defaults read "$REAL_DOMAIN" General.blurEnabled 2>/dev/null || echo 1)
+    defaults write "$DOMAIN" General.windowAlpha -float "$alpha"
+    defaults write "$DOMAIN" General.blurEnabled -bool "$([[ $blur == 1 || $blur == true ]] && echo true || echo false)"
     defaults write "$DOMAIN" General.windowState normal
 }
 
@@ -280,14 +289,24 @@ cmd_backdrop() {
     case ${1:-} in
     on)
         stop_pid backdrop
-        nohup "$BIN/backdrop" >/dev/null 2>&1 &
+        local image=${2:-}
+        [[ $image == wallpaper ]] && image=$DIR/wallpaper.png
+        [[ -z $image || -f $image ]] || die "no image $image (run '$0 wallpaper' first)"
+        nohup "$BIN/backdrop" ${image:+"$image"} >/dev/null 2>&1 &
         echo $! >"$DIR/backdrop.pid"
         sleep 0.5
         [[ -n $(pid_of app || true) ]] && cmd_front
         ;;
     off) stop_pid backdrop ;;
-    *) die "usage: backdrop on|off" ;;
+    *) die "usage: backdrop on [IMAGE|wallpaper] | off" ;;
     esac
+}
+
+cmd_wallpaper() {
+    local id
+    id=$("$BIN/ctl" wallpaper) || die "could not find the wallpaper window"
+    screencapture -x -o -l "$id" "$DIR/wallpaper.png"
+    echo "$DIR/wallpaper.png"
 }
 
 cmd_hud() {
@@ -407,6 +426,7 @@ setup) cmd_setup "$@" ;;
 launch) cmd_launch ;;
 stop) cmd_stop ;;
 backdrop) cmd_backdrop "$@" ;;
+wallpaper) cmd_wallpaper ;;
 hud) cmd_hud "$@" ;;
 windows) "$BIN/ctl" windows "$(app_pid)" ;;
 place) cmd_place "$@" ;;
