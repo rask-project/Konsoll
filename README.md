@@ -362,9 +362,61 @@ connected, it also reports what it is doing, and the tab shows it:
 | Icon | State |
 | --- | --- |
 | Sparkle (accent color) | Working on a turn |
-| Speech bubble (amber) | Waiting for you: a permission prompt or a question |
+| Speech bubble (amber) | Asking for permission to run a tool, or waiting for an answer |
 | Sparkle with a check | Done with the turn |
 | Sparkle with a cross (red) | Failed |
+
+<p align="center">
+  <img src="docs/images/agent-status.png" alt="An agent asking for permission to run npm test in the webapp tab, other tabs with agents working and done, a dev server in the next pane" width="900">
+</p>
+
+- **Answer permission prompts from the notification.** When an agent asks
+  to run a tool, the notification shows what it wants (the command, the
+  file) with **Allow** and **Deny** (hover it, or click its arrow): the
+  answer goes to the agent's pane as if typed there (Enter for its first
+  choice, Escape to refuse), without bringing Konsoll forward.
+
+<p align="center">
+  <img src="docs/images/agent-approval.gif" alt="The agent asks to run npm test, the request is allowed from Konsoll and the agent finishes the turn" width="900">
+</p>
+
+- **Window ▸ AI Agents** (⇧⌘A) lists every pane running an agent, in every
+  window, the ones that need you first: what each asks for, the task it
+  works on and how long it has waited, with **Allow** / **Deny** and
+  **Show** to jump there. The Dock icon counts the agents waiting for you.
+
+<p align="center">
+  <img src="docs/images/agents-window.png" alt="Window AI Agents: two agents asking for permission with Allow and Deny, one working on a task, one done" width="900">
+</p>
+
+- **Connect an agent** from the pane: when you start an agent that is not
+  connected yet, the pane offers to connect it (*Not Now* stops asking).
+
+<p align="center">
+  <img src="docs/images/agent-connect.png" alt="A pane running Codex offers to connect it to Konsoll" width="900">
+</p>
+
+  Or in **Settings ▸ AI Agents**: *Connect* adds Konsoll's hooks to Claude
+  Code (`~/.claude/settings.json`), Codex (`~/.codex/hooks.json`) or Qwen
+  Code (`~/.qwen/settings.json`), keeping everything else in the file and a
+  copy of it as `.konsoll-backup`; opencode gets a plugin file
+  (`~/.config/opencode/plugins/konsoll.js`). *Remove* takes them out again,
+  and *Update* appears when a newer Konsoll changes the hooks. Restart
+  agents already running; Codex runs new hooks only after you trust them
+  with `/hooks`. The hooks do nothing outside Konsoll.
+
+<p align="center">
+  <img src="docs/images/settings-agents.png" alt="Settings AI Agents: Claude Code and Qwen Code connected, Codex not connected, and the MCP setup" width="720">
+</p>
+
+- **Send to Agent.** Right-click a pane: **Send Selection to Agent** and
+  **Send Last Command to Agent** (the command, its exit status and output)
+  paste into the agent's pane — the one in the same tab first — as its next
+  prompt, ready for you to add a question and send.
+
+<p align="center">
+  <img src="docs/images/send-to-agent.png" alt="A failed npm test selected, and the pane menu offering Send Selection to Agent and Send Last Command to Agent" width="900">
+</p>
 
 - **Agents in parallel.** **Shell ▸ New Agent in Worktree…** asks for an
   agent and a branch, creates a git worktree of the current pane's
@@ -372,38 +424,14 @@ connected, it also reports what it is doing, and the tab shows it:
   existing branch or worktree is reused) and starts the agent there in a new
   tab. Each agent works apart from your checkout, and Window ▸ AI Agents
   lists them all.
-- **Send to Agent.** Right-click a pane: **Send Selection to Agent** and
-  **Send Last Command to Agent** (the command, its exit status and output)
-  paste into the agent's pane — the one in the same tab first — as its next
-  prompt, ready for you to add a question and send.
-- **Answer permission prompts from the notification.** When an agent asks
-  to run a tool, the notification shows what it wants (the command, the
-  file) with **Allow** and **Deny**: the answer goes to the agent's pane as
-  if typed there (Enter for its first choice, Escape to refuse), without
-  bringing Konsoll forward. **Window ▸ AI Agents** has the same buttons, the
-  task each agent works on and how long it has waited; the Dock icon counts
-  the agents waiting for you. Connected agents get it after **Update** in
-  Settings ▸ AI Agents.
-
-- **Connect an agent** from the pane: when you start an agent that is not
-  connected yet, the pane offers to connect it (*Not Now* stops asking). Or
-  in **Settings ▸ AI Agents**: *Connect* adds Konsoll's
-  hooks to Claude Code (`~/.claude/settings.json`), Codex
-  (`~/.codex/hooks.json`) or Qwen Code (`~/.qwen/settings.json`), keeping
-  everything else in the file and a copy of it as `.konsoll-backup`;
-  opencode gets a plugin file (`~/.config/opencode/plugins/konsoll.js`).
-  *Remove* takes them out again. Restart agents already running; Codex runs
-  new hooks only after you trust them with `/hooks`. The hooks do nothing
-  outside Konsoll.
 - **A background tab** flags a waiting agent like the bell, a finished turn
   with ✓ and a failure with ✗. Hovering the tab shows the agent's message
   (what it needs permission for). With several panes in a tab, the pane that
   most needs you sets the icon.
-- **Notifications:** when an agent waits for you, finishes or fails while
-  you are looking elsewhere, Konsoll posts a notification; clicking it brings
-  that pane forward. Turn it off in Settings ▸ AI Agents.
-- **Window ▸ AI Agents** (⇧⌘A) lists every pane running an agent, in every
-  window, the ones waiting for you first, with **Show** to jump there.
+- **Notifications:** when an agent asks for permission, waits for you,
+  finishes (with the task it was given) or fails while you are looking
+  elsewhere, Konsoll posts a notification; clicking it brings that pane
+  forward. Turn it off in Settings ▸ AI Agents.
 
 **Konsoll tools for agents (MCP).** `konsoll --mcp` is an MCP server that
 gives an agent running in Konsoll these tools, from the pane it runs in:
@@ -416,6 +444,10 @@ gives an agent running in Konsoll these tools, from the pane it runs in:
 | `recent_commands` | The last commands run in the agent's own pane before it started (your build, your tests), with exit status and output: "why did my build fail?" works without pasting anything. |
 | `list_panes` | The panes of the agent's window: number, tab, program and directory — no output. |
 | `read_pane` | Reads another pane (a dev server's log, a test run). The agent's pane asks you first (**Allow Once** / **Deny**, also on the notification); nothing is read without it. |
+
+<p align="center">
+  <img src="docs/images/agent-read-request.png" alt="The agent asks to read the pane with the failing test; its pane offers Deny and Allow Once" width="900">
+</p>
 
 Register it once per agent: **Settings ▸ AI Agents ▸ Copy** gives the exact
 command or configuration for this Konsoll. For the installed app:
@@ -438,7 +470,8 @@ env_vars = ["KONSOLL_SESSION_TOKEN", "KONSOLL_AGENT_SOCKET"]
 "mcp": { "konsoll": { "type": "local", "command": ["/Applications/Konsoll.app/Contents/MacOS/konsoll", "--mcp"] } }
 ```
 
-Outside Konsoll the server offers no tools. It cannot read other panes.
+Outside Konsoll the server offers no tools. It reads another pane only after
+you allow it.
 
 Claude Code can use the Konsoll plugin instead of the hooks:
 
@@ -449,7 +482,8 @@ claude plugin install konsoll@konsoll
 
 Any other tool can report a state the same way: Konsoll exports
 `KONSOLL_AGENT_HOOK`, a script that takes the agent's name, the state
-(`working`, `waiting`, `idle`, `error` or `ended`) and an optional message:
+(`working`, `waiting`, `approval`, `idle`, `error` or `ended`) and an
+optional message:
 
 ```bash
 "$KONSOLL_AGENT_HOOK" my-agent waiting "Approve the migration?"

@@ -152,6 +152,26 @@ above): relaunch your Konsoll afterwards so it writes your functions back.
 | `background-sessions.png` | Every pane of the window with Show / Move to Background | — |
 | `move-to-background.gif` | The `http.server` tab, right-click ▸ *Move to background*, the job under Running with new output, *Open in Tab* | Main window at 50,170 (760×470) and Background Commands at 830,170 (800×560), recorded together (`record NAME 17 20 130 1640 640`, GIF 1000 px). Select the moved job right away so `curl` requests show in its output; with four jobs listed, *Open in Tab* sits lower (y≈480) |
 | `settings.png` | The five Settings sections: two rows of two, then Security centered | One shot per section; Security as a `shot-rect` twice as wide (backdrop on both sides), stacked with ffmpeg `hstack` / `vstack` |
+| `agent-status.png` | Tabs `webapp` (an agent asking to run `npm test -- login`, a `vite` dev server beside it), `users` (working), `docs` (done), `api` (asking to read a pane) | Demo agents (below) |
+| `agent-approval.gif` | The same tab: the permission prompt, allowed from Konsoll, the agent finishing its turn | Frames every 250 ms, 4 fps, 900 px |
+| `agents-window.png` | Window ▸ AI Agents with those four agents: Allow / Deny on the two asking, the task and state of the others | — |
+| `agent-connect.png` | A tab running a Codex that reports nothing, with the offer to connect it | `~/.codex` exists, not connected |
+| `agent-read-request.png` | Tab `api`: a failed `npm test` beside an agent whose `read_pane` waits for Deny / Allow Once | The demo agent calls `konsoll --mcp` itself |
+| `send-to-agent.png` | The failed `npm test` selected and the pane menu with Send Selection / Send Last Command to Agent | Select All, then the context menu |
+| `settings-agents.png` | Settings ▸ AI Agents: Claude Code and Qwen Code connected, Codex not, opencode not found, the MCP rows | — |
+
+**The AI agent shots** use demo agents in the docshot home: a small binary
+copied as `claude`, `codex` and `qwen` (so the pane is named like the agent)
+that runs `~/.demo/<name>-$DEMO.zsh`, scripts that clear the screen, print
+an agent-like transcript and report states with `"$KONSOLL_AGENT_HOOK"`, plus
+an `npm` shell function (a failing `npm test`, `npm run dev` running a
+`vite` stand-in). The current set was taken without the screen-recording
+permission: the isolated copy, started with a temporary script in
+`Main.qml`, set up the tabs and grabbed its own windows (`grabToImage`),
+and ffmpeg put each grab over the blurred wallpaper with a dark tint (the
+window's native blur), rounded corners, a shadow and the window buttons —
+the parts the grab does not include. With the permissions, retake them
+with `shot` and `record` like the others.
 
 Before committing, check the shots for anything personal: user and host
 names in prompts, paths under your home folder, history, notifications from
