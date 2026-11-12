@@ -15,6 +15,8 @@
 #include "NativeKeyTracker.h"
 #include "Notifications.h"
 #include "ShellFunctions.h"
+#include "TerminalBackend.h"
+#include "TerminalManager.h"
 #include "WindowRegistry.h"
 #include "renderdump.h"
 #include "screendump.h"
@@ -77,6 +79,15 @@ int main(int argc, char *argv[])
     // OSC 9) shows that session's tab.
     konsoll::setNotificationActivationHandler([](const QString &token) {
         konsoll::WindowRegistry::instance().activateSessionWithToken(token);
+    });
+    // Allow / Deny on a permission notification answer the agent's prompt in
+    // its pane without bringing Konsoll forward.
+    konsoll::setNotificationApprovalHandler([](const QString &token, bool allow) {
+        if (konsoll::TerminalManager *manager = konsoll::WindowRegistry::instance().managerWithToken(token)) {
+            if (konsoll::TerminalBackend *session = manager->sessionWithToken(token)) {
+                session->answerApproval(allow);
+            }
+        }
     });
 
     // Declared before the engine so it outlives every QML view of its jobs.

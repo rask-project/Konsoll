@@ -195,6 +195,42 @@ void checkTabIndicators(int &failures, TerminalManager &manager, TerminalBackend
         ),
         "agent status: cleared back at the prompt"
     );
+    // A permission prompt (approval) answered from Konsoll: Enter reaches the
+    // agent's pane, the state moves on and the prompt's task stays.
+    u->writeText("\"$KONSOLL_AGENT_HOOK\" claude working 'Fix the build' </dev/null; "
+                 "\"$KONSOLL_AGENT_HOOK\" claude approval 'rm -rf build' </dev/null; "
+                 "read answer; echo \"ANSWER[$answer]\"; sleep 30\n");
+    const bool asked = waitFor(
+        "agent status: approval",
+        [u, uWorkspace]() {
+            return u->agentState() == QStringLiteral("approval") &&
+                   uWorkspace->agentState() == QStringLiteral("approval") &&
+                   u->agentMessage() == QStringLiteral("rm -rf build") &&
+                   u->agentTask() == QStringLiteral("Fix the build");
+        },
+        10000
+    );
+    const bool answered = asked && u->answerApproval(true) && !u->answerApproval(true);
+    check(
+        failures,
+        answered && u->agentState() == QStringLiteral("working") && u->agentTask() == QStringLiteral("Fix the build") &&
+            waitFor(
+                "agent status: answer typed",
+                [u]() { return u->bufferText().contains(QStringLiteral("ANSWER[]")); },
+                10000
+            ),
+        "agent status: a permission prompt answered from Konsoll (once), the task kept"
+    );
+    u->writeText("\x03");
+    check(
+        failures,
+        waitFor(
+            "agent status: cleared after approval",
+            [u]() { return u->agentState().isEmpty() && u->agentTask().isEmpty(); },
+            10000
+        ),
+        "agent status: the task clears with the agent"
+    );
     // A clicked notification names its session by token.
     manager.activateSession(other);
     check(
@@ -299,6 +335,19 @@ void checkAgentIntegrations(int &failures)
             QFile::exists(path + QStringLiteral(".konsoll-backup")),
         "agent integrations: hooks added once, the user's kept, a backup made"
     );
+    // Hooks an older Konsoll wrote (here: another state) are outdated.
+    QByteArray older = QJsonDocument(withHooks).toJson();
+    older.replace("claude approval", "claude waiting");
+    const bool currentBefore = konsoll::agentHooksCurrent(path, "claude", konsoll::claudeHookSpecs());
+    const bool outdated =
+        writeText(path, older) && !konsoll::agentHooksCurrent(path, "claude", konsoll::claudeHookSpecs());
+    check(
+        failures,
+        currentBefore && outdated &&
+            konsoll::installAgentHooks(path, "claude", konsoll::claudeHookSpecs()).has_value() &&
+            konsoll::agentHooksCurrent(path, "claude", konsoll::claudeHookSpecs()),
+        "agent integrations: hooks from an older Konsoll are outdated until reinstalled"
+    );
     const bool removed = konsoll::removeAgentHooks(path).has_value();
     check(
         failures,
@@ -316,8 +365,8 @@ void checkAgentIntegrations(int &failures)
     check(
         failures,
         konsoll::agentHookCommand("codex", konsoll::codexHookSpecs().front()) ==
-            QStringLiteral("[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" codex working || true"),
-        "agent integrations: hook command"
+            QStringLiteral("[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" codex working '@prompt' || true"),
+        "agent integrations: hook command (message quoted)"
     );
 }
 

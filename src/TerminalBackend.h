@@ -78,6 +78,11 @@ class TerminalBackend : public QObject
     Q_PROPERTY(QString agentState READ agentState NOTIFY agentStatusChanged)
     Q_PROPERTY(QString agentName READ agentName NOTIFY agentStatusChanged)
     Q_PROPERTY(QString agentMessage READ agentMessage NOTIFY agentStatusChanged)
+    // The prompt the agent is working on (the last one it reported with
+    // "working"), kept through its turn; and when the state last changed
+    // (ms since the epoch).
+    Q_PROPERTY(QString agentTask READ agentTask NOTIFY agentStatusChanged)
+    Q_PROPERTY(double agentSince READ agentSince NOTIFY agentStatusChanged)
     // OSC 22: the Qt::CursorShape the program asked for, or -1 (default).
     Q_PROPERTY(int pointerShape READ pointerShape NOTIFY pointerShapeChanged)
     Q_PROPERTY(unsigned int backgroundColor READ backgroundColor NOTIFY colorSchemeChanged)
@@ -245,6 +250,12 @@ public:
     AgentState agentStateValue() const { return m_agentState; }
     QString agentName() const { return m_agentName; }
     QString agentMessage() const { return m_agentMessage; }
+    QString agentTask() const { return m_agentTask; }
+    double agentSince() const { return static_cast<double>(m_agentSince); }
+    // Answers the agent's permission prompt (state Approval) as if typed in
+    // its pane: Enter takes the prompt's first choice (allow once), Escape
+    // refuses. Returns false, doing nothing, when no prompt waits.
+    Q_INVOKABLE bool answerApproval(bool allow);
     // The session's secret (KONSOLL_SESSION_TOKEN in its environment): agent
     // hooks and notifications name the session by it.
     QString sessionToken() const { return m_remoteHostToken; }
@@ -380,6 +391,8 @@ private:
     QString m_foregroundProcess;
     QString m_agentName;
     QString m_agentMessage;
+    QString m_agentTask;
+    qint64 m_agentSince{0};
     AbsPos m_selAnchor{.line = -1, .col = 0};
     AbsPos m_selCurrent{.line = -1, .col = 0};
     int m_highlightStart{-1};
@@ -395,7 +408,7 @@ private:
     unsigned int m_defaultBg{0xff141414};
     bool m_focused{true};
     SessionState m_state{SessionState::Created};
-    // One byte for both (-Wpadded): 18 kinds, 5 agent states.
+    // One byte for both (-Wpadded): 18 kinds, 6 agent states.
     ProcessKind m_processKind : 5 {ProcessKind::None};
     AgentState m_agentState : 3 {AgentState::None};
     unsigned char m_reportedKeyboardFlags{0}; // keyboardFlags last signalled to QML

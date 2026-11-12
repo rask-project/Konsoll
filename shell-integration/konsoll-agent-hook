@@ -4,10 +4,12 @@
 #   konsoll-agent-hook AGENT STATE [MESSAGE | @KEY]
 #
 # AGENT is a short name (claude, codex, opencode, qwen); STATE is working,
-# waiting (needs the user), idle (turn done), error or ended. MESSAGE is
-# shown in the tab's tooltip; @KEY takes it from that key of the JSON event
-# the hook gets on stdin (@message for Claude Code's notifications). Agents
-# call it from their hooks; Konsoll exports KONSOLL_AGENT_HOOK with its path.
+# waiting (needs the user), approval (a permission prompt), idle (turn
+# done), error or ended. MESSAGE is shown in the tab's tooltip; @KEY takes
+# it from that key of the JSON event the hook gets on stdin (@message for
+# Claude Code's notifications, @tool_input.command), and @KEY|KEY2|... from
+# the first of them present. Agents call it from their hooks; Konsoll
+# exports KONSOLL_AGENT_HOOK with its path.
 #
 # Hooks may run without a controlling terminal, so the state goes to
 # Konsoll's socket with the session's token instead of an escape sequence.
@@ -26,8 +28,15 @@ agent=$1
 state=$2
 message=${3-}
 if [[ $message == @?* ]]; then
-    message=$(print -rn -- "$event" | /usr/bin/plutil -extract "${message#@}" raw -o - - 2>/dev/null) || message=''
+    keys=(${(s:|:)${message#@}})
+    message=''
+    for key in $keys; do
+        message=$(print -rn -- "$event" | /usr/bin/plutil -extract "$key" raw -o - - 2>/dev/null) || message=''
+        [[ -n $message ]] && break
+    done
 fi
+# Konsoll keeps 200 characters; a pasted prompt can be far longer.
+message=${message[1,400]}
 line="$KONSOLL_SESSION_TOKEN $agent $state"
 if [[ -n $message ]]; then
     line+=" $(print -rn -- "$message" | /usr/bin/base64 | tr -d '\n')"

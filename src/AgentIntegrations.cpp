@@ -32,12 +32,18 @@ constexpr int kHookTimeoutSeconds = 5;
 // Codex caps its Interrupt hooks at three seconds.
 constexpr int kInterruptTimeoutSeconds = 3;
 
+// The tool a permission prompt is about, as the notification shows it.
+constexpr auto kToolSubject = "@tool_input.command|tool_input.file_path|tool_input.url|tool_name"sv;
+
+// Permission prompts report "approval" (the notification can answer them);
+// questions and other waits report "waiting". A prompt's text becomes the
+// agent's task (TerminalBackend::agentTask).
 constexpr auto kClaudeHooks = std::to_array<AgentHookSpec>({
-    {.event = "UserPromptSubmit", .matcher = {}, .state = "working", .message = {}},
+    {.event = "UserPromptSubmit", .matcher = {}, .state = "working", .message = "@prompt"},
     {.event = "PostToolUse", .matcher = {}, .state = "working", .message = {}},
-    {.event = "PermissionRequest", .matcher = {}, .state = "waiting", .message = "@message"},
+    {.event = "PermissionRequest", .matcher = {}, .state = "approval", .message = kToolSubject},
     {.event = "Notification",
-     .matcher = "permission_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input",
+     .matcher = "elicitation_dialog|elicitation_url_dialog|agent_needs_input",
      .state = "waiting",
      .message = "@message"},
     {.event = "Stop", .matcher = {}, .state = "idle", .message = {}},
@@ -47,19 +53,19 @@ constexpr auto kClaudeHooks = std::to_array<AgentHookSpec>({
 
 // Codex has no notification event; PermissionRequest carries the command.
 constexpr auto kCodexHooks = std::to_array<AgentHookSpec>({
-    {.event = "UserPromptSubmit", .matcher = {}, .state = "working", .message = {}},
+    {.event = "UserPromptSubmit", .matcher = {}, .state = "working", .message = "@prompt"},
     {.event = "PostToolUse", .matcher = {}, .state = "working", .message = {}},
-    {.event = "PermissionRequest", .matcher = {}, .state = "waiting", .message = "@tool_input.command"},
+    {.event = "PermissionRequest", .matcher = {}, .state = "approval", .message = kToolSubject},
     {.event = "Stop", .matcher = {}, .state = "idle", .message = {}},
     {.event = "Interrupt", .matcher = {}, .state = "idle", .message = {}},
     {.event = "SessionEnd", .matcher = {}, .state = "ended", .message = {}},
 });
 
 constexpr auto kQwenHooks = std::to_array<AgentHookSpec>({
-    {.event = "UserPromptSubmit", .matcher = {}, .state = "working", .message = {}},
+    {.event = "UserPromptSubmit", .matcher = {}, .state = "working", .message = "@prompt"},
     {.event = "PostToolUse", .matcher = {}, .state = "working", .message = {}},
-    {.event = "PermissionRequest", .matcher = {}, .state = "waiting", .message = {}},
-    {.event = "Notification", .matcher = "permission_prompt", .state = "waiting", .message = "@message"},
+    {.event = "PermissionRequest", .matcher = {}, .state = "approval", .message = kToolSubject},
+    {.event = "Notification", .matcher = "permission_prompt", .state = "approval", .message = "@message"},
     {.event = "Stop", .matcher = {}, .state = "idle", .message = {}},
     {.event = "StopFailure", .matcher = {}, .state = "error", .message = {}},
     {.event = "SessionEnd", .matcher = {}, .state = "ended", .message = {}},
@@ -207,6 +213,18 @@ std::expected<void, QString> writeSettings(const QString &path, const QJsonObjec
     return writeFile(path, QJsonDocument(settings).toJson(QJsonDocument::Indented));
 }
 
+QByteArray pluginSource()
+{
+    QFile source(QStringLiteral(":/integrations/opencode/konsoll.js"));
+    return source.open(QIODevice::ReadOnly) ? source.readAll() : QByteArray{};
+}
+
+bool pluginFileCurrent(const QString &path)
+{
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly) && file.readAll() == pluginSource();
+}
+
 std::expected<void, QString> installPluginFile(const QString &path)
 {
     QFile source(QStringLiteral(":/integrations/opencode/konsoll.js"));
@@ -241,6 +259,8 @@ QVariantMap agentEntry(const AgentInfo &agent)
     const bool plugin = agent.hooks.empty();
     const bool viaPlugin = agent.id == "claude"sv && claudePluginEnabled(readSettings(path).value_or(QJsonObject{}));
     const bool installed = plugin ? QFile::exists(path) : hasAgentHooks(path);
+    const bool current =
+        plugin ? !installed || pluginFileCurrent(path) : !installed || agentHooksCurrent(path, agent.id, agent.hooks);
     return {
         {QStringLiteral("id"), fromView(agent.id)},
         {QStringLiteral("name"), fromView(agent.name)},
@@ -248,8 +268,56 @@ QVariantMap agentEntry(const AgentInfo &agent)
         {QStringLiteral("available"), QFileInfo(homeFile(agent.configDirectory)).isDir()},
         {QStringLiteral("installed"), installed || viaPlugin},
         {QStringLiteral("viaPlugin"), viaPlugin && !installed},
+        {QStringLiteral("outdated"), !current},
         {QStringLiteral("declined"), declinedOffers().contains(fromView(agent.id))},
     };
+}
+
+// `settings` with Konsoll's hooks for `agent` in place of any it had.
+QJsonObject withAgentHooks(const QJsonObject &read, std::string_view agent, std::span<const AgentHookSpec> specs)
+{
+    QJsonObject settings = withoutKonsollHooks(read);
+    QJsonObject hooks = settings.value(QLatin1String("hooks")).toObject();
+    std::ranges::for_each(specs, [&hooks, agent](const AgentHookSpec &spec) {
+        const QJsonObject handler{
+            {QStringLiteral("type"), QStringLiteral("command")},
+            {QStringLiteral("command"), agentHookCommand(agent, spec)},
+            {QStringLiteral("timeout"), spec.event == "Interrupt"sv ? kInterruptTimeoutSeconds : kHookTimeoutSeconds},
+        };
+        QJsonObject group{{QStringLiteral("hooks"), QJsonArray{handler}}};
+        if (!spec.matcher.empty()) {
+            group.insert(QLatin1String("matcher"), fromView(spec.matcher));
+        }
+        QJsonArray groups = hooks.value(fromView(spec.event)).toArray();
+        groups.append(group);
+        hooks.insert(fromView(spec.event), groups);
+    });
+    settings.insert(QLatin1String("hooks"), hooks);
+    return settings;
+}
+
+// Konsoll's hook groups in `settings` ("event matcher command" each, sorted):
+// equal for two files when they have the same Konsoll hooks, in any order.
+QStringList konsollHandlers(const QJsonObject &settings)
+{
+    const QJsonObject hooks = settings.value(QLatin1String("hooks")).toObject();
+    QStringList handlers;
+    std::ranges::for_each(hooks.keys(), [&hooks, &handlers](const QString &event) {
+        std::ranges::for_each(hooks.value(event).toArray(), [&event, &handlers](const QJsonValue &value) {
+            const QJsonObject group = value.toObject();
+            std::ranges::for_each(group.value(QLatin1String("hooks")).toArray(), [&](const QJsonValue &handler) {
+                const QString command = handler.toObject().value(QLatin1String("command")).toString();
+                if (command.contains(fromView(kHookMarker))) {
+                    handlers.append(
+                        event + QLatin1Char(' ') + group.value(QLatin1String("matcher")).toString() + QLatin1Char(' ') +
+                        command
+                    );
+                }
+            });
+        });
+    });
+    handlers.sort();
+    return handlers;
 }
 
 } // namespace
@@ -273,7 +341,8 @@ QString agentHookCommand(std::string_view agent, const AgentHookSpec &spec)
 {
     QString arguments = fromView(agent) + QLatin1Char(' ') + fromView(spec.state);
     if (!spec.message.empty()) {
-        arguments += QLatin1Char(' ') + fromView(spec.message);
+        // Quoted: @a|b would otherwise be a pipe. The specs hold no quote.
+        arguments += QStringLiteral(" '") + fromView(spec.message) + QLatin1Char('\'');
     }
     return QStringLiteral("[ -x \"$%1\" ] && \"$%1\" %2 || true").arg(fromView(kHookMarker), arguments);
 }
@@ -285,24 +354,13 @@ installAgentHooks(const QString &path, std::string_view agent, std::span<const A
     if (!read) {
         return std::unexpected(read.error());
     }
-    QJsonObject settings = withoutKonsollHooks(*read);
-    QJsonObject hooks = settings.value(QLatin1String("hooks")).toObject();
-    std::ranges::for_each(specs, [&hooks, agent](const AgentHookSpec &spec) {
-        const QJsonObject handler{
-            {QStringLiteral("type"), QStringLiteral("command")},
-            {QStringLiteral("command"), agentHookCommand(agent, spec)},
-            {QStringLiteral("timeout"), spec.event == "Interrupt"sv ? kInterruptTimeoutSeconds : kHookTimeoutSeconds},
-        };
-        QJsonObject group{{QStringLiteral("hooks"), QJsonArray{handler}}};
-        if (!spec.matcher.empty()) {
-            group.insert(QLatin1String("matcher"), fromView(spec.matcher));
-        }
-        QJsonArray groups = hooks.value(fromView(spec.event)).toArray();
-        groups.append(group);
-        hooks.insert(fromView(spec.event), groups);
-    });
-    settings.insert(QLatin1String("hooks"), hooks);
-    return writeSettings(path, settings);
+    return writeSettings(path, withAgentHooks(*read, agent, specs));
+}
+
+bool agentHooksCurrent(const QString &path, std::string_view agent, std::span<const AgentHookSpec> specs)
+{
+    const QJsonObject settings = readSettings(path).value_or(QJsonObject{});
+    return konsollHandlers(settings) == konsollHandlers(withAgentHooks(settings, agent, specs));
 }
 
 std::expected<void, QString> removeAgentHooks(const QString &path)
@@ -386,10 +444,17 @@ QString AgentIntegrations::connectOffer(const QString &processName) const
         return {};
     }
     const QVariantMap entry = agentEntry(*agent);
-    const bool offer = entry.value(QStringLiteral("available")).toBool() &&
-                       !entry.value(QStringLiteral("installed")).toBool() &&
+    const bool connected =
+        entry.value(QStringLiteral("installed")).toBool() && !entry.value(QStringLiteral("outdated")).toBool();
+    const bool offer = entry.value(QStringLiteral("available")).toBool() && !connected &&
                        !entry.value(QStringLiteral("declined")).toBool();
     return offer ? processName : QString{};
+}
+
+bool AgentIntegrations::outdated(const QString &id) const
+{
+    const AgentInfo *const agent = findAgent(id);
+    return agent != nullptr && agentEntry(*agent).value(QStringLiteral("outdated")).toBool();
 }
 
 QString AgentIntegrations::agentName(const QString &id) const

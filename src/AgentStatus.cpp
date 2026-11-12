@@ -30,7 +30,8 @@ constexpr qsizetype kMaxAgentNameLength = 32;
 constexpr qsizetype kMaxMessageLength = 200;
 
 // Indexed by AgentState; "ended" names None: the agent's session is over.
-constexpr auto kStateNames = std::to_array<QByteArrayView>({"ended", "working", "waiting", "idle", "error"});
+constexpr auto kStateNames =
+    std::to_array<QByteArrayView>({"ended", "working", "waiting", "idle", "error", "approval"});
 
 bool validAgentName(QByteArrayView name)
 {

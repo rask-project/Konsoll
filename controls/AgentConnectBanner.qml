@@ -23,6 +23,8 @@ Rectangle {
         return agents && root.session && root.session.agentState === "" ? AgentIntegrations.connectOffer(root.session.foregroundProcess) : "";
     }
     readonly property string agentName: AgentIntegrations.agentName(root.offer !== "" ? root.offer : shownAgent)
+    // Connected by an older Konsoll: the offer is an update.
+    readonly property bool update: offer !== "" && AgentIntegrations.outdated(offer)
     // The agent the confirmation is about (the offer is gone once connected).
     property string shownAgent: ""
 
@@ -74,7 +76,7 @@ Rectangle {
 
         Label {
             Layout.fillWidth: true
-            text: root.result !== "" ? root.result : qsTr("Connect %1 to Konsoll?").arg(root.agentName)
+            text: root.result !== "" ? root.result : root.update ? qsTr("Update %1's Konsoll connection?").arg(root.agentName) : qsTr("Connect %1 to Konsoll?").arg(root.agentName)
             font.bold: root.result === ""
             color: root.failed ? "#ff453a" : appPalette.windowText
             wrapMode: Text.WordWrap
@@ -83,7 +85,7 @@ Rectangle {
         Label {
             Layout.fillWidth: true
             visible: root.result === ""
-            text: qsTr("The tab shows what it is doing, and Konsoll notifies you when it needs you or finishes. It applies the next time %1 starts.").arg(root.agentName)
+            text: root.update ? qsTr("This Konsoll can answer its permission prompts from the notification and show its task. It applies the next time %1 starts.").arg(root.agentName) : qsTr("The tab shows what it is doing, and Konsoll notifies you when it needs you or finishes. It applies the next time %1 starts.").arg(root.agentName)
             color: appPalette.windowText
             opacity: 0.75
             font.pointSize: 11
@@ -104,7 +106,7 @@ Rectangle {
             }
 
             Button {
-                text: qsTr("Connect")
+                text: root.update ? qsTr("Update") : qsTr("Connect")
                 highlighted: true
                 onClicked: {
                     const agent = root.offer;

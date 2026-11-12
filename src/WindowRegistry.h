@@ -36,6 +36,9 @@ public:
     bool activateSessionWithToken(const QString &token) const;
     // The window manager holding the session with that token, or null.
     TerminalManager *managerWithToken(const QString &token) const;
+    // Updates the Dock badge (agents waiting for the user, in every window)
+    // on the next event-loop turn, once for any number of calls.
+    void scheduleAgentBadgeUpdate();
 
 private:
     WindowRegistry() = default;
@@ -43,6 +46,7 @@ private:
     // Non-owning: the QML engine owns each manager; the registry only tracks
     // them for aggregation.
     std::vector<TerminalManager *> m_managers;
+    bool m_badgeUpdatePending{false};
 };
 
 } // namespace konsoll

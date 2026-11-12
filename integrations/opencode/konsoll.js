@@ -1,7 +1,8 @@
-// Konsoll: shows opencode's state (working, waiting for you, done, failed)
-// on its Konsoll tab. It does nothing outside Konsoll. Installed by Konsoll
-// (Settings > AI Agents) into ~/.config/opencode/plugins; delete the file
-// or use Remove there to uninstall.
+// Konsoll: shows opencode's state (working, waiting for you, asking for a
+// permission, done, failed) and the task you gave it on its Konsoll tab.
+// It does nothing outside Konsoll. Installed by Konsoll (Settings > AI
+// Agents) into ~/.config/opencode/plugins; delete the file or use Remove
+// there to uninstall.
 import { spawn } from "node:child_process"
 
 const hook = process.env.KONSOLL_AGENT_HOOK
@@ -33,6 +34,11 @@ export const KonsollAgentStatus = async () => {
     pendingIdle = setTimeout(() => set("idle"), 250)
   }
   return {
+    // The prompt you send becomes the agent's task on the tab.
+    "chat.message": async (_input, output) => {
+      const text = (output?.parts ?? []).find((part) => part?.type === "text" && part.text)?.text
+      if (text) set("working", text)
+    },
     event: async ({ event }) => {
       const p = event.properties ?? {}
       switch (event.type) {
@@ -47,10 +53,10 @@ export const KonsollAgentStatus = async () => {
           set("error", p.error?.data?.message ?? p.error?.name)
           break
         case "permission.asked":
-          set("waiting", p.permission)
+          set("approval", p.patterns?.[0] ?? p.permission)
           break
         case "permission.updated":
-          set("waiting", p.title)
+          set("approval", p.title)
           break
         case "question.asked":
           set("waiting", p.questions?.[0]?.question)

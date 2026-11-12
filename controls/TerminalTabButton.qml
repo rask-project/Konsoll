@@ -67,6 +67,7 @@ TabButton {
     readonly property var agentStateNames: ({
             working: qsTr("AI agent working"),
             waiting: qsTr("AI agent waiting for you"),
+            approval: qsTr("AI agent asks for permission"),
             idle: qsTr("AI agent done"),
             error: qsTr("AI agent failed")
         })
@@ -276,9 +277,9 @@ TabButton {
             IconImage {
                 anchors.fill: parent
                 visible: tab.leadingMode !== "progress"
-                name: tab.leadingMode === "agent" ? (tab.agentState === "working" ? "kind-agent" : "agent-" + tab.agentState) : tab.leadingMode === "kind" ? "kind-" + tab.processKind : (tab.leadingMode === "running" ? "kind-running" : "kind-shell")
+                name: tab.leadingMode === "agent" ? (tab.agentState === "working" ? "kind-agent" : tab.agentState === "approval" ? "agent-waiting" : "agent-" + tab.agentState) : tab.leadingMode === "kind" ? "kind-" + tab.processKind : (tab.leadingMode === "running" ? "kind-running" : "kind-shell")
                 sourceSize: Qt.size(16, 16)
-                color: tab.leadingMode === "agent" ? (tab.agentState === "waiting" ? tab.warningColor : tab.agentState === "error" ? tab.failureColor : tab.agentState === "working" ? tab.systemAccent : systemPalette.windowText) : (tab.processKind === "privileged" ? tab.warningColor : systemPalette.windowText)
+                color: tab.leadingMode === "agent" ? (tab.agentState === "waiting" || tab.agentState === "approval" ? tab.warningColor : tab.agentState === "error" ? tab.failureColor : tab.agentState === "working" ? tab.systemAccent : systemPalette.windowText) : (tab.processKind === "privileged" ? tab.warningColor : systemPalette.windowText)
             }
 
             Controls.TabActivityIndicator {

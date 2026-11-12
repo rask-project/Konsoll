@@ -18,16 +18,18 @@ namespace konsoll
 
 // What an AI agent (Claude Code, Codex, opencode, Qwen Code) running in a
 // session reports through its hooks: busy with a turn, waiting for the user
-// (a permission prompt, a question), done with the turn, failed, or gone.
+// (a question; Approval for a permission prompt), done with the turn,
+// failed, or gone.
 enum class AgentState : std::uint8_t {
     None, // no agent reported, or it ended
     Working,
     Waiting,
     Idle,
-    Error
+    Error,
+    Approval // waiting for the user to allow or deny a tool (a permission prompt)
 };
 
-// "working", "waiting", "idle", "error"; empty for None.
+// "working", "waiting", "idle", "error", "approval"; empty for None.
 QString agentStateName(AgentState state);
 
 // One status line: "<session token> <agent> <state> [<base64 message>]".

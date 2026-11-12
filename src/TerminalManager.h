@@ -194,6 +194,8 @@ public:
     // Shows the session whose token is `token` (a clicked notification):
     // activates its pane and raises the window. False when not here.
     bool activateSessionWithToken(const QString &token);
+    // Panes whose agent waits for the user (a question or a permission).
+    int agentsWaitingCount() const;
     // The session in this window whose token is `token`, or null.
     TerminalBackend *sessionWithToken(const QString &token) const;
     // Splits the pane of `session` (Qt::Orientation) and runs `command` in an

@@ -537,8 +537,15 @@ Window {
                                     required property int index
 
                                     label: modelData.name
-                                    detail: modelData.viaPlugin ? qsTr("Connected through the Konsoll plugin") : modelData.installed ? qsTr("Connected: %1").arg(modelData.path) : modelData.available ? qsTr("Not connected") : qsTr("Not found on this Mac")
+                                    detail: modelData.viaPlugin ? qsTr("Connected through the Konsoll plugin") : modelData.outdated ? qsTr("Connected by an older Konsoll: update for the newest features") : modelData.installed ? qsTr("Connected: %1").arg(modelData.path) : modelData.available ? qsTr("Not connected") : qsTr("Not found on this Mac")
                                     showSeparator: index > 0
+
+                                    Button {
+                                        visible: agentRow.modelData.outdated
+                                        text: qsTr("Update")
+                                        highlighted: true
+                                        onClicked: control.agentError = AgentIntegrations.install(agentRow.modelData.id)
+                                    }
 
                                     Button {
                                         visible: !agentRow.modelData.viaPlugin

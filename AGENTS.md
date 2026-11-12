@@ -63,6 +63,13 @@ Guidance for AI agents working in this repository.
   a notification (unless the pane is in view) whose click finds the session
   by token (`WindowRegistry::activateSessionWithToken`). While an agent
   reports, its own OSC 9 notifications are dropped (they would repeat ours).
+  A permission prompt reports `approval` (questions stay `waiting`): its
+  notification has Allow / Deny actions answered by
+  `TerminalBackend::answerApproval` (Enter / Escape into the pane). The
+  prompt sent with `working` (`@prompt`) is kept as the agent's task; the
+  Dock badge counts waiting agents (`WindowRegistry::scheduleAgentBadgeUpdate`).
+  Changing the hook specs makes installed hooks outdated (`agentHooksCurrent`):
+  Settings offers Update.
   The script is zsh (`zsocket`): `nc` can linger after the write.
 - **Agent integrations** (`AgentIntegrations`, QML singleton, Settings ▸ AI
   Agents): merges Konsoll's hooks into Claude Code / Codex / Qwen Code JSON

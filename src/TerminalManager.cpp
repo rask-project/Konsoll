@@ -38,6 +38,8 @@ QString agentDisplayName(const QString &agent)
 int agentUrgency(AgentState state)
 {
     switch (state) {
+    case AgentState::Approval:
+        return 5;
     case AgentState::Waiting:
         return 4;
     case AgentState::Error:
@@ -50,6 +52,23 @@ int agentUrgency(AgentState state)
         break;
     }
     return 0;
+}
+
+QString agentNotificationTitle(AgentState state, const QString &agent)
+{
+    switch (state) {
+    case AgentState::Approval:
+        return TerminalManager::tr("%1 asks for permission").arg(agent);
+    case AgentState::Waiting:
+        return TerminalManager::tr("%1 needs you").arg(agent);
+    case AgentState::Error:
+        return TerminalManager::tr("%1 failed").arg(agent);
+    case AgentState::Idle:
+    case AgentState::Working:
+    case AgentState::None:
+        break;
+    }
+    return TerminalManager::tr("%1 finished").arg(agent);
 }
 
 // Removes the matching objects from `objects` (keeping the order of the rest)
@@ -445,33 +464,46 @@ void TerminalManager::connectSession(TerminalBackend *sessionPtr)
 // notification unless the user is looking at it.
 void TerminalManager::onAgentStatusChanged(TerminalBackend *session, AgentState previous)
 {
+    WindowRegistry::instance().scheduleAgentBadgeUpdate();
     const AgentState state = session->agentStateValue();
+    // A refused permission (Approval -> Idle) is not a finished turn.
     const bool finished =
         state == AgentState::Idle && (previous == AgentState::Working || previous == AgentState::Waiting);
-    const bool wantsUser = state == AgentState::Waiting || state == AgentState::Error || finished;
+    const bool wantsUser =
+        state == AgentState::Waiting || state == AgentState::Approval || state == AgentState::Error || finished;
     if (!wantsUser || state == previous) {
         return;
     }
     TerminalWorkspaceModel *const workspace = workspaceOf(session);
     if (workspace != nullptr) {
         workspace->raiseAttention(
-            state == AgentState::Waiting ? TerminalWorkspaceModel::Attention::Bell
-                                         : (state == AgentState::Error ? TerminalWorkspaceModel::Attention::Failure
-                                                                       : TerminalWorkspaceModel::Attention::Success)
+            state == AgentState::Error  ? TerminalWorkspaceModel::Attention::Failure
+            : state == AgentState::Idle ? TerminalWorkspaceModel::Attention::Success
+                                        : TerminalWorkspaceModel::Attention::Bell
         );
     }
     const QSettings settings;
     if (sessionInView(session) || !settings.value(QStringLiteral("General/agentNotifications"), true).toBool()) {
         return;
     }
-    const QString agent = agentDisplayName(session->agentName());
-    const QString title = state == AgentState::Waiting ? tr("%1 needs you").arg(agent)
-                          : state == AgentState::Error ? tr("%1 failed").arg(agent)
-                                                       : tr("%1 finished").arg(agent);
     const QString place = workspace != nullptr ? workspace->title() : session->displayTitle();
-    const QString body =
-        session->agentMessage().isEmpty() ? place : session->agentMessage() + QStringLiteral(" — ") + place;
-    postNotification(title, body, session->sessionToken());
+    // What it is about: the tool asked for, the question, or the task done.
+    const QString subject = session->agentMessage().isEmpty() ? session->agentTask() : session->agentMessage();
+    const QString body = subject.isEmpty() ? place : subject + QStringLiteral(" — ") + place;
+    postNotification(
+        agentNotificationTitle(state, agentDisplayName(session->agentName())),
+        body,
+        session->sessionToken(),
+        state == AgentState::Approval ? NotificationKind::Approval : NotificationKind::Plain
+    );
+}
+
+int TerminalManager::agentsWaitingCount() const
+{
+    return static_cast<int>(std::ranges::count_if(m_sessions, [](const auto &session) {
+        const AgentState state = session->agentStateValue();
+        return state == AgentState::Waiting || state == AgentState::Approval;
+    }));
 }
 
 bool TerminalManager::sessionInView(const TerminalBackend *session) const
@@ -542,6 +574,7 @@ std::optional<TerminalManager::DetachedWorkspace> TerminalManager::detachWorkspa
     });
     std::ranges::move(moved, std::back_inserter(detached.sessions));
     m_sessions.erase(moved.begin(), moved.end());
+    WindowRegistry::instance().scheduleAgentBadgeUpdate();
 
     bool wasActive = false;
     std::ranges::for_each(detached.sessions, [this, &wasActive](const auto &session) {
@@ -1011,6 +1044,7 @@ std::unique_ptr<TerminalBackend> TerminalManager::releaseSession(QObject *sessio
         std::ranges::find_if(m_sessions, [session](const auto &candidate) { return candidate.get() == session; });
     std::unique_ptr<TerminalBackend> owned = std::move(*it);
     m_sessions.erase(it);
+    WindowRegistry::instance().scheduleAgentBadgeUpdate();
     forgetSession(session);
     if (m_activeSession == session) {
         setActiveSession(nextActiveSession(nullptr), false);

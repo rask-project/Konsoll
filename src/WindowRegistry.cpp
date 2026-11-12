@@ -1,6 +1,10 @@
 #include "WindowRegistry.h"
 
+#include "Notifications.h"
 #include "TerminalManager.h"
+
+#include <QCoreApplication>
+#include <QTimer>
 
 #include <algorithm>
 #include <ranges>
@@ -24,6 +28,21 @@ void WindowRegistry::add(TerminalManager *manager)
 void WindowRegistry::remove(TerminalManager *manager)
 {
     std::erase(m_managers, manager);
+    scheduleAgentBadgeUpdate();
+}
+
+void WindowRegistry::scheduleAgentBadgeUpdate()
+{
+    if (m_badgeUpdatePending || QCoreApplication::instance() == nullptr) {
+        return;
+    }
+    m_badgeUpdatePending = true;
+    QTimer::singleShot(0, QCoreApplication::instance(), [this]() {
+        m_badgeUpdatePending = false;
+        setDockBadge(std::ranges::fold_left(m_managers, 0, [](int total, const TerminalManager *manager) {
+            return total + manager->agentsWaitingCount();
+        }));
+    });
 }
 
 int WindowRegistry::totalSessionCount() const

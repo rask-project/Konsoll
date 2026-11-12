@@ -366,6 +366,15 @@ connected, it also reports what it is doing, and the tab shows it:
 | Sparkle with a check | Done with the turn |
 | Sparkle with a cross (red) | Failed |
 
+- **Answer permission prompts from the notification.** When an agent asks
+  to run a tool, the notification shows what it wants (the command, the
+  file) with **Allow** and **Deny**: the answer goes to the agent's pane as
+  if typed there (Enter for its first choice, Escape to refuse), without
+  bringing Konsoll forward. **Window ▸ AI Agents** has the same buttons, the
+  task each agent works on and how long it has waited; the Dock icon counts
+  the agents waiting for you. Connected agents get it after **Update** in
+  Settings ▸ AI Agents.
+
 - **Connect an agent** from the pane: when you start an agent that is not
   connected yet, the pane offers to connect it (*Not Now* stops asking). Or
   in **Settings ▸ AI Agents**: *Connect* adds Konsoll's

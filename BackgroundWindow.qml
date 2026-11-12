@@ -74,7 +74,8 @@ Window {
     readonly property real titleBarHeight: Math.max(control.SafeArea.margins.top, 28)
     readonly property string homePath: StandardPaths.writableLocation(StandardPaths.HomeLocation).toString().replace(/^file:\/\//, "")
 
-    // Ticks while something runs, so the elapsed times stay current.
+    // Ticks while something runs (or the agents list shows), so the elapsed
+    // times stay current.
     property date now: new Date()
 
     function present(section) {
@@ -86,9 +87,11 @@ Window {
     }
 
     // Every pane running an AI agent, in every window, the ones that need
-    // the user first (waiting, failed), then working, done, unreported.
+    // the user first (a permission, a question, failed), then working, done,
+    // unreported.
     function agentSessions(): var {
         const urgency = {
+            approval: 5,
             waiting: 4,
             error: 3,
             working: 2,
@@ -117,6 +120,8 @@ Window {
 
     function agentStateText(state: string): string {
         switch (state) {
+        case "approval":
+            return qsTr("Asks for permission");
         case "waiting":
             return qsTr("Waiting for you");
         case "error":
@@ -131,6 +136,7 @@ Window {
 
     function agentStateColor(state: string): color {
         switch (state) {
+        case "approval":
         case "waiting":
             return control.stoppedColor;
         case "error":
@@ -139,6 +145,16 @@ Window {
             return control.palette.accent;
         }
         return control.palette.windowText;
+    }
+
+    // How long ago `since` (ms since the epoch) was: "just now", "5 min", "2 h".
+    function elapsedText(since: real): string {
+        const minutes = Math.floor((control.now - since) / 60000);
+        if (since <= 0 || minutes < 1)
+            return qsTr("just now");
+        if (minutes < 60)
+            return qsTr("%1 min").arg(minutes);
+        return qsTr("%1 h").arg(Math.floor(minutes / 60));
     }
 
     function shortPath(path: string): string {
@@ -299,6 +315,15 @@ Window {
     minimumHeight: 500
 
     color: "transparent"
+
+    // Advances "waiting for 3 min" in the agents list, only while it shows.
+    Timer {
+        interval: 30000
+        repeat: true
+        running: control.visible && control.selectedSection === control.agentsSection
+        triggeredOnStart: true
+        onTriggered: control.now = new Date()
+    }
 
     onSelectedSectionChanged: {
         if (control.selectedSection !== control.savedSection)
@@ -1254,17 +1279,34 @@ Window {
 
                                     readonly property string agentState: modelData.session.agentState
 
-                                    label: control.agentStateText(agentState) + (modelData.session.agentName !== "" ? "  ·  " + modelData.session.agentName : "  ·  " + modelData.session.foregroundProcess)
-                                    detail: [modelData.workspace.title, modelData.session.agentMessage].filter(part => part !== "").join("  ·  ")
+                                    readonly property bool needsUser: agentState === "waiting" || agentState === "approval"
+
+                                    label: control.agentStateText(agentState) + (needsUser ? " " + qsTr("for %1").arg(control.elapsedText(modelData.session.agentSince)) : "") + (modelData.session.agentName !== "" ? "  ·  " + modelData.session.agentName : "  ·  " + modelData.session.foregroundProcess)
+                                    // The tool asked for or the question, then the task.
+                                    detail: [modelData.workspace.title, modelData.session.agentMessage, modelData.session.agentTask].filter((part, i, parts) => part !== "" && parts.indexOf(part) === i).join("  ·  ")
                                     showSeparator: index > 0
 
                                     leading: [
                                         IconImage {
-                                            name: agentRow.agentState === "" || agentRow.agentState === "working" ? "kind-agent" : "agent-" + agentRow.agentState
+                                            name: agentRow.agentState === "" || agentRow.agentState === "working" ? "kind-agent" : agentRow.agentState === "approval" ? "agent-waiting" : "agent-" + agentRow.agentState
                                             sourceSize: Qt.size(16, 16)
                                             color: control.agentStateColor(agentRow.agentState)
                                         }
                                     ]
+
+                                    // Answers the permission prompt in the agent's pane.
+                                    Button {
+                                        visible: agentRow.agentState === "approval"
+                                        text: qsTr("Deny")
+                                        onClicked: agentRow.modelData.session.answerApproval(false)
+                                    }
+
+                                    Button {
+                                        visible: agentRow.agentState === "approval"
+                                        text: qsTr("Allow")
+                                        highlighted: true
+                                        onClicked: agentRow.modelData.session.answerApproval(true)
+                                    }
 
                                     Button {
                                         text: qsTr("Show")

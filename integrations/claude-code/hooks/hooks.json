@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" claude working || true",
+            "command": "[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" claude working '@prompt' || true",
             "timeout": 5
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" claude waiting @message || true",
+            "command": "[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" claude approval '@tool_input.command|tool_input.file_path|tool_input.url|tool_name' || true",
             "timeout": 5
           }
         ]
@@ -36,11 +36,11 @@
     ],
     "Notification": [
       {
-        "matcher": "permission_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input",
+        "matcher": "elicitation_dialog|elicitation_url_dialog|agent_needs_input",
         "hooks": [
           {
             "type": "command",
-            "command": "[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" claude waiting @message || true",
+            "command": "[ -x \"$KONSOLL_AGENT_HOOK\" ] && \"$KONSOLL_AGENT_HOOK\" claude waiting '@message' || true",
             "timeout": 5
           }
         ]

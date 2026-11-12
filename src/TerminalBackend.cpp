@@ -1,5 +1,7 @@
 #include "TerminalBackend.h"
 
+#include <QDateTime>
+
 #include "KeyEncoder.h"
 #include "NativeDialogs.h"
 #include "NativeKeyTracker.h"
@@ -11,6 +13,7 @@
 
 #include <QClipboard>
 #include <QColor>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -516,10 +519,30 @@ void TerminalBackend::setAgentStatus(AgentState state, const QString &agent, con
     if (state == m_agentState && name == m_agentName && text == m_agentMessage) {
         return;
     }
+    if (state != m_agentState) {
+        m_agentSince = QDateTime::currentMSecsSinceEpoch();
+    }
+    if (state == AgentState::None) {
+        m_agentTask.clear();
+    } else if (state == AgentState::Working && !text.isEmpty()) {
+        m_agentTask = text; // a new prompt (UserPromptSubmit)
+    }
     m_agentState = state;
     m_agentName = name;
     m_agentMessage = text;
     emit agentStatusChanged();
+}
+
+bool TerminalBackend::answerApproval(bool allow)
+{
+    if (m_agentState != AgentState::Approval || !m_worker) {
+        return false;
+    }
+    writeToPty(allow ? QByteArrayLiteral("\r") : QByteArrayLiteral("\x1b"));
+    // Allowed, the tool runs (PostToolUse reports working); refused, the
+    // agent stops and waits for the user's next message.
+    setAgentStatus(allow ? AgentState::Working : AgentState::Idle, m_agentName, {});
+    return true;
 }
 
 QString TerminalBackend::displayTitle() const
