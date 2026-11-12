@@ -4,6 +4,7 @@ set(ICONS_SRC
     konsoll/svg/agent-error.svg
     konsoll/svg/agent-idle.svg
     konsoll/svg/agent-waiting.svg
+    konsoll/svg/agents.svg
     konsoll/svg/appearance.svg
     konsoll/svg/arrow-prev.svg
     konsoll/svg/arrow-next.svg

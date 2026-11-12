@@ -214,6 +214,15 @@ install(TARGETS konsoll
 )
 
 if(APPLE)
+    # The linker signs the executable alone, leaving the bundle's Info.plist
+    # unbound: macOS then refuses notifications (UNErrorDomain 1, no prompt).
+    # Sign the build tree's bundle ad hoc; the install step signs it again.
+    add_custom_command(TARGET konsoll POST_BUILD
+        COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:konsoll>"
+        COMMENT "Signing konsoll.app ad hoc (binds Info.plist for notifications)"
+        VERBATIM
+    )
+
     set(deploy_tool_options_arg)
     if(KONSOLL_CODESIGN_IDENTITY)
         qt_policy(SET QTP0007 NEW)

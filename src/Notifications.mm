@@ -4,6 +4,7 @@
 
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QtLogging>
 
 #include <utility>
 
@@ -69,9 +70,6 @@ UNUserNotificationCenter *preparedCenter()
         // reference only.
         static KonsollNotificationDelegate *const delegate = [[KonsollNotificationDelegate alloc] init];
         center.delegate = delegate;
-        [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
-                              completionHandler:^(BOOL, NSError *) {
-                              }];
         return true;
     }();
     (void) prepared;
@@ -100,7 +98,31 @@ void postNotification(const QString &title, const QString &body, const QString &
     UNNotificationRequest *const request = [UNNotificationRequest requestWithIdentifier:identifier
                                                                                 content:content
                                                                                 trigger:nil];
-    [center addNotificationRequest:request withCompletionHandler:nil];
+    // Asking each time is cheap once the user has answered, and the first
+    // notification waits for that answer instead of being dropped.
+    [request retain];
+    [center
+        requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
+                      completionHandler:^(BOOL granted, NSError *authorizationError) {
+                        if (granted) {
+                            [center
+                                addNotificationRequest:request
+                                 withCompletionHandler:^(NSError *addError) {
+                                   if (addError != nil) {
+                                       qWarning("Notification not shown: %s", addError.localizedDescription.UTF8String);
+                                   }
+                                 }];
+                        } else {
+                            // Code 1 without a prompt: the bundle's Info.plist is not bound
+                            // to its signature (a linker-signed build).
+                            qWarning(
+                                "Notifications not allowed: %s",
+                                authorizationError != nil ? authorizationError.description.UTF8String
+                                                          : "turned off in System Settings > Notifications"
+                            );
+                        }
+                        [request release];
+                      }];
     [content release];
 }
 

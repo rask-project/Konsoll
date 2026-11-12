@@ -41,7 +41,7 @@ Window {
         },
         {
             title: qsTr("AI Agents"),
-            iconName: "kind-agent"
+            iconName: "agents"
         }
     ]
     readonly property int agentsSection: 5
