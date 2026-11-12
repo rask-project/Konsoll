@@ -47,11 +47,16 @@ Guidance for AI agents working in this repository.
   `Screen::lineAt` returns lines by value; per-frame callers use `copyLine`.
   Reflow streams the history block by block; when the width is unchanged
   (height change, leaving the alternate screen) only the screen is
-  re-wrapped. The limit is `ScrollbackSettings` (0 = unlimited).
+  re-wrapped; past 50k history lines `TerminalView` applies a width change
+  once the window size settles (120 ms), not on every drag step. The limit
+  is `ScrollbackSettings` (0 = unlimited).
 - **Threading:** each session has a `PtyWorker` on its own `QThread` that
   alone touches the PTY descriptor, its notifier and the child process. PTY
   writes, resizes and shutdown go to it as queued calls; output comes back as
-  signals with backpressure (reads pause above 1 MiB undelivered). Parsing
+  signals with backpressure (reads pause above 1 MiB undelivered). Output is
+  batched: at most two blocks are in flight to the GUI thread and what is
+  read meanwhile is sent as one block (a PTY read returns a few bytes under
+  a burst, and each block costs the GUI a full `onData` pass). Parsing
   and the `Terminal`/`Screen` model stay on the GUI thread — never share
   mutable `Terminal` or `Screen` state across threads.
 - **Session lifecycle:** `Created → Starting → Running → Stopping → Stopped`

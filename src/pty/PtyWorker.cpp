@@ -1,6 +1,7 @@
 #include "PtyWorker.h"
 
 #include <algorithm>
+#include <utility>
 
 #include <QThread>
 #include <QTimer>
@@ -60,20 +61,36 @@ void PtyWorker::resize(int columns, int rows)
 
 void PtyWorker::onOutput(const QByteArray &data)
 {
-    // Output backpressure: track bytes emitted but not yet consumed by the GUI
+    // Output backpressure: track bytes read but not yet consumed by the GUI
     // thread; pause PTY reads above the high-water mark so sustained output
-    // cannot grow an unbounded queue of GUI work.
+    // cannot grow an unbounded backlog.
     m_undelivered += static_cast<qint64>(data.size());
-    emit outputReceived(data);
+    m_pending.append(data);
+    if (m_blocksInFlight < kMaxBlocksInFlight) {
+        sendPending();
+    }
     if ((m_undelivered > kHighWater) && m_pty) {
         m_pty->pauseReading();
     }
+}
+
+void PtyWorker::sendPending()
+{
+    if (m_pending.isEmpty()) {
+        return;
+    }
+    ++m_blocksInFlight;
+    emit outputReceived(std::exchange(m_pending, QByteArray()));
 }
 
 void PtyWorker::outputDelivered(qint64 bytes)
 {
     m_undelivered -= bytes;
     m_undelivered = std::max<qint64>(m_undelivered, 0);
+    m_blocksInFlight = std::max<qint64>(m_blocksInFlight - 1, 0);
+    if (m_blocksInFlight < kMaxBlocksInFlight) {
+        sendPending();
+    }
     if (m_pty && (m_undelivered <= kLowWater)) {
         m_pty->resumeReading();
     }
@@ -81,6 +98,8 @@ void PtyWorker::outputDelivered(qint64 bytes)
 
 void PtyWorker::onEof()
 {
+    // The last output goes out now, ahead of the exit it precedes.
+    sendPending();
     // The child's write side is closed; it is exiting. Reap it without
     // blocking: a waitpid here would stall the thread, so a later shutdown
     // could never run if the child took long to go.

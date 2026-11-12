@@ -164,9 +164,40 @@ shell each tab runs is a separate process and not counted here.
 Before the two per-chunk fixes the same 5M-line burst had not finished
 after 42 s.
 
-**Still open:** a width resize is O(history) (~0.4 µs per line, so ~0.4 s
-per step with 1M lines while dragging the window); `yes` still keeps one core
-busy parsing, as in any terminal.
+**Width resize with a big history.** A width change still re-wraps the
+whole history (~0.5 s with 1M lines), but `TerminalView` no longer does it
+on every step of a window drag: past 50k history lines a width change waits
+until the size has been still for 120 ms (height changes, small histories
+and program resizes such as DECCOLM apply at once). Twenty quick width
+steps with 1M lines: 9.4–11 s of CPU with the window frozen ~11 s before,
+0.7–1 s after, and the shell gets the final size.
+
+## Output throughput (2026-11-12)
+
+A PTY read returns ~4 bytes on average under a burst (the reader outruns
+the writer), and each read went to the GUI thread as its own block: a
+queued signal, then a full `TerminalBackend::onData` pass (frame timer
+restart, `scrollOffsetChanged` and its QML handler, request handling) per
+few bytes. `PtyWorker` now keeps at most two blocks in flight and sends
+what it read meanwhile as one block, so blocks grow with the GUI's load and
+an idle GUI still gets output at once. The frame timer is no longer
+restarted per chunk (the trailing edge is kept: the timer pushes itself
+back while output continues) and `scrollOffsetChanged` follows output at
+frame rate.
+
+| `yes \| head -n 5000000` in the app | Time |
+| --- | --- |
+| Before (per-read blocks) | 14 s |
+| Batched blocks | 6.7 s |
+| macOS PTY with a discarding reader (the ceiling) | 6.1 s |
+
+The GUI thread is now idle more than half the time during the burst.
+
+**Found on the way:** `sysctl(KERN_PROC_SESSION)` fails with ENOENT on
+macOS, even for a live session, so closing a tab never found the jobs of
+its session: one that ignores SIGHUP kept running (and spinning on a dead
+terminal). `sessionProcessGroups` now lists the user's processes and keeps
+those whose `getsid()` is the session.
 
 ## Comparison with iTerm2 (2026-11-12)
 
@@ -184,13 +215,17 @@ measured on its main process (its one `iTermServer` daemon adds ~2 MB).
 | `sleep` (busy tab, no output) | 1.0% | 6.7% |
 | `top` redrawing at 1 Hz | 1.1% | 10.8% |
 | `yes > /dev/null` | 1.0% | 1.9% |
-| `yes \| head -n 5000000`: time, CPU | 14 s, 145% | 11 s, 160% |
+| `yes \| head -n 5000000`: time to the last byte parsed | 6.7 s | 8.4 s |
 | Same: peak, after a clear | 283 MB, 210 MB | 1568 MB, 673 MB |
 | `yes` for 15 s: peak, after a clear | 483 MB, 192 MB | 13 GB, 885 MB |
 
-iTerm2 parses a burst ~25% faster and costs less per extra tab; Konsoll
-idles near zero, stores history ~20× more compactly (~14 bytes per `yes`
-line against ~260) and gives the memory back on a clear.
+The burst time is measured from the shell (`$EPOCHREALTIME` around the
+command, ending with a `CSI 6n` round trip so every byte has been parsed);
+iTerm2 ran as a separate instance (`open -n`), median of four runs. The
+macOS PTY itself takes 6.1 s for the same output with a reader that only
+discards it. iTerm2 costs less per extra tab; Konsoll idles near zero,
+stores history ~20× more compactly (~14 bytes per `yes` line against ~260)
+and gives the memory back on a clear.
 
 ## Reproduction notes
 

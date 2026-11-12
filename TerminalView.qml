@@ -83,9 +83,19 @@ Item {
         }
     }
 
+    // A width change re-wraps the whole history, ~0.4 µs a line: with a big
+    // one, dragging the window edge would reflow it on every step. Then the
+    // resize waits until the size stops changing; a height change, a small
+    // history or a program's own resize (DECCOLM) still apply at once.
+    readonly property int largeHistory: 50000
+    readonly property int settleInterval: 120
+
     function scheduleSessionResize() {
-        if (session && visible)
-            resizeTimer.restart();
+        if (!session || !visible)
+            return;
+        const reflowsHistory = cols !== session.cols && session.maxScrollOffset > largeHistory;
+        resizeTimer.interval = reflowsHistory ? settleInterval : 0;
+        resizeTimer.restart();
     }
 
     // Invisible focus target that receives composed text from the macOS text

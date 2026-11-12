@@ -69,6 +69,8 @@ signals:
 private:
     void checkForeground();
     void onOutput(const QByteArray &data);
+    // Emit everything read since the last outputReceived as one block.
+    void sendPending();
     void onEof();
     // Poll for the child's exit every kReapInterval (after EOF, or during
     // shutdown).
@@ -87,6 +89,11 @@ private:
     static constexpr qint64 kHighWater = static_cast<qint64>(1024) * 1024;
     static constexpr qint64 kLowWater = static_cast<qint64>(256) * 1024;
 
+    // Blocks handed to the GUI thread and not yet acknowledged: two, so the
+    // next block is already queued when the GUI finishes one and it never
+    // waits for the round trip.
+    static constexpr qint64 kMaxBlocksInFlight = 2;
+
     static constexpr int kReapInterval = 25;
     // SIGHUP grace before SIGKILL, then how long a killed child may take to
     // be reaped before the worker stops waiting. Together they stay under
@@ -101,7 +108,15 @@ private:
     std::unique_ptr<QTimer> m_foregroundTimer;
     std::unique_ptr<QTimer> m_reapTimer;
     std::unique_ptr<PtyProcess> m_pty;
+    // Output read while a block is still with the GUI thread. A PTY read
+    // returns a few bytes at a time under a burst; sending each one would
+    // cost the GUI a full pass (parse, signals, timers) per read, so only
+    // kMaxBlocksInFlight blocks are in flight and the rest waits here,
+    // growing with the GUI's load instead of adding latency when it is
+    // idle.
+    QByteArray m_pending;
     qint64 m_undelivered{0};
+    qint64 m_blocksInFlight{0};
 };
 
 } // namespace konsoll

@@ -5,6 +5,7 @@
 #include "term/Terminal.h"
 
 #include <QColor>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QProcess>
 #include <QQueue>
@@ -353,7 +354,8 @@ private:
     TransferJob m_activeTransfer;
 
     QTimer m_frameTimer;
-    QTimer m_animationTimer; // runs while a kitty image animation plays
+    QTimer m_animationTimer;     // runs while a kitty image animation plays
+    QElapsedTimer m_sinceOutput; // since scheduleFrame last ran (the frame's trailing edge)
     QString m_title{QStringLiteral("Konsoll")};
     QString m_currentDirectory;
     QString m_remoteHost;

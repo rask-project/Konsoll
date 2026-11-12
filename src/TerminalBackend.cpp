@@ -41,6 +41,9 @@ namespace konsoll
 namespace
 {
 
+// Quiet time after the last chunk of output before a frame is painted.
+constexpr std::chrono::milliseconds kFrameDelay{16};
+
 double linearRgbChannel(int channel)
 {
     const double value = static_cast<double>(channel) / 255.0;
@@ -99,7 +102,7 @@ TerminalBackend::TerminalBackend(QObject *parent) : QObject(parent)
 {
     m_remoteHostToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_frameTimer.setTimerType(Qt::CoarseTimer);
-    m_frameTimer.setInterval(16ms);
+    m_frameTimer.setInterval(kFrameDelay);
     m_frameTimer.setSingleShot(true);
     connect(&m_frameTimer, &QTimer::timeout, this, &TerminalBackend::onFrameTimer);
     m_animationTimer.setTimerType(Qt::PreciseTimer);
@@ -392,7 +395,8 @@ void TerminalBackend::onData(const QByteArray &data)
         m_terminal->clearClearPending();
     }
 
-    checkScrollOffsetChanged();
+    // The scrollbar follows at frame rate (onFrameTimer): a signal per chunk
+    // re-ran its QML handler thousands of times a second under a burst.
     if (m_terminal->synchronizedUpdates()) {
         m_frameTimer.stop();
     } else {
@@ -521,6 +525,14 @@ void TerminalBackend::resizePty(int columns, int rows)
 
 void TerminalBackend::onFrameTimer()
 {
+    // Output arrived since the timer started: wait out the rest of the quiet
+    // period from the last chunk (see scheduleFrame).
+    const auto quiet = std::chrono::milliseconds(m_sinceOutput.elapsed());
+    if (quiet < kFrameDelay) {
+        m_frameTimer.start(kFrameDelay - quiet);
+        return;
+    }
+    checkScrollOffsetChanged();
     if (m_terminal && m_terminal->synchronizedUpdates()) {
         return;
     }
@@ -552,7 +564,12 @@ void TerminalBackend::scheduleFrame()
     // the first. A leading-edge start (only when inactive) fires mid-update and
     // paints a torn frame — cleared-but-not-yet-rewritten cells show the desktop
     // through the translucency ("white blocks") and half-shifted rows look skewed.
-    m_frameTimer.start();
+    // Restarting a QTimer costs a kill and a start of a system timer, though,
+    // so a chunk only notes the time and onFrameTimer pushes itself back.
+    m_sinceOutput.start();
+    if (!m_frameTimer.isActive()) {
+        m_frameTimer.start(kFrameDelay);
+    }
 }
 
 void TerminalBackend::keyPress(int key, const QString &text, int modifiers)
