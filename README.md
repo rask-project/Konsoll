@@ -366,7 +366,9 @@ connected, it also reports what it is doing, and the tab shows it:
 | Sparkle with a check | Done with the turn |
 | Sparkle with a cross (red) | Failed |
 
-- **Connect an agent** in **Settings ▸ AI Agents**: *Connect* adds Konsoll's
+- **Connect an agent** from the pane: when you start an agent that is not
+  connected yet, the pane offers to connect it (*Not Now* stops asking). Or
+  in **Settings ▸ AI Agents**: *Connect* adds Konsoll's
   hooks to Claude Code (`~/.claude/settings.json`), Codex
   (`~/.codex/hooks.json`) or Qwen Code (`~/.qwen/settings.json`), keeping
   everything else in the file and a copy of it as `.konsoll-backup`;

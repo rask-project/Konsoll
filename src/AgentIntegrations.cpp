@@ -10,6 +10,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
+#include <QSettings>
 #include <QVariantMap>
 
 #include <algorithm>
@@ -226,6 +227,14 @@ bool claudePluginEnabled(const QJsonObject &settings)
     });
 }
 
+// The agents whose connect offer the user turned down.
+constexpr QLatin1StringView kDeclinedKey{"AgentIntegrations/declinedOffers"};
+
+QStringList declinedOffers()
+{
+    return QSettings().value(kDeclinedKey).toStringList();
+}
+
 QVariantMap agentEntry(const AgentInfo &agent)
 {
     const QString path = homeFile(agent.file);
@@ -239,6 +248,7 @@ QVariantMap agentEntry(const AgentInfo &agent)
         {QStringLiteral("available"), QFileInfo(homeFile(agent.configDirectory)).isDir()},
         {QStringLiteral("installed"), installed || viaPlugin},
         {QStringLiteral("viaPlugin"), viaPlugin && !installed},
+        {QStringLiteral("declined"), declinedOffers().contains(fromView(agent.id))},
     };
 }
 
@@ -364,6 +374,38 @@ QString AgentIntegrations::uninstall(const QString &id)
 
 void AgentIntegrations::refresh()
 {
+    emit agentsChanged();
+}
+
+QString AgentIntegrations::connectOffer(const QString &processName) const
+{
+    // The foreground process is named like the agent's id (ProcessKind.cpp
+    // names node scripts by the script: "qwen", "codex").
+    const AgentInfo *const agent = findAgent(processName);
+    if (agent == nullptr) {
+        return {};
+    }
+    const QVariantMap entry = agentEntry(*agent);
+    const bool offer = entry.value(QStringLiteral("available")).toBool() &&
+                       !entry.value(QStringLiteral("installed")).toBool() &&
+                       !entry.value(QStringLiteral("declined")).toBool();
+    return offer ? processName : QString{};
+}
+
+QString AgentIntegrations::agentName(const QString &id) const
+{
+    const AgentInfo *const agent = findAgent(id);
+    return agent != nullptr ? fromView(agent->name) : id;
+}
+
+void AgentIntegrations::declineOffer(const QString &id)
+{
+    QStringList declined = declinedOffers();
+    if (findAgent(id) == nullptr || declined.contains(id)) {
+        return;
+    }
+    declined.append(id);
+    QSettings().setValue(kDeclinedKey, declined);
     emit agentsChanged();
 }
 

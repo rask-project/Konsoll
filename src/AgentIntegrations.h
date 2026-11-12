@@ -53,7 +53,8 @@ class AgentIntegrations final : public QObject
 
     // One map per agent: id, name, path (the file Konsoll changes),
     // available (the agent's configuration directory exists), installed,
-    // viaPlugin (Claude Code's Konsoll plugin is enabled instead) and note.
+    // viaPlugin (Claude Code's Konsoll plugin is enabled instead) and
+    // declined (its connect offer was turned down).
     Q_PROPERTY(QVariantList agents READ agents NOTIFY agentsChanged)
 
 public:
@@ -66,6 +67,14 @@ public:
     Q_INVOKABLE QString uninstall(const QString &id);
     // Re-reads the files (they may change outside Konsoll).
     Q_INVOKABLE void refresh();
+    // The id of the agent a pane's foreground process `processName` is, when
+    // Konsoll should offer to connect it: one it knows, whose configuration
+    // exists, not connected yet and not declined. Empty otherwise.
+    Q_INVOKABLE QString connectOffer(const QString &processName) const;
+    Q_INVOKABLE QString agentName(const QString &id) const;
+    // "Not now" on the offer: not asked again (Settings ▸ AI Agents still
+    // connects it).
+    Q_INVOKABLE void declineOffer(const QString &id);
     // How to register Konsoll's MCP server (konsoll --mcp, McpServer.h) with
     // the agent: a shell command, or the configuration to add where the
     // agent has no command that forwards Konsoll's environment.

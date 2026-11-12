@@ -72,7 +72,10 @@ Guidance for AI agents working in this repository.
   opencode plugin (`integrations/opencode/konsoll.js`, a resource). The
   Claude Code plugin (`integrations/claude-code`, listed in
   `.claude-plugin/marketplace.json`) carries the same hooks as
-  `claudeHookSpecs()` — change both together.
+  `claudeHookSpecs()` — change both together. A pane whose foreground
+  process is a known agent that is configured but not connected shows
+  `controls/AgentConnectBanner.qml` (`connectOffer`); "Not now" is kept in
+  QSettings (`AgentIntegrations/declinedOffers`).
 - **MCP server** (`McpServer`, `konsoll --mcp`, no GUI): stdio JSON-RPC
   started by an agent; it inherits the agent's environment (Codex needs
   `env_vars` for that), so `KONSOLL_SESSION_TOKEN` names the agent's pane.

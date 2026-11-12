@@ -321,6 +321,40 @@ void checkAgentIntegrations(int &failures)
     );
 }
 
+// The offer to connect an agent seen in a pane: only for an agent Konsoll
+// knows whose configuration exists, until it is connected or declined.
+void checkAgentConnectOffer(int &failures)
+{
+    const QTemporaryDir home;
+    const QByteArray savedHome = qgetenv("HOME");
+    const QString declinedKey = QStringLiteral("AgentIntegrations/declinedOffers");
+    const QVariant savedDeclined = QSettings().value(declinedKey);
+    QSettings().remove(declinedKey);
+    qputenv("HOME", home.path().toLocal8Bit());
+    konsoll::AgentIntegrations integrations;
+    const bool made =
+        QDir(home.path()).mkpath(QStringLiteral(".codex")) && QDir(home.path()).mkpath(QStringLiteral(".qwen"));
+    const bool offered = integrations.connectOffer(QStringLiteral("codex")) == QStringLiteral("codex") &&
+                         integrations.connectOffer(QStringLiteral("claude")).isEmpty() && // no ~/.claude
+                         integrations.connectOffer(QStringLiteral("zsh")).isEmpty();
+    const bool connected = integrations.install(QStringLiteral("codex")).isEmpty() &&
+                           integrations.connectOffer(QStringLiteral("codex")).isEmpty();
+    const bool beforeDecline = integrations.connectOffer(QStringLiteral("qwen")) == QStringLiteral("qwen");
+    integrations.declineOffer(QStringLiteral("qwen"));
+    const bool declined = integrations.connectOffer(QStringLiteral("qwen")).isEmpty();
+    qputenv("HOME", savedHome);
+    if (savedDeclined.isValid()) {
+        QSettings().setValue(declinedKey, savedDeclined);
+    } else {
+        QSettings().remove(declinedKey);
+    }
+    check(
+        failures,
+        made && offered && connected && beforeDecline && declined,
+        "agent integrations: connect offer for a known, configured agent until connected or declined"
+    );
+}
+
 // Konsoll's MCP server (konsoll --mcp), started from an agent's pane: its
 // tool calls reach Konsoll with the pane's token, open a pane beside the
 // agent's without taking the focus, and run background commands only that
@@ -830,6 +864,7 @@ int runSelfTest()
 
     runParserSelfTest(failures);
     checkAgentIntegrations(failures);
+    checkAgentConnectOffer(failures);
 
     // 1. Concurrent output: three sessions produce output at the same time.
     auto *a = activeSession(manager);

@@ -616,6 +616,14 @@ Item {
         id: saveTextDialog
     }
 
+    Controls.AgentConnectBanner {
+        session: view.session
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.margins: 12
+        z: 10
+    }
+
     Controls.SearchBar {
         id: searchBar
 
