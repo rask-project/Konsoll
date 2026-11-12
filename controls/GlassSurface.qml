@@ -18,28 +18,6 @@ Item {
 
     readonly property bool dark: Application.styleHints.colorScheme === Qt.Dark
 
-    // Body: a white veil, denser at the top like light catching a pane.
-    Rectangle {
-        radius: glass.radius
-
-        gradient: Gradient {
-            GradientStop {
-                position: 0
-                color: Qt.rgba(1, 1, 1, (glass.dark ? 0.055 : 0.22) * glass.density)
-            }
-
-            GradientStop {
-                position: 0.5
-                color: Qt.rgba(1, 1, 1, (glass.dark ? 0.075 : 0.32) * glass.density)
-            }
-
-            GradientStop {
-                position: 1
-                color: Qt.rgba(1, 1, 1, (glass.dark ? 0.025 : 0.12) * glass.density)
-            }
-        }
-    }
-
     Rectangle {
         anchors.fill: parent
         radius: glass.radius
