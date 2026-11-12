@@ -82,7 +82,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          # docs/releases/<tag>.md, when present, opens the notes.
+          NOTES="docs/releases/$GITHUB_REF_NAME.md"
+          if [ -f "$NOTES" ]; then cp "$NOTES" "$RUNNER_TEMP/notes.md"; else : > "$RUNNER_TEMP/notes.md"; fi
+          cat >> "$RUNNER_TEMP/notes.md" <<'EOF'
           ## Install
 
           Konsoll is not notarized by Apple. After moving `konsoll.app` to

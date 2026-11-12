@@ -178,6 +178,12 @@ does not use a Developer ID, so the app is not notarized and users clear the
 quarantine flag once (README, "Install"). Steps 1–4 above remain the manual
 path for a Developer ID-signed, notarized build.
 
+The release notes open with `docs/releases/<tag>.md` (e.g.
+`docs/releases/v3.5.0.md`) when that file exists — what changed since the
+last release, for users — followed by the install instructions and GitHub's
+generated list of commits. Write it and bump `project(... VERSION ...)` in
+`CMakeLists.txt` in the commit the tag points at.
+
 Release:
 
 ```sh
