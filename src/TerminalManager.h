@@ -198,6 +198,8 @@ public:
     int agentsWaitingCount() const;
     // The session in this window whose token is `token`, or null.
     TerminalBackend *sessionWithToken(const QString &token) const;
+    // The session with that pane number (TerminalBackend::paneId), or null.
+    TerminalBackend *sessionWithPaneId(int paneId) const;
     // Splits the pane of `session` (Qt::Orientation) and runs `command` in an
     // interactive shell in the new pane, leaving the focus where it is (an
     // agent asks for it while the user may be typing). Null when `session`

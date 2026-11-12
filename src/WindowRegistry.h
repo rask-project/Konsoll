@@ -46,7 +46,6 @@ private:
     // Non-owning: the QML engine owns each manager; the registry only tracks
     // them for aggregation.
     std::vector<TerminalManager *> m_managers;
-    bool m_badgeUpdatePending{false};
 };
 
 } // namespace konsoll

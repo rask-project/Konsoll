@@ -104,9 +104,11 @@ int main(int argc, char *argv[])
     );
     // Tool calls from agents' MCP servers (konsoll --mcp).
     konsoll::AgentCommands agentCommands(backgroundJobs.get());
-    konsoll::AgentStatusServer::instance().setRequestHandler([&agentCommands](const QJsonObject &request) {
-        return agentCommands.handle(request);
-    });
+    konsoll::AgentStatusServer::instance().setRequestHandler(
+        [&agentCommands](const QJsonObject &request, konsoll::AgentStatusServer::Reply reply) {
+            agentCommands.handle(request, std::move(reply));
+        }
+    );
     QQmlApplicationEngine engine;
 
     QObject::connect(

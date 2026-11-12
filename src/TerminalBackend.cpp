@@ -20,6 +20,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
+#include <QJsonObject>
 #include <QMetaObject>
 #include <QProcess>
 #include <QSettings>
@@ -103,6 +104,8 @@ QRgb readableForeground(QRgb foreground, QRgb background)
 
 TerminalBackend::TerminalBackend(QObject *parent) : QObject(parent)
 {
+    static int nextPaneId = 0;
+    m_paneId = ++nextPaneId;
     m_remoteHostToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
     // Agent hooks name the session by its token (KONSOLL_SESSION_TOKEN).
     connect(
@@ -535,6 +538,10 @@ void TerminalBackend::setAgentStatus(AgentState state, const QString &agent, con
 
 bool TerminalBackend::answerApproval(bool allow)
 {
+    if (m_readAnswer) {
+        answerReadRequest(allow); // Konsoll's own prompt, not the agent's
+        return true;
+    }
     if (m_agentState != AgentState::Approval || !m_worker) {
         return false;
     }
@@ -1522,25 +1529,85 @@ QString TerminalBackend::selectionText() const
 
 QString TerminalBackend::bufferText() const
 {
+    return m_terminal ? linesText(0, m_terminal->screen().totalLines() - 1) : QString{};
+}
+
+QString TerminalBackend::linesText(int first, int last, int firstColumn) const
+{
     if (!m_terminal) {
         return {};
     }
     const Screen &screen = m_terminal->screen();
+    const int from = std::max(0, first);
+    const int to = std::min(last, screen.totalLines() - 1);
     QString text;
-    const int totalLines = screen.totalLines();
     Line cells;
-    std::ranges::for_each(std::views::iota(0, totalLines), [&](int line) {
+    std::ranges::for_each(std::views::iota(from, std::max(from, to + 1)), [&](int line) {
         screen.copyLine(line, cells);
         const auto reversedCells = std::views::reverse(cells);
         const auto lastContent = std::ranges::find_if(reversedCells, [](const Cell &cell) { return cell.ch != ' '; });
         const int end =
             lastContent == reversedCells.end() ? 0 : static_cast<int>(std::distance(cells.begin(), lastContent.base()));
-        std::ranges::for_each(std::views::iota(0, end), [&](int col) { appendCellText(text, cells[col]); });
-        if (line + 1 < totalLines && !screen.isWrappedContinuation(line + 1)) {
+        const int begin = line == from ? std::min(firstColumn, end) : 0;
+        std::ranges::for_each(std::views::iota(begin, end), [&](int col) { appendCellText(text, cells[col]); });
+        if (line < to && !screen.isWrappedContinuation(line + 1)) {
             text.append('\n');
         }
     });
     return text;
+}
+
+QJsonArray TerminalBackend::recentCommands(int count, qsizetype outputLimit) const
+{
+    QJsonArray commands;
+    if (!m_terminal) {
+        return commands;
+    }
+    const auto &blocks = m_terminal->commandBlocks();
+    const auto recent = blocks | std::views::drop(std::max(0, static_cast<int>(blocks.size()) - count));
+    std::ranges::for_each(recent, [this, &commands, outputLimit](const Terminal::CommandBlock &block) {
+        // The typed command runs from after the prompt to the line its
+        // output starts on.
+        const int commandEnd = std::max(block.startLine, block.outputLine - 1);
+        const QString command = linesText(block.startLine, commandEnd, block.startColumn).trimmed();
+        const QString output = block.endLine >= block.outputLine
+                                   ? linesText(block.outputLine, block.endLine).trimmed().right(outputLimit)
+                                   : QString{};
+        commands.append(QJsonObject{
+            {QStringLiteral("command"), command},
+            {QStringLiteral("exitCode"), block.exitCode},
+            {QStringLiteral("output"), output},
+        });
+    });
+    return commands;
+}
+
+bool TerminalBackend::requestRead(const QString &description, std::function<void(bool allow)> answer)
+{
+    if (m_readAnswer) {
+        return false;
+    }
+    m_readRequest = description;
+    m_readAnswer = std::move(answer);
+    emit readRequestChanged();
+    // Like a permission prompt: the tab, the notification (whose Allow / Deny
+    // answer this request, answerApproval) and the agents list show it.
+    setAgentStatus(AgentState::Approval, m_agentName.isEmpty() ? m_foregroundProcess : m_agentName, description);
+    return true;
+}
+
+void TerminalBackend::answerReadRequest(bool allow)
+{
+    if (!m_readAnswer) {
+        return;
+    }
+    const auto answer = std::exchange(m_readAnswer, {});
+    m_readRequest.clear();
+    emit readRequestChanged();
+    if (m_agentState == AgentState::Approval) {
+        setAgentStatus(AgentState::Working, m_agentName, {}); // the tool call goes on
+    }
+    answer(allow);
 }
 
 bool TerminalBackend::saveTextToFile(const QUrl &url, bool selectionOnly) const

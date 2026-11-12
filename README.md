@@ -396,13 +396,16 @@ connected, it also reports what it is doing, and the tab shows it:
   window, the ones waiting for you first, with **Show** to jump there.
 
 **Konsoll tools for agents (MCP).** `konsoll --mcp` is an MCP server that
-gives an agent running in Konsoll three tools, for the pane it runs in only:
+gives an agent running in Konsoll these tools, from the pane it runs in:
 
 | Tool | What it does |
 | --- | --- |
 | `open_pane` | Opens a pane next to the agent's (right or below) running a command — a dev server, a watcher — without taking the focus. The pane stays when the command ends. |
 | `run_in_background` | Starts a Background Command (Window ▸ Background Commands). |
 | `background_job_status` | The state, exit code and last output of a background command that same agent started. |
+| `recent_commands` | The last commands run in the agent's own pane before it started (your build, your tests), with exit status and output: "why did my build fail?" works without pasting anything. |
+| `list_panes` | The panes of the agent's window: number, tab, program and directory — no output. |
+| `read_pane` | Reads another pane (a dev server's log, a test run). The agent's pane asks you first (**Allow Once** / **Deny**, also on the notification); nothing is read without it. |
 
 Register it once per agent: **Settings ▸ AI Agents ▸ Copy** gives the exact
 command or configuration for this Konsoll. For the installed app:

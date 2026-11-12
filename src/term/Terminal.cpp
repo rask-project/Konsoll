@@ -47,6 +47,7 @@ void Terminal::clearCommandBlocks()
 {
     m_commandBlocks.clear();
     m_commandStartLine = -1;
+    m_commandOutputLine = -1;
 }
 
 namespace
@@ -2005,15 +2006,19 @@ void Terminal::handleOscCommandMark(const QByteArray &body)
     if (body.size() <= 4) {
         return;
     }
-    handleCommandMark(body.at(4));
-    if (body.at(4) == 'A') {
-        resetProgramInputModes();
-    }
-    if (body.at(4) == 'D') {
-        // D ; status ; ... -- later fields (aid=, err=) are ignored.
+    const char mark = body.at(4);
+    if (mark == 'D') {
+        // D ; status ; ... -- later fields (aid=, err=) are ignored. Read
+        // first: the command block records it.
         bool ok = false;
         const int code = body.size() > 6 && body.at(5) == ';' ? body.mid(6).split(';').value(0).toInt(&ok) : 0;
         m_lastExitCode = ok ? code : -1;
+    }
+    handleCommandMark(mark);
+    if (mark == 'A') {
+        resetProgramInputModes();
+    }
+    if (mark == 'D') {
         setExtraFlag(CommandFinishedPending, true);
     }
 }
@@ -2061,21 +2066,31 @@ void Terminal::handleCommandMark(char mark)
     switch (mark) {
     case 'B':
         m_commandStartLine = line;
+        m_commandStartColumn = m_screen.cursorCol();
         break;
     case 'C':
         // C marks the start of execution. Use it as a fallback when a shell
         // emits execution/finish markers but omits the command-start marker.
         m_commandRunning = true;
+        m_commandOutputLine = line;
         if (m_commandStartLine < 0) {
             m_commandStartLine = std::max(0, line - (m_screen.cursorCol() == 0 ? 1 : 0));
+            m_commandStartColumn = 0;
         }
         break;
     case 'D':
         m_commandRunning = false;
         if (m_commandStartLine >= 0) {
             const int endLine = std::max(m_commandStartLine, line - (m_screen.cursorCol() == 0 ? 1 : 0));
-            m_commandBlocks.push_back({.startLine = m_commandStartLine, .endLine = endLine});
+            m_commandBlocks.push_back(
+                {.startLine = m_commandStartLine,
+                 .endLine = endLine,
+                 .startColumn = m_commandStartColumn,
+                 .outputLine = m_commandOutputLine >= 0 ? m_commandOutputLine : m_commandStartLine + 1,
+                 .exitCode = m_lastExitCode}
+            );
             m_commandStartLine = -1;
+            m_commandOutputLine = -1;
         }
         break;
     default:

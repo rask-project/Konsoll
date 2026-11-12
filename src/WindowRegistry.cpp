@@ -33,12 +33,14 @@ void WindowRegistry::remove(TerminalManager *manager)
 
 void WindowRegistry::scheduleAgentBadgeUpdate()
 {
-    if (m_badgeUpdatePending || QCoreApplication::instance() == nullptr) {
+    // The registry is a singleton: one pending flag for the process.
+    static bool pending = false;
+    if (pending || QCoreApplication::instance() == nullptr) {
         return;
     }
-    m_badgeUpdatePending = true;
+    pending = true;
     QTimer::singleShot(0, QCoreApplication::instance(), [this]() {
-        m_badgeUpdatePending = false;
+        pending = false;
         setDockBadge(std::ranges::fold_left(m_managers, 0, [](int total, const TerminalManager *manager) {
             return total + manager->agentsWaitingCount();
         }));

@@ -498,6 +498,13 @@ void TerminalManager::onAgentStatusChanged(TerminalBackend *session, AgentState 
     );
 }
 
+TerminalBackend *TerminalManager::sessionWithPaneId(int paneId) const
+{
+    const auto found =
+        std::ranges::find_if(m_sessions, [paneId](const auto &session) { return session->paneId() == paneId; });
+    return found != m_sessions.end() ? found->get() : nullptr;
+}
+
 int TerminalManager::agentsWaitingCount() const
 {
     return static_cast<int>(std::ranges::count_if(m_sessions, [](const auto &session) {

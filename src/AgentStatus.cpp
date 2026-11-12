@@ -9,6 +9,7 @@
 #include <QJsonDocument>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QPointer>
 #include <QSaveFile>
 
 #include <algorithm>
@@ -173,12 +174,21 @@ void AgentStatusServer::readStatus(QLocalSocket *socket)
     }
     const QByteArray line = socket->readLine(kMaxLineLength);
     if (line.startsWith('{')) {
+        // One request per connection: nothing more is read from it.
+        disconnect(socket, &QLocalSocket::readyRead, this, nullptr);
+        const QPointer<QLocalSocket> client(socket);
+        Reply reply = [client](const QJsonObject &answer) {
+            if (client && client->state() == QLocalSocket::ConnectedState) {
+                client->write(QJsonDocument(answer).toJson(QJsonDocument::Compact) + '\n');
+                client->disconnectFromServer(); // after the reply is written
+            }
+        };
         const QJsonObject request = QJsonDocument::fromJson(line).object();
-        const QJsonObject reply = m_requestHandler
-                                      ? m_requestHandler(request)
-                                      : QJsonObject{{QStringLiteral("error"), tr("Konsoll cannot do that")}};
-        socket->write(QJsonDocument(reply).toJson(QJsonDocument::Compact) + '\n');
-        socket->disconnectFromServer(); // after the reply is written
+        if (m_requestHandler) {
+            m_requestHandler(request, std::move(reply));
+        } else {
+            reply(QJsonObject{{QStringLiteral("error"), tr("Konsoll cannot do that")}});
+        }
         return;
     }
     socket->disconnectFromServer();

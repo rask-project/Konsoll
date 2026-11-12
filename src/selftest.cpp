@@ -28,6 +28,7 @@
 #include <cstdio>
 #include <functional>
 #include <iostream>
+#include <optional>
 #include <print>
 
 namespace
@@ -404,6 +405,85 @@ void checkAgentConnectOffer(int &failures)
     );
 }
 
+// recent_commands, list_panes and read_pane: the agent's own pane's commands
+// (with their status), the window's panes, and another pane read only once
+// the user allows it.
+void checkAgentContextTools(
+    int &failures,
+    TerminalManager &manager,
+    konsoll::AgentCommands &commands,
+    TerminalBackend *agent,
+    QObject *workspace
+)
+{
+    const auto call = [&commands, agent](const QString &tool, const QJsonObject &arguments) {
+        return commands.handle(QJsonObject{
+            {QStringLiteral("token"), agent->sessionToken()},
+            {QStringLiteral("tool"), tool},
+            {QStringLiteral("arguments"), arguments},
+        });
+    };
+    agent->writeText("false; echo CONTEXT_OK\n");
+    const bool ran = waitFor(
+        "agent tools: commands recorded",
+        [&call]() {
+            return call(QStringLiteral("recent_commands"), {})
+                .value(QStringLiteral("text"))
+                .toString()
+                .contains(QStringLiteral("$ false; echo CONTEXT_OK\n(exit status 0)\nCONTEXT_OK"));
+        },
+        10000
+    );
+    const QString recent = call(QStringLiteral("recent_commands"), {}).value(QStringLiteral("text")).toString();
+    check(
+        failures,
+        ran && recent.contains(QStringLiteral("--mcp")),
+        "agent tools: recent_commands lists the pane's commands with status and output"
+    );
+    const QVariantList sessions = manager.workspaceSessions(workspace);
+    const auto other = std::ranges::find_if(sessions, [agent](const QVariant &session) {
+        return session.value<QObject *>() != agent;
+    });
+    auto *const pane = other != sessions.end() ? qobject_cast<TerminalBackend *>(other->value<QObject *>()) : nullptr;
+    const QString panes = call(QStringLiteral("list_panes"), {}).value(QStringLiteral("text")).toString();
+    check(
+        failures,
+        pane != nullptr && panes.contains(QStringLiteral("pane %1 (yours)").arg(agent->paneId())) &&
+            panes.contains(QStringLiteral("pane %1:").arg(pane->paneId())),
+        "agent tools: list_panes names the window's panes"
+    );
+    if (pane == nullptr) {
+        return;
+    }
+    // read_pane waits for the user: denied, then allowed (from the
+    // notification's path, answerApproval).
+    std::optional<QJsonObject> denied;
+    std::optional<QJsonObject> allowed;
+    const auto read = [&commands, agent, pane](std::optional<QJsonObject> &result) {
+        commands.handle(
+            QJsonObject{
+                {QStringLiteral("token"), agent->sessionToken()},
+                {QStringLiteral("tool"), QStringLiteral("read_pane")},
+                {QStringLiteral("arguments"), QJsonObject{{QStringLiteral("pane"), pane->paneId()}}},
+            },
+            [&result](const QJsonObject &reply) { result = reply; }
+        );
+    };
+    read(denied);
+    const bool asked = !denied && !agent->readRequest().isEmpty() && agent->agentState() == QStringLiteral("approval");
+    agent->answerReadRequest(false);
+    read(allowed);
+    const bool waited = !allowed;
+    agent->answerApproval(true);
+    check(
+        failures,
+        asked && denied && denied->value(QStringLiteral("isError")).toBool() && waited && allowed &&
+            allowed->value(QStringLiteral("text")).toString().contains(QStringLiteral("PANE_OK")) &&
+            agent->readRequest().isEmpty() && agent->agentState() != QStringLiteral("approval"),
+        "agent tools: read_pane reads another pane only once the user allows it"
+    );
+}
+
 // Konsoll's MCP server (konsoll --mcp), started from an agent's pane: its
 // tool calls reach Konsoll with the pane's token, open a pane beside the
 // agent's without taking the focus, and run background commands only that
@@ -412,9 +492,11 @@ void checkAgentTools(int &failures, TerminalManager &manager)
 {
     BackgroundJobs jobs;
     konsoll::AgentCommands commands(&jobs);
-    konsoll::AgentStatusServer::instance().setRequestHandler([&commands](const QJsonObject &request) {
-        return commands.handle(request);
-    });
+    konsoll::AgentStatusServer::instance().setRequestHandler(
+        [&commands](const QJsonObject &request, konsoll::AgentStatusServer::Reply reply) {
+            commands.handle(request, std::move(reply));
+        }
+    );
     manager.addWorkspace();
     auto *agent = activeSession(manager);
     QObject *workspace = manager.workspaces().last().value<QObject *>();
@@ -489,6 +571,7 @@ void checkAgentTools(int &failures, TerminalManager &manager)
             status(QStringLiteral("another-session")).value(QStringLiteral("isError")).toBool(),
         "agent tools: job status with its output (pagers off, setup not shown), for the agent that started it only"
     );
+    checkAgentContextTools(failures, manager, commands, agent, workspace);
     konsoll::AgentStatusServer::instance().setRequestHandler({});
     manager.closeWorkspace(workspace);
     QFile::remove(input);

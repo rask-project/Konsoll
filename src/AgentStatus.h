@@ -79,8 +79,11 @@ public:
     bool listening() const;
 
     // Answers a JSON request line ({"token", "tool", "arguments"}, sent by
-    // `konsoll --mcp` for an agent's tool call) with a JSON reply line.
-    using RequestHandler = std::function<QJsonObject(const QJsonObject &request)>;
+    // `konsoll --mcp` for an agent's tool call) with a JSON reply line,
+    // through `reply`: at once, or later (a request waiting for the user).
+    // A reply after the client went away is dropped.
+    using Reply = std::function<void(const QJsonObject &reply)>;
+    using RequestHandler = std::function<void(const QJsonObject &request, Reply reply)>;
     void setRequestHandler(RequestHandler handler);
 
 signals:

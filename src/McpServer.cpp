@@ -22,6 +22,8 @@ namespace
 using namespace std::string_view_literals;
 
 constexpr int kSocketTimeoutMs = 5000;
+// A reply may wait for the user (read_pane asks first).
+constexpr int kReplyTimeoutMs = 10 * 60 * 1000;
 // The newest MCP revision this server follows; an older one a client asks
 // for is accepted as is (the methods used here did not change).
 constexpr auto kProtocolVersions = std::to_array({"2025-11-25"sv, "2025-06-18"sv, "2025-03-26"sv, "2024-11-05"sv});
@@ -70,6 +72,38 @@ QJsonArray tools()
              {QStringLiteral("directory"),
               stringProperty(QStringLiteral("Working directory (optional; defaults to yours)."))}},
             {QStringLiteral("command")}
+        ),
+        tool(
+            QStringLiteral("recent_commands"),
+            QStringLiteral("The last commands run at a prompt in your own Konsoll pane before you started (the user's "
+                           "build, tests, a failing command), each with its exit status and the end of its output. "
+                           "Use it when the user refers to something that just happened in their terminal."),
+            {{QStringLiteral("count"),
+              QJsonObject{
+                  {QStringLiteral("type"), QStringLiteral("integer")},
+                  {QStringLiteral("description"),
+                   QStringLiteral("How many commands, newest last (default 5, at most 20).")},
+              }}},
+            {}
+        ),
+        tool(
+            QStringLiteral("list_panes"),
+            QStringLiteral("The panes of your Konsoll window: their number, tab, the program running and the working "
+                           "directory. No output: read_pane reads one with the user's permission."),
+            {},
+            {}
+        ),
+        tool(
+            QStringLiteral("read_pane"),
+            QStringLiteral("Read another pane of your window (a dev server's log, the user's test run): its recent "
+                           "commands and the end of its screen. The user is asked first and may refuse; the call waits "
+                           "for the answer."),
+            {{QStringLiteral("pane"),
+              QJsonObject{
+                  {QStringLiteral("type"), QStringLiteral("integer")},
+                  {QStringLiteral("description"), QStringLiteral("The pane number from list_panes.")},
+              }}},
+            {QStringLiteral("pane")}
         ),
         tool(
             QStringLiteral("background_job_status"),
@@ -121,7 +155,9 @@ QJsonObject initializeResult(const QJsonObject &params, bool inKonsoll)
          }},
         {QStringLiteral("instructions"),
          inKonsoll ? QStringLiteral("You run in a Konsoll terminal pane. Use open_pane for long-running commands the "
-                                    "user should see (dev servers, watchers) instead of blocking your own shell.")
+                                    "user should see (dev servers, watchers) instead of blocking your own shell. When "
+                                    "the user mentions something that happened in their terminal (a failed build, an "
+                                    "error in another pane), recent_commands and read_pane show it.")
                    : QStringLiteral("Not running inside Konsoll: no tools are available.")},
     };
 }
@@ -163,7 +199,7 @@ QJsonObject forwardToKonsoll(const QString &socketPath, const QJsonObject &reque
     if (!socket.waitForBytesWritten(kSocketTimeoutMs)) {
         return unavailable;
     }
-    while (!socket.canReadLine() && socket.waitForReadyRead(kSocketTimeoutMs)) {
+    while (!socket.canReadLine() && socket.waitForReadyRead(kReplyTimeoutMs)) {
     }
     const QJsonObject reply = QJsonDocument::fromJson(socket.readLine()).object();
     return reply.isEmpty() ? unavailable : reply;

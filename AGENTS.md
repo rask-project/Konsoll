@@ -90,8 +90,14 @@ Guidance for AI agents working in this repository.
   (`AgentStatusServer::setRequestHandler`), answered by `AgentCommands`:
   `open_pane` (`TerminalManager::openPaneBeside`, never takes the focus),
   `run_in_background` (`BackgroundJobs::run`) and `background_job_status`
-  (only jobs that token started). Nothing reads another pane. stdout carries
-  only protocol messages.
+  (only jobs that token started), `recent_commands` (the agent's own pane:
+  OSC 133 command blocks with their status and output), `list_panes` (the
+  window's panes, no output) and `read_pane`, which waits for the user:
+  `TerminalBackend::requestRead` shows `controls/AgentReadRequestBanner.qml`
+  and sets the agent's state to `approval`, so the notification's Allow /
+  Deny answer it too. The socket's request handler replies asynchronously
+  for it. Nothing reads another pane without that. stdout carries only
+  protocol messages.
 - **Threading:** each session has a `PtyWorker` on its own `QThread` that
   alone touches the PTY descriptor, its notifier and the child process. PTY
   writes, resizes and shutdown go to it as queued calls; output comes back as

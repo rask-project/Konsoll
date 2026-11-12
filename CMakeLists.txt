@@ -77,6 +77,7 @@ qt_add_qml_module(konsoll
         controls/GlassSurface.qml
         controls/ToolButton.qml
         controls/AgentConnectBanner.qml
+        controls/AgentReadRequestBanner.qml
         controls/SettingsSidebarItem.qml
         controls/FormGroup.qml
         controls/FormRow.qml

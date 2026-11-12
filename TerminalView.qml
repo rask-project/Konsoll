@@ -624,6 +624,14 @@ Item {
         z: 10
     }
 
+    Controls.AgentReadRequestBanner {
+        session: view.session
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.margins: 12
+        z: 11
+    }
+
     Controls.SearchBar {
         id: searchBar
 

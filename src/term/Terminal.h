@@ -45,9 +45,15 @@ struct TerminalRequest {
 class Terminal
 {
 public:
+    // A command run at a prompt (OSC 133 B..D): its lines, where the typed
+    // command starts on the first one (after the prompt), the line its
+    // output starts on, and its status.
     struct CommandBlock {
         int startLine{0};
         int endLine{0};
+        int startColumn{0};
+        int outputLine{0};
+        int exitCode{-1};
     };
 
     explicit Terminal(int rows, int cols, const QString &remoteHostToken);
@@ -409,6 +415,8 @@ private:
     unsigned int m_utf8CodePoint = 0;
     unsigned int m_utf8Minimum = 0;
     int m_commandStartLine = -1;
+    int m_commandStartColumn = 0; // where the typed command starts (OSC 133 ; B)
+    int m_commandOutputLine = -1; // where its output starts (OSC 133 ; C)
     int m_lastExitCode = -1;
     int m_cellPixelWidth = 8;
     int m_cellPixelHeight = 16;

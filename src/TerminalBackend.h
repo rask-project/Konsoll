@@ -7,6 +7,7 @@
 
 #include <QColor>
 #include <QElapsedTimer>
+#include <QJsonArray>
 #include <QObject>
 #include <QProcess>
 #include <QQueue>
@@ -18,6 +19,7 @@
 #include <QtQml>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -83,6 +85,10 @@ class TerminalBackend : public QObject
     // (ms since the epoch).
     Q_PROPERTY(QString agentTask READ agentTask NOTIFY agentStatusChanged)
     Q_PROPERTY(double agentSince READ agentSince NOTIFY agentStatusChanged)
+    // An agent's request to read another pane (AgentCommands' read_pane),
+    // waiting for the user's answer in this (the agent's) pane: what it
+    // asks for, empty when none waits.
+    Q_PROPERTY(QString readRequest READ readRequest NOTIFY readRequestChanged)
     // OSC 22: the Qt::CursorShape the program asked for, or -1 (default).
     Q_PROPERTY(int pointerShape READ pointerShape NOTIFY pointerShapeChanged)
     Q_PROPERTY(unsigned int backgroundColor READ backgroundColor NOTIFY colorSchemeChanged)
@@ -254,8 +260,25 @@ public:
     double agentSince() const { return static_cast<double>(m_agentSince); }
     // Answers the agent's permission prompt (state Approval) as if typed in
     // its pane: Enter takes the prompt's first choice (allow once), Escape
-    // refuses. Returns false, doing nothing, when no prompt waits.
+    // refuses; or a waiting read request (requestRead). Returns false,
+    // doing nothing, when no prompt waits.
     Q_INVOKABLE bool answerApproval(bool allow);
+
+    // A number naming this pane to an agent (list_panes / read_pane): unique
+    // in the process, unlike the token never a secret.
+    int paneId() const { return static_cast<int>(m_paneId); }
+    // The text of absolute lines first..last (from `firstColumn` on the first
+    // one), trailing blanks dropped, wrapped lines joined.
+    QString linesText(int first, int last, int firstColumn = 0) const;
+    // The last `count` commands run at a prompt (shell integration), oldest
+    // first: {command, exitCode, output (its last `outputLimit` characters)}.
+    QJsonArray recentCommands(int count, qsizetype outputLimit) const;
+
+    QString readRequest() const { return m_readRequest; }
+    // Asks the user (in this pane) to let its agent read another pane;
+    // `answer` gets the choice. False, without asking, while one waits.
+    bool requestRead(const QString &description, std::function<void(bool allow)> answer);
+    Q_INVOKABLE void answerReadRequest(bool allow);
     // The session's secret (KONSOLL_SESSION_TOKEN in its environment): agent
     // hooks and notifications name the session by it.
     QString sessionToken() const { return m_remoteHostToken; }
@@ -293,6 +316,7 @@ signals:
     void processKindChanged();
     void progressChanged();
     void agentStatusChanged();
+    void readRequestChanged();
     // The program rang the bell (BEL).
     void bellRang();
     // The program wrote output.
@@ -392,7 +416,10 @@ private:
     QString m_agentName;
     QString m_agentMessage;
     QString m_agentTask;
+    QString m_readRequest;
+    std::function<void(bool)> m_readAnswer;
     qint64 m_agentSince{0};
+    qint64 m_paneId{0};
     AbsPos m_selAnchor{.line = -1, .col = 0};
     AbsPos m_selCurrent{.line = -1, .col = 0};
     int m_highlightStart{-1};
