@@ -71,8 +71,8 @@ Guidance for AI agents working in this repository.
   Changing the hook specs makes installed hooks outdated (`agentHooksCurrent`):
   Settings offers Update.
   Send to Agent (the pane's context menu) pastes the selection or the last
-  command block (`lastCommandText`) into `TerminalManager::agentSessionFor`
-  (an agent pane in the same tab first) with `pasteText`.
+  command block (`lastCommandText`) into an agent from `TerminalManager::agentSessionsFor`
+  (the same tab's first; several become a submenu) with `pasteText`.
   New Agent in Worktree (Shell menu) asks with
   `NativeDialogs::promptAgentWorktree`; `AgentIntegrations::worktreePlan`
   builds the command (`git worktree add` beside the repository, then the

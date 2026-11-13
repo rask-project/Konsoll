@@ -563,37 +563,100 @@ Item {
         }
     }
 
+    // Measures the agent labels, so the Send submenus fit them (a menu is
+    // otherwise 200 px wide and elides them).
+    TextMetrics {
+        id: agentLabelMetrics
+        font: contextMenu.font
+    }
+
     Controls.Menu {
         id: contextMenu
 
-        // Read as the menu opens: the agent pane text would go to (same tab
-        // first), and what there is to send.
-        property var agentTarget: null
+        // Read as the menu opens: the agent panes text can go to (same tab
+        // first), and what there is to send. With several agents, the items
+        // become submenus listing them.
+        property var agentTargets: []
         property string selectedText: ""
         property string lastCommand: ""
+        readonly property bool oneAgent: agentTargets.length === 1
+        property real agentMenuWidth: 0
+        property Controls.Menu selectionMenu: Controls.Menu {
+            title: qsTr("Send Selection To")
+            width: Math.max(implicitWidth, contextMenu.agentMenuWidth)
+
+            Instantiator {
+                model: contextMenu.agentTargets
+                delegate: Controls.MenuItem {
+                    required property var modelData
+                    text: modelData.label
+                    onTriggered: view.sessionManager.sendToAgent(modelData.session, contextMenu.selectedText)
+                }
+                onObjectAdded: (index, object) => contextMenu.selectionMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => contextMenu.selectionMenu.removeItem(object)
+            }
+        }
+        property Controls.Menu commandMenu: Controls.Menu {
+            title: qsTr("Send Last Command To")
+            width: Math.max(implicitWidth, contextMenu.agentMenuWidth)
+
+            Instantiator {
+                model: contextMenu.agentTargets
+                delegate: Controls.MenuItem {
+                    required property var modelData
+                    text: modelData.label
+                    onTriggered: view.sessionManager.sendToAgent(modelData.session, contextMenu.lastCommand)
+                }
+                onObjectAdded: (index, object) => contextMenu.commandMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => contextMenu.commandMenu.removeItem(object)
+            }
+        }
+
+        // Takes `menu` out of the context menu (kept, not destroyed).
+        function takeSubmenu(menu) {
+            for (let i = 0; i < count; ++i) {
+                if (menuAt(i) === menu) {
+                    takeMenu(i);
+                    return;
+                }
+            }
+        }
 
         onAboutToShow: {
-            agentTarget = view.session ? view.sessionManager.agentSessionFor(view.session) : null;
-            selectedText = agentTarget ? view.session.selectionText() : "";
-            lastCommand = agentTarget ? view.session.lastCommandText() : "";
+            agentTargets = view.session ? view.sessionManager.agentSessionsFor(view.session) : [];
+            const any = agentTargets.length > 0;
+            selectedText = any ? view.session.selectionText() : "";
+            lastCommand = any ? view.session.lastCommandText() : "";
+            agentMenuWidth = agentTargets.reduce((widest, target) => {
+                agentLabelMetrics.text = target.label;
+                return Math.max(widest, agentLabelMetrics.advanceWidth + 64);
+            }, 0);
+            takeSubmenu(selectionMenu);
+            takeSubmenu(commandMenu);
+            if (agentTargets.length > 1) {
+                if (lastCommand !== "")
+                    insertMenu(0, commandMenu);
+                if (selectedText !== "")
+                    insertMenu(0, selectionMenu);
+            }
         }
 
         Controls.MenuItem {
-            visible: contextMenu.agentTarget !== null && contextMenu.selectedText !== ""
+            visible: contextMenu.oneAgent && contextMenu.selectedText !== ""
             height: visible ? implicitHeight : 0
             text: qsTr("Send Selection to Agent")
-            onTriggered: view.sessionManager.sendToAgent(view.session, contextMenu.selectedText)
+            onTriggered: view.sessionManager.sendToAgent(contextMenu.agentTargets[0].session, contextMenu.selectedText)
         }
 
         Controls.MenuItem {
-            visible: contextMenu.agentTarget !== null && contextMenu.lastCommand !== ""
+            visible: contextMenu.oneAgent && contextMenu.lastCommand !== ""
             height: visible ? implicitHeight : 0
             text: qsTr("Send Last Command to Agent")
-            onTriggered: view.sessionManager.sendToAgent(view.session, contextMenu.lastCommand)
+            onTriggered: view.sessionManager.sendToAgent(contextMenu.agentTargets[0].session, contextMenu.lastCommand)
         }
 
         MenuSeparator {
-            visible: contextMenu.agentTarget !== null && (contextMenu.selectedText !== "" || contextMenu.lastCommand !== "")
+            visible: contextMenu.agentTargets.length > 0 && (contextMenu.selectedText !== "" || contextMenu.lastCommand !== "")
             height: visible ? implicitHeight : 0
         }
 

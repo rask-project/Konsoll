@@ -157,7 +157,7 @@ above): relaunch your Konsoll afterwards so it writes your functions back.
 | `agents-window.png` | Window ▸ AI Agents with those four agents: Allow / Deny on the two asking, the task and state of the others | — |
 | `agent-connect.png` | A tab running a Codex that reports nothing, with the offer to connect it | `~/.codex` exists, not connected |
 | `agent-read-request.png` | Tab `api`: a failed `npm test` beside an agent whose `read_pane` waits for Deny / Allow Once | The demo agent calls `konsoll --mcp` itself |
-| `send-to-agent.png` | The failed `npm test` selected and the pane menu with Send Selection / Send Last Command to Agent | Select All, then the context menu |
+| `send-to-agent.png` | Tab `webapp`: the failed `npm test` beside an agent, two more agents in tabs `auth` and `docs`, and the pane menu's Send Last Command To submenu listing the three | The context menu, then the submenu |
 | `settings-agents.png` | Settings ▸ AI Agents: Claude Code and Qwen Code connected, Codex not, opencode not found, the MCP rows | — |
 
 **The AI agent shots** use demo agents in the docshot home: a small binary

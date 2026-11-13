@@ -411,11 +411,12 @@ connected, it also reports what it is doing, and the tab shows it:
 
 - **Send to Agent.** Right-click a pane: **Send Selection to Agent** and
   **Send Last Command to Agent** (the command, its exit status and output)
-  paste into the agent's pane — the one in the same tab first — as its next
-  prompt, ready for you to add a question and send.
+  paste into the agent's pane as its next prompt, ready for you to add a
+  question and send. With several agents open, they become submenus listing
+  each one by agent, tab and task (the same tab's first).
 
 <p align="center">
-  <img src="docs/images/send-to-agent.png" alt="A failed npm test selected, and the pane menu offering Send Selection to Agent and Send Last Command to Agent" width="900">
+  <img src="docs/images/send-to-agent.png" alt="A failed npm test, and the pane menu's Send Last Command To submenu listing three agents by tab and task" width="900">
 </p>
 
 - **Agents in parallel.** **Shell ▸ New Agent in Worktree…** asks for an

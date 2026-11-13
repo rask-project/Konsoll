@@ -524,20 +524,25 @@ void checkAgentContextTools(
     // Send to Agent: text from another pane is pasted into the agent's pane
     // (same tab first), which becomes active. A plain shell is no agent.
     agent->setAgentStatus(konsoll::AgentState::None, {}, {}); // left working by read_pane's answer
-    const bool notYetAgent = manager.agentSessionFor(pane) != agent;
+    const bool notYetAgent =
+        manager.agentSessionsFor(pane).isEmpty() && !manager.sendToAgent(agent, QStringLiteral("x"));
     agent->setAgentStatus(konsoll::AgentState::Working, QStringLiteral("claude"), {});
+    const QVariantList targets = manager.agentSessionsFor(pane);
+    const QVariantMap target = targets.value(0).toMap();
+    const bool listed = targets.size() == 1 && target.value(QStringLiteral("session")).value<QObject *>() == agent &&
+                        target.value(QStringLiteral("label")).toString().startsWith(QStringLiteral("Claude Code — "));
     manager.activateSession(pane);
-    const bool sent = manager.sendToAgent(pane, QStringLiteral("echo SENT_\x1bTO_AGENT"));
+    const bool sent = manager.sendToAgent(agent, QStringLiteral("echo SENT_\x1bTO_AGENT"));
     agent->writeText("\r");
     check(
         failures,
-        notYetAgent && sent && manager.agentSessionFor(pane) == agent && activeSession(manager) == agent &&
+        notYetAgent && listed && sent && activeSession(manager) == agent &&
             waitFor(
                 "agent tools: sent text runs",
                 [agent]() { return agent->bufferText().count(QStringLiteral("SENT_TO_AGENT")) >= 2; },
                 10000
             ),
-        "agent tools: Send to Agent pastes into the agent's pane (escapes dropped) and activates it"
+        "agent tools: Send to Agent lists the agent panes and pastes into the chosen one (escapes dropped)"
     );
     agent->setAgentStatus(konsoll::AgentState::None, {}, {});
 }

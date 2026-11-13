@@ -34,6 +34,27 @@ QString agentDisplayName(const QString &agent)
     return names.value(agent, agent.isEmpty() ? QObject::tr("The AI agent") : agent);
 }
 
+// A pane Send to Agent can paste into: an agent reports there, or its
+// foreground process is a known agent that does not.
+bool isAgentSession(const TerminalBackend *session)
+{
+    return session->agentStateValue() != AgentState::None || session->processKind() == QLatin1String("agent");
+}
+
+// How Send to Agent names an agent pane: "Claude Code — konsoll: fix the
+// build" (the task elided).
+QString agentTargetLabel(const TerminalBackend *session, const TerminalWorkspaceModel *workspace)
+{
+    const QString agent = session->agentName().isEmpty() ? session->foregroundProcess() : session->agentName();
+    QString label = agentDisplayName(agent) + QStringLiteral(" — ") + workspace->title();
+    const QString task = session->agentTask().simplified();
+    constexpr qsizetype kTaskLength = 40;
+    if (!task.isEmpty()) {
+        label += QStringLiteral(": ") + (task.size() > kTaskLength ? task.left(kTaskLength - 1) + QChar(0x2026) : task);
+    }
+    return label;
+}
+
 // How much a pane's agent state wants the user, for the workspace's icon.
 int agentUrgency(AgentState state)
 {
@@ -506,32 +527,46 @@ void TerminalManager::onAgentStatusChanged(TerminalBackend *session, AgentState 
     );
 }
 
-QObject *TerminalManager::agentSessionFor(QObject *session) const
+QVariantList TerminalManager::agentSessionsFor(QObject *session) const
 {
     TerminalBackend *const from = ownedSession(session);
-    const auto isAgent = [from](const TerminalBackend *candidate) {
-        return candidate != from &&
-               (candidate->agentStateValue() != AgentState::None || candidate->processKind() == QLatin1String("agent"));
+    TerminalWorkspaceModel *const current = from != nullptr ? workspaceOf(from) : nullptr;
+    struct Target {
+        QString label;
+        TerminalBackend *session = nullptr;
+        qsizetype tab = 0;
     };
-    if (TerminalWorkspaceModel *const workspace = from != nullptr ? workspaceOf(from) : nullptr) {
-        const QVariantList sameTab = workspaceSessions(workspace);
-        const auto found = std::ranges::find_if(sameTab, [&isAgent](const QVariant &value) {
-            const auto *const candidate = qobject_cast<const TerminalBackend *>(value.value<QObject *>());
-            return candidate != nullptr && isAgent(candidate);
-        });
-        if (found != sameTab.end()) {
-            return found->value<QObject *>();
+    std::vector<Target> targets;
+    for (qsizetype tab = 0; tab < std::ssize(m_workspaces); ++tab) {
+        TerminalWorkspaceModel *const workspace = m_workspaces[tab].get();
+        for (const QVariant &value : workspaceSessions(workspace)) {
+            auto *const candidate = qobject_cast<TerminalBackend *>(value.value<QObject *>());
+            if (candidate != nullptr && candidate != from && isAgentSession(candidate)) {
+                targets.push_back({agentTargetLabel(candidate, workspace), candidate, tab + 1});
+            }
         }
     }
-    const auto anywhere =
-        std::ranges::find_if(m_sessions, [&isAgent](const auto &candidate) { return isAgent(candidate.get()); });
-    return anywhere != m_sessions.end() ? anywhere->get() : nullptr;
+    // The same tab's agents first; the order is otherwise the tabs'.
+    std::ranges::stable_partition(targets, [this, current](const Target &target) {
+        return workspaceOf(target.session) == current;
+    });
+    QVariantList list;
+    std::ranges::transform(targets, std::back_inserter(list), [&targets](const Target &target) {
+        // Two tabs with the same name and agent: tell them apart by number.
+        const auto same = std::ranges::count(targets, target.label, &Target::label);
+        const QString label = same > 1 ? QObject::tr("%1 (tab %2)").arg(target.label).arg(target.tab) : target.label;
+        return QVariant(QVariantMap{
+            {QStringLiteral("session"), QVariant::fromValue(static_cast<QObject *>(target.session))},
+            {QStringLiteral("label"), label},
+        });
+    });
+    return list;
 }
 
-bool TerminalManager::sendToAgent(QObject *session, const QString &text)
+bool TerminalManager::sendToAgent(QObject *agentObject, const QString &text)
 {
-    auto *const agent = qobject_cast<TerminalBackend *>(agentSessionFor(session));
-    if (agent == nullptr || text.trimmed().isEmpty()) {
+    TerminalBackend *const agent = ownedSession(agentObject);
+    if (agent == nullptr || !isAgentSession(agent) || text.trimmed().isEmpty()) {
         return false;
     }
     agent->pasteText(text);
