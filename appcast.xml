@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Konsoll</title>
+    <link>https://github.com/rask-project/Konsoll/releases</link>
+    <description>Konsoll releases</description>
+    <language>en</language>
+    <item>
+      <title>Konsoll 3.7.0</title>
+      <link>https://github.com/rask-project/Konsoll/releases/tag/v3.7.0</link>
+      <sparkle:version>3.7.0.1000</sparkle:version>
+      <sparkle:shortVersionString>3.7.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+      <pubDate>Fri, 13 Nov 2026 23:19:59 GMT</pubDate>
+      <description sparkle:format="markdown"><![CDATA[## What's new
+
+3.7.0 keeps Konsoll up to date by itself.
+
+### Updates
+
+- **Automatic updates.** Once a day Konsoll looks for a newer release,
+  downloads it in the background and installs it when you quit. Updates are
+  signed, and they open without clearing the quarantine flag.
+- **Konsoll ▸ Check for Updates…** checks right away, shows what changed and
+  offers to install and relaunch.
+- **Settings ▸ Updates** turns the automatic checks and downloads off and
+  picks the channel: **Stable only** (the default) or **Stable and beta**,
+  which also offers pre-releases for testing.
+
+This is the last version to install by hand: from here on, Konsoll updates
+itself.
+]]></description>
+      <enclosure url="https://github.com/rask-project/Konsoll/releases/download/v3.7.0/Konsoll-3.7.0-arm64.zip" length="41039256" type="application/octet-stream" sparkle:edSignature="+97t5kxtowznBYOUmpS2OGq9ThNX/+1q1oVrkJ2LerNiSGdDtU9R9N/odOLtrJBqjatPLBIN5GV3Wwtb8wsuBw=="/>
+    </item>
+  </channel>
+</rss>
