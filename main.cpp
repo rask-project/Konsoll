@@ -18,6 +18,7 @@
 #include "SshIntegration.h"
 #include "TerminalBackend.h"
 #include "TerminalManager.h"
+#include "Updater.h"
 #include "WindowRegistry.h"
 #include "renderdump.h"
 #include "screendump.h"
@@ -124,7 +125,11 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection
     );
     engine.loadFromModule("konsoll", "Main");
-    QTimer::singleShot(0, [] { konsoll::installQuitGuard(); });
+    QTimer::singleShot(0, [] {
+        konsoll::installQuitGuard();
+        // Scheduled update checks (Sparkle), once the windows are up.
+        konsoll::Updater::shared().start();
+    });
 
     const int exitCode = QGuiApplication::exec();
     // The socket server outlives main()'s locals.

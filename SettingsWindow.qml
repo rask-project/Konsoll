@@ -42,6 +42,10 @@ Window {
         {
             title: qsTr("AI Agents"),
             iconName: "agents"
+        },
+        {
+            title: qsTr("Updates"),
+            iconName: "updates"
         }
     ]
     readonly property int agentsSection: 5
@@ -689,6 +693,86 @@ Window {
                                 }
                             }
                         }
+                    }
+                }
+
+                // Updates: Sparkle's schedule and the release channel.
+                ColumnLayout {
+                    spacing: 6
+                    enabled: Updater.available
+
+                    Controls.FormGroup {
+                        Controls.FormRow {
+                            label: qsTr("Check for updates automatically")
+                            detail: Updater.lastCheck.getTime() ? qsTr("Last checked %1").arg(Updater.lastCheck.toLocaleString(Qt.locale(), Locale.ShortFormat)) : qsTr("Not checked yet")
+                            showSeparator: false
+
+                            Switch {
+                                checked: Updater.automaticChecks
+                                onToggled: Updater.automaticChecks = checked
+                            }
+                        }
+
+                        Controls.FormRow {
+                            label: qsTr("Download updates automatically")
+                            detail: qsTr("Installed when you quit Konsoll")
+                            enabled: Updater.automaticChecks
+                            opacity: enabled ? 1 : 0.5
+
+                            Switch {
+                                checked: Updater.automaticDownloads
+                                onToggled: Updater.automaticDownloads = checked
+                            }
+                        }
+
+                        Controls.FormRow {
+                            label: qsTr("Updates")
+                            detail: qsTr("Beta versions bring new features earlier, for testing")
+
+                            ComboBox {
+                                Layout.preferredWidth: 150
+
+                                model: [qsTr("Stable only"), qsTr("Stable and beta")]
+                                currentIndex: Updater.betaUpdates ? 1 : 0
+                                onActivated: index => Updater.betaUpdates = index === 1
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 10
+                        Layout.rightMargin: 10
+                        Layout.topMargin: 6
+
+                        Label {
+                            Layout.fillWidth: true
+
+                            text: Updater.available ? qsTr("Konsoll %1").arg(Qt.application.version) : qsTr("This build does not update itself.")
+                            font.pointSize: 11
+                            color: control.secondaryTextColor
+                            wrapMode: Text.Wrap
+                        }
+
+                        Button {
+                            text: qsTr("Check Now")
+                            onClicked: Updater.checkForUpdates()
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 10
+                        Layout.rightMargin: 10
+
+                        text: qsTr("Going back to stable only keeps the beta you have until a newer stable version comes out.")
+                        font.pointSize: 11
+                        color: control.secondaryTextColor
+                        wrapMode: Text.Wrap
+                    }
+
+                    Item {
+                        Layout.fillHeight: true
                     }
                 }
             }

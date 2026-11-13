@@ -192,6 +192,66 @@ the release's bundle id, so installing it replaces the stable app until the
 next stable install. The notes of the next stable release start at the
 previous stable tag, skipping the pre-releases in between.
 
+## Updates (Sparkle)
+
+Konsoll updates itself with [Sparkle](https://sparkle-project.org)
+(`src/Updater.mm`, version pinned in `cmake/Sparkle.cmake`). It reads the
+appcast at `KONSOLL_UPDATE_FEED_URL`, by default `appcast.xml` on the
+repository's `appcast` branch:
+
+```text
+https://raw.githubusercontent.com/rask-project/Konsoll/appcast/appcast.xml
+```
+
+After publishing the GitHub Release, `release.yml` signs the ZIP with the
+EdDSA private key (`SPARKLE_ED_PRIVATE_KEY` secret, `sign_update`) and adds
+the release to the appcast (`tools/update-appcast.py`), then pushes the
+`appcast` branch (created on the first release). A pre-release goes in the
+`beta` channel, which only users who chose **Stable and beta** in
+Settings ▸ Updates read. `docs/releases/<tag>.md` becomes the release notes
+Sparkle shows (Markdown).
+
+Sparkle compares `CFBundleVersion`, which CMake derives from the tag so that
+pre-releases come before their release: `3.7.0-alpha.N` → `3.7.0.N`,
+`-beta.N` → `3.7.0.(100+N)`, `-rc.N` → `3.7.0.(500+N)`, `3.7.0` →
+`3.7.0.1000`. `CFBundleShortVersionString` is the tag itself.
+
+Automatic checks and downloads are on by default (`SUEnableAutomaticChecks`,
+`SUAutomaticallyUpdate` in `Info.plist`, so Sparkle does not ask on the
+second launch): a found update is downloaded in the background and
+installed when Konsoll quits. Settings ▸ Updates turns them off.
+
+The ad-hoc signature is enough: Sparkle accepts the update because its
+EdDSA signature matches `SUPublicEDKey`, and what it downloads carries no
+quarantine flag, so updated apps open without the `xattr` step. Debug
+builds have no feed URL and do not update themselves; the updater is also
+off while `KONSOLL_UPDATE_PUBLIC_KEY` is empty.
+
+### One-time setup of the signing key
+
+Sparkle's tools are in the build tree after configuring
+(`build/<dir>/_deps/sparkle-<version>/bin`):
+
+```sh
+SPARKLE_BIN=$(echo build/release/_deps/sparkle-*/bin)
+"$SPARKLE_BIN/generate_keys"            # creates the key in the login keychain, prints the public key
+"$SPARKLE_BIN/generate_keys" -x sparkle-private-key.txt
+gh secret set SPARKLE_ED_PRIVATE_KEY < sparkle-private-key.txt
+rm sparkle-private-key.txt
+```
+
+Put the printed public key in `KONSOLL_UPDATE_PUBLIC_KEY`
+(`CMakeLists.txt`; it is set since 3.7.0). Keep the private key in the keychain (or a password
+manager): losing it means current installs can no longer verify updates,
+and changing it needs a release signed with both keys.
+
+To test an update locally, configure a Release build with
+`-DKONSOLL_UPDATE_FEED_URL=http://127.0.0.1:8765/appcast.xml`, serve an
+appcast and a signed ZIP of a newer build from that address, and run the
+packaged app.
+
+## Release notes
+
 The release notes open with `docs/releases/<tag>.md` (e.g.
 `docs/releases/v3.5.0.md`) when that file exists — what changed since the
 last release, for users — followed by the install instructions and GitHub's

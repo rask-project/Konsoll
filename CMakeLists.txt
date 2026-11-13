@@ -29,6 +29,27 @@ else()
     set(KONSOLL_DISPLAY_VERSION ${PROJECT_VERSION})
 endif()
 
+# CFBundleVersion, which Sparkle compares to find a newer release: the tag's
+# version plus a fourth number that orders its pre-releases before it
+# (3.7.0-alpha.2 -> 3.7.0.2, -beta.2 -> 3.7.0.102, -rc.2 -> 3.7.0.502,
+# 3.7.0 -> 3.7.0.1000).
+set(KONSOLL_BUNDLE_VERSION "${PROJECT_VERSION}.1000")
+if(KONSOLL_DISPLAY_VERSION MATCHES "^([0-9]+\\.[0-9]+\\.[0-9]+)(-(alpha|beta|rc)\\.([0-9]+))?$")
+    set(release_base "${CMAKE_MATCH_1}")
+    set(prerelease_kind "${CMAKE_MATCH_3}")
+    set(prerelease_number "${CMAKE_MATCH_4}")
+    if(prerelease_kind STREQUAL "alpha")
+        set(release_build "${prerelease_number}")
+    elseif(prerelease_kind STREQUAL "beta")
+        math(EXPR release_build "100 + ${prerelease_number}")
+    elseif(prerelease_kind STREQUAL "rc")
+        math(EXPR release_build "500 + ${prerelease_number}")
+    else()
+        set(release_build 1000)
+    endif()
+    set(KONSOLL_BUNDLE_VERSION "${release_base}.${release_build}")
+endif()
+
 if(APPLE AND CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/dist" CACHE PATH
         "Directory for the installed macOS application bundle" FORCE)
@@ -51,6 +72,42 @@ set_source_files_properties(${app_icon_macos} PROPERTIES MACOSX_PACKAGE_LOCATION
 
 set(KONSOLL_CODESIGN_IDENTITY "" CACHE STRING
     "Developer ID Application identity used to sign the macOS app bundle")
+
+# Updates (Sparkle). The appcast lists every release; the release workflow
+# adds each tag to it (tools/update-appcast.py). Debug builds do not update
+# themselves: without a feed URL the updater stays off.
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(default_feed_url "")
+else()
+    set(default_feed_url "https://raw.githubusercontent.com/rask-project/Konsoll/appcast/appcast.xml")
+endif()
+set(KONSOLL_UPDATE_FEED_URL "${default_feed_url}" CACHE STRING
+    "Sparkle appcast URL (empty turns the updater off)")
+# The EdDSA public key matching the private key the release workflow signs
+# updates with (generate_keys, SPARKLE_ED_PRIVATE_KEY secret).
+set(KONSOLL_UPDATE_PUBLIC_KEY "hb9+LAm6J+NKJX6j3LRQL/G4iV4h1/eJOwS/lYJPDto=" CACHE STRING
+    "Sparkle EdDSA public key (empty turns the updater off)")
+
+include(cmake/Sparkle.cmake)
+
+set(KONSOLL_SPARKLE_PLIST_KEYS "")
+if(KONSOLL_UPDATE_FEED_URL AND KONSOLL_UPDATE_PUBLIC_KEY)
+    string(CONCAT KONSOLL_SPARKLE_PLIST_KEYS
+        "\t<key>SUFeedURL</key>\n"
+        "\t<string>${KONSOLL_UPDATE_FEED_URL}</string>\n"
+        "\t<key>SUPublicEDKey</key>\n"
+        "\t<string>${KONSOLL_UPDATE_PUBLIC_KEY}</string>\n"
+        "\t<key>SUVerifyUpdateBeforeExtraction</key>\n"
+        "\t<true/>\n"
+        # Updates are on by default, without Sparkle's first-run question:
+        # checked daily, downloaded in the background and installed on quit.
+        # Settings > Updates turns them off.
+        "\t<key>SUEnableAutomaticChecks</key>\n"
+        "\t<true/>\n"
+        "\t<key>SUAutomaticallyUpdate</key>\n"
+        "\t<true/>\n"
+    )
+endif()
 
 qt_add_executable(konsoll
     main.cpp
@@ -123,6 +180,8 @@ qt_add_qml_module(konsoll
         src/TerminalManager.h
         src/TerminalRenderer.cpp
         src/TerminalRenderer.h
+        src/Updater.h
+        src/Updater.mm
         src/pty/PtyProcess.cpp
         src/pty/PtyProcess.h
         src/pty/PtyWorker.cpp
@@ -203,8 +262,9 @@ endif()
 set_target_properties(konsoll PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME "Konsoll"
     MACOSX_BUNDLE_GUI_IDENTIFIER ${KONSOLL_BUNDLE_ID}
-    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+    MACOSX_BUNDLE_BUNDLE_VERSION ${KONSOLL_BUNDLE_VERSION}
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${KONSOLL_DISPLAY_VERSION}
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Info.plist.in"
     MACOSX_BUNDLE TRUE
     WIN32_EXECUTABLE TRUE
 )
@@ -222,8 +282,16 @@ target_link_libraries(konsoll
     PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::QuickDialogs2 Qt6::Svg Qt6::Network
     "-framework QuartzCore"
     "-framework UserNotifications"
+    "-framework Sparkle"
     z
 )
+
+# Sparkle.framework is embedded in the bundle's Frameworks directory, which
+# Qt already puts on the executable's rpath.
+get_filename_component(sparkle_framework_dir "${SPARKLE_FRAMEWORK}" DIRECTORY)
+# -iframework: a system framework path, so its headers raise no warnings.
+target_compile_options(konsoll PRIVATE "-iframework${sparkle_framework_dir}")
+target_link_options(konsoll PRIVATE "-F${sparkle_framework_dir}")
 
 install(TARGETS konsoll
     BUNDLE DESTINATION .
@@ -235,6 +303,15 @@ if(APPLE)
     # The linker signs the executable alone, leaving the bundle's Info.plist
     # unbound: macOS then refuses notifications (UNErrorDomain 1, no prompt).
     # Sign the build tree's bundle ad hoc; the install step signs it again.
+    # Sparkle.framework goes in first (ditto keeps its symlinks), so the
+    # signature covers it.
+    add_custom_command(TARGET konsoll POST_BUILD
+        COMMAND rm -rf "$<TARGET_BUNDLE_DIR:konsoll>/Contents/Frameworks/Sparkle.framework"
+        COMMAND ditto "${SPARKLE_FRAMEWORK}"
+            "$<TARGET_BUNDLE_DIR:konsoll>/Contents/Frameworks/Sparkle.framework"
+        COMMENT "Embedding Sparkle.framework"
+        VERBATIM
+    )
     add_custom_command(TARGET konsoll POST_BUILD
         COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:konsoll>"
         COMMENT "Signing konsoll.app ad hoc (binds Info.plist for notifications)"

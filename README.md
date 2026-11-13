@@ -30,6 +30,19 @@ xattr -dr com.apple.quarantine /Applications/konsoll.app
 or open it, then choose **System Settings → Privacy & Security → Open
 Anyway**.
 
+### Updates
+
+Konsoll updates itself: once a day it looks for a newer release, downloads
+it in the background and installs it when you quit. **Konsoll ▸ Check for
+Updates…** checks right away, shows what changed and offers to install and
+relaunch. Updates are signed, and they open without the quarantine step
+above.
+
+Settings ▸ Updates turns the automatic checks and downloads off and sets the
+channel: **Stable only** (the
+default) or **Stable and beta**, which also offers pre-releases
+(`3.7.0-beta.1`) for testing.
+
 ## Requirements
 
 - macOS (Apple Silicon)
@@ -525,6 +538,7 @@ window right away and are saved automatically.
 | **Keyboard** | Use Option as Meta key |
 | **AI Agents** | Connect Claude Code, Codex, Qwen Code and opencode to the tab status; notify when an agent needs you |
 | **Security** | What programs may do: read the clipboard (`OSC 52`: never / ask / always), read the window title, show desktop notifications, move and resize the window |
+| **Updates** | Check for updates automatically, download them automatically, stable only or stable and beta |
 
 <p align="center">
   <img src="docs/images/settings.png" alt="The five Settings sections: Appearance, Window, Terminal, Keyboard and Security" width="900">

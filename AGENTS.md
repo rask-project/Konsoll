@@ -120,6 +120,20 @@ Guidance for AI agents working in this repository.
   Deny answer it too. The socket's request handler replies asynchronously
   for it. Nothing reads another pane without that. stdout carries only
   protocol messages.
+- **Updates** (`Updater`, QML singleton, Sparkle 2 pinned in
+  `cmake/Sparkle.cmake` and embedded in `Contents/Frameworks`): Sparkle's
+  standard UI reads the appcast (`SUFeedURL`, the `appcast` branch, written
+  by `release.yml` with `tools/update-appcast.py`) and checks the EdDSA
+  signature (`SUPublicEDKey`; the bundle is only ad-hoc signed). Tags with a
+  suffix go in the `beta` channel, offered when Settings ▸ Updates allows it
+  (`allowedChannelsForUpdater:`). Checking and downloading are on by
+  default (`SUEnableAutomaticChecks`, `SUAutomaticallyUpdate`): updates
+  install on quit. `CFBundleVersion` is derived from the tag
+  (`-beta.N` → `X.Y.Z.(100+N)`, stable → `X.Y.Z.1000`) so Sparkle orders
+  pre-releases first. "Check for Updates…" is inserted into the native app
+  menu by `Updater::start()`: a QML item in the app-named `Menu` that Qt does
+  not recognize (About/Settings/Quit) would open a second app menu. No feed
+  URL or public key (Debug builds) leaves the updater off.
 - **Threading:** each session has a `PtyWorker` on its own `QThread` that
   alone touches the PTY descriptor, its notifier and the child process. PTY
   writes, resizes and shutdown go to it as queued calls; output comes back as

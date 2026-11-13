@@ -10,7 +10,10 @@
 #   macOS style, which falls back to Fusion and Basic; the others are unused.
 # - QtWidgets: only the widget style plugin (styles/libqmacstyle) needs it,
 #   and Konsoll has no widgets.
-# - tls, networkinformation: Konsoll makes no network connections itself.
+# - tls, networkinformation: Konsoll's own code makes no network
+#   connections (Sparkle downloads updates with NSURLSession).
+# - Sparkle.framework: its headers, and the XPC services only sandboxed apps
+#   need.
 
 set(unused_styles Material Universal Imagine FluentWinUI3 iOS)
 
@@ -37,8 +40,13 @@ foreach(style IN LISTS unused_styles)
     )
 endforeach()
 
+set(sparkle "${contents}/Frameworks/Sparkle.framework")
+foreach(part IN ITEMS Headers PrivateHeaders Modules XPCServices)
+    list(APPEND remove "${sparkle}/Versions/B/${part}" "${sparkle}/${part}")
+endforeach()
+
 foreach(path IN LISTS remove)
-    if(EXISTS "${path}")
+    if(EXISTS "${path}" OR IS_SYMLINK "${path}")
         message(STATUS "Pruning: ${path}")
         file(REMOVE_RECURSE "${path}")
     endif()
