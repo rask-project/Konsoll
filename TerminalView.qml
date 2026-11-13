@@ -563,8 +563,8 @@ Item {
         }
     }
 
-    // Measures the agent labels, so the Send submenus fit them (a menu is
-    // otherwise 200 px wide and elides them).
+    // Measures the agent labels and the Send items, so the menus fit them (a
+    // menu is otherwise 200 px wide and elides them).
     TextMetrics {
         id: agentLabelMetrics
         font: contextMenu.font
@@ -572,6 +572,8 @@ Item {
 
     Controls.Menu {
         id: contextMenu
+
+        width: Math.max(implicitWidth, sendItemWidth)
 
         // Read as the menu opens: the agent panes text can go to (same tab
         // first), and what there is to send. With several agents, the items
@@ -581,6 +583,7 @@ Item {
         property string lastCommand: ""
         readonly property bool oneAgent: agentTargets.length === 1
         property real agentMenuWidth: 0
+        property real sendItemWidth: 0
         property Controls.Menu selectionMenu: Controls.Menu {
             title: qsTr("Send Selection To")
             width: Math.max(implicitWidth, contextMenu.agentMenuWidth)
@@ -631,6 +634,11 @@ Item {
                 agentLabelMetrics.text = target.label;
                 return Math.max(widest, agentLabelMetrics.advanceWidth + 64);
             }, 0);
+            const sendItems = oneAgent ? [selectedText !== "" ? sendSelectionItem.text : "", lastCommand !== "" ? sendCommandItem.text : ""] : [];
+            sendItemWidth = sendItems.reduce((widest, text) => {
+                agentLabelMetrics.text = text;
+                return text === "" ? widest : Math.max(widest, agentLabelMetrics.advanceWidth + 64);
+            }, 0);
             takeSubmenu(selectionMenu);
             takeSubmenu(commandMenu);
             if (agentTargets.length > 1) {
@@ -642,6 +650,8 @@ Item {
         }
 
         Controls.MenuItem {
+            id: sendSelectionItem
+
             visible: contextMenu.oneAgent && contextMenu.selectedText !== ""
             height: visible ? implicitHeight : 0
             text: qsTr("Send Selection to Agent")
@@ -649,6 +659,8 @@ Item {
         }
 
         Controls.MenuItem {
+            id: sendCommandItem
+
             visible: contextMenu.oneAgent && contextMenu.lastCommand !== ""
             height: visible ? implicitHeight : 0
             text: qsTr("Send Last Command to Agent")

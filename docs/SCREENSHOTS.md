@@ -158,6 +158,8 @@ above): relaunch your Konsoll afterwards so it writes your functions back.
 | `agent-connect.png` | A tab running a Codex that reports nothing, with the offer to connect it | `~/.codex` exists, not connected |
 | `agent-read-request.png` | Tab `api`: a failed `npm test` beside an agent whose `read_pane` waits for Deny / Allow Once | The demo agent calls `konsoll --mcp` itself |
 | `send-to-agent.png` | Tab `webapp`: the failed `npm test` beside an agent, two more agents in tabs `auth` and `docs`, and the pane menu's Send Last Command To submenu listing the three | The context menu, then the submenu |
+| `ssh-agent.gif` | Tab `marssola-a52i`: `ssh` by LAN address to a real Linux host (message of the day), `claude --permission-mode default` in a project there, a prompt that writes a file, the permission prompt (the tab's icon), allowed from Konsoll, the turn done | A real host and a real Claude Code (auto mode would answer the prompt itself); frames grabbed every 100 ms with captions, repeated frames held at most 0.8 s; ssh by LAN address so "Last login" shows a LAN IP |
+| `ssh-send-to-agent.png` | Tab `rask-mcp`: on the host over ssh, `npm test` failing (no test script) beside Claude Code, and the pane menu's Send Last Command to Agent | The same host |
 | `settings-agents.png` | Settings ▸ AI Agents: Claude Code and Qwen Code connected, Codex not, opencode not found, the MCP rows | — |
 
 **The AI agent shots** use demo agents in the docshot home: a small binary

@@ -436,7 +436,17 @@ connected, it also reports what it is doing, and the tab shows it:
   runs them once you trust them with `/hooks`; opencode is only listed).
   Logins with a remote command, `-N`, `-W`, a `RemoteCommand` in
   `ssh_config` or a host excluded in Settings ▸ AI Agents run ssh as usual;
-  so does `command ssh`. The remote shell must be zsh or bash.
+  so does `command ssh`. The remote shell must be zsh or bash. The login
+  still shows the host's message of the day and last login.
+
+<p align="center">
+  <img src="docs/images/ssh-agent.gif" alt="ssh to a Linux host, Claude Code started there asks to run a command, the tab shows it and the request is allowed from Konsoll" width="900">
+</p>
+
+<p align="center">
+  <img src="docs/images/ssh-send-to-agent.png" alt="A failed npm test on the host beside Claude Code running there over ssh, and the pane menu's Send Last Command to Agent" width="900">
+</p>
+
 - **A background tab** flags a waiting agent like the bell, a finished turn
   with ✓ and a failure with ✗. Hovering the tab shows the agent's message
   (what it needs permission for). With several panes in a tab, the pane that
