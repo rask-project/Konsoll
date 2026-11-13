@@ -474,6 +474,14 @@ void checkAgentContextTools(
         10000
     );
     const QString recent = call(QStringLiteral("recent_commands"), {}).value(QStringLiteral("text")).toString();
+    if (!ran) {
+        std::println(
+            std::cout,
+            "recent_commands returned:\n{}\npane:\n{}",
+            recent.toStdString(),
+            agent->bufferText().toStdString()
+        );
+    }
     check(
         failures,
         ran && recent.contains(QStringLiteral("--mcp")),
