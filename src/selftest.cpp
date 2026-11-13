@@ -923,11 +923,9 @@ void checkShellFunctions(int &failures, TerminalManager &manager)
     check(failures, konsoll::ShellFunctions::installScripts().has_value(), "functions: user's functions restored");
 }
 
-} // namespace
-
 // Text of soft-wrapped lines (command blocks, buffer saves): a space in the
 // last column before the wrap is kept, on screen and in the history.
-static void checkWrappedLineText(int &failures)
+void checkWrappedLineText(int &failures)
 {
     TerminalBackend onScreen;
     onScreen.startReplay(10, 4, QByteArrayLiteral("false;    echo OK\r\n"));
@@ -940,6 +938,8 @@ static void checkWrappedLineText(int &failures)
         "wrapped text: a space in the last column before the wrap is kept"
     );
 }
+
+} // namespace
 
 int runSelfTest()
 {
