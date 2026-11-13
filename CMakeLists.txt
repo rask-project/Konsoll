@@ -109,6 +109,10 @@ qt_add_qml_module(konsoll
         src/ProcessKind.h
         src/ShellFunctions.cpp
         src/ShellFunctions.h
+        src/ShellStartup.cpp
+        src/ShellStartup.h
+        src/SshIntegration.cpp
+        src/SshIntegration.h
         src/ScrollbackSettings.cpp
         src/ScrollbackSettings.h
         src/Notifications.h
@@ -176,6 +180,9 @@ qt_add_resources(konsoll "/"
         shell-integration/konsoll.bash
         shell-integration/konsoll.fish
         shell-integration/konsoll-agent-hook
+        shell-integration/konsoll-ssh.sh
+        shell-integration/konsoll-remote.sh
+        shell-integration/konsoll-remote-hook
         integrations/opencode/konsoll.js
 )
 

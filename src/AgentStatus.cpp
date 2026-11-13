@@ -3,19 +3,25 @@
 #include "ShellFunctions.h"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QPointer>
+#include <QRegularExpression>
 #include <QSaveFile>
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <iterator>
+#include <optional>
+#include <ranges>
 #include <utility>
 
 namespace konsoll
@@ -39,6 +45,70 @@ bool validAgentName(QByteArrayView name)
     return !name.isEmpty() && name.size() <= kMaxAgentNameLength && std::ranges::all_of(name, [](char c) {
         return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
     });
+}
+
+// The AgentState a state name stands for (kStateNames' index), if any.
+std::optional<std::uint64_t> stateIndex(QByteArrayView name)
+{
+    const auto *const state = std::ranges::find(kStateNames, name);
+    if (state == kStateNames.end()) {
+        return std::nullopt;
+    }
+    return static_cast<std::uint64_t>(std::distance(kStateNames.begin(), state));
+}
+
+// The JSON string whose opening quote is at `quote` in `text`, decoded. One
+// cut short (the remote hook sends the start of the event) ends where the
+// text does, less an escape cut in half.
+QString jsonStringAt(const QString &text, qsizetype quote)
+{
+    bool escaped = false;
+    const auto begin = text.cbegin() + quote + 1;
+    const auto closing = std::find_if(begin, text.cend(), [&escaped](QChar c) {
+        if (escaped) {
+            escaped = false;
+            return false;
+        }
+        escaped = c == QLatin1Char('\\');
+        return c == QLatin1Char('"');
+    });
+    const QString literal(begin, closing - begin);
+    // "\u00e" needs up to five characters dropped to parse.
+    constexpr qsizetype kLongestEscape = 6;
+    const auto parsed = std::ranges::find_if(std::views::iota(qsizetype{0}, kLongestEscape), [&literal](qsizetype cut) {
+        QJsonParseError error{};
+        QJsonDocument::fromJson(
+            QStringLiteral("[\"%1\"]").arg(literal.chopped(std::min(cut, literal.size()))).toUtf8(),
+            &error
+        );
+        return error.error == QJsonParseError::NoError;
+    });
+    if (parsed == std::views::iota(qsizetype{0}, kLongestEscape).end()) {
+        return {};
+    }
+    const QString decodable = literal.chopped(std::min(*parsed, literal.size()));
+    return QJsonDocument::fromJson(QStringLiteral("[\"%1\"]").arg(decodable).toUtf8()).array().at(0).toString();
+}
+
+// The string at the dotted `path` of `event`: walked when the JSON parsed,
+// otherwise the first "<last component>": "..." in the text.
+QString eventFieldAt(const QJsonDocument &document, const QString &text, const QString &path)
+{
+    const QStringList components = path.split(QLatin1Char('.'), Qt::SkipEmptyParts);
+    if (components.isEmpty()) {
+        return {};
+    }
+    if (document.isObject()) {
+        QJsonValue value = document.object();
+        std::ranges::for_each(components, [&value](const QString &component) {
+            value = value.toObject().value(component);
+        });
+        return value.toString();
+    }
+    const QRegularExpression key(QStringLiteral("\"%1\"\\s*:\\s*\"").arg(QRegularExpression::escape(components.last()))
+    );
+    const QRegularExpressionMatch match = key.match(text);
+    return match.hasMatch() ? jsonStringAt(text, match.capturedEnd() - 1) : QString{};
 }
 
 void installHookScript(const QString &path)
@@ -79,8 +149,8 @@ std::expected<AgentStatusMessage, AgentStatusError> parseAgentStatus(QByteArrayV
     if (!validAgentName(fields[1])) {
         return std::unexpected(AgentStatusError::BadAgentName);
     }
-    const auto *const state = std::ranges::find(kStateNames, QByteArrayView(fields[2]));
-    if (state == kStateNames.end()) {
+    const std::optional<std::uint64_t> state = stateIndex(fields[2]);
+    if (!state) {
         return std::unexpected(AgentStatusError::UnknownState);
     }
     QString message;
@@ -95,8 +165,75 @@ std::expected<AgentStatusMessage, AgentStatusError> parseAgentStatus(QByteArrayV
         .token = QString::fromLatin1(fields[0]),
         .agent = QString::fromLatin1(fields[1]),
         .message = std::move(message),
-        .stateValue = static_cast<std::uint64_t>(std::distance(kStateNames.begin(), state))
+        .stateValue = *state
     };
+}
+
+QString remoteAgentToken(const QString &sessionToken)
+{
+    constexpr qsizetype kTokenLength = 32;
+    return QString::fromLatin1(
+        QCryptographicHash::hash((sessionToken + QStringLiteral(":ssh")).toUtf8(), QCryptographicHash::Sha256)
+            .toHex()
+            .left(kTokenLength)
+    );
+}
+
+std::expected<AgentStatusMessage, AgentStatusError> parseRemoteAgentReport(QByteArrayView payload, const QString &token)
+{
+    const QList<QByteArray> fields = payload.toByteArray().split(';');
+    if (fields.size() < 3 || token.isEmpty() || QString::fromLatin1(fields[0]) != token) {
+        return std::unexpected(AgentStatusError::Malformed);
+    }
+    if (!validAgentName(fields[1])) {
+        return std::unexpected(AgentStatusError::BadAgentName);
+    }
+    const std::optional<std::uint64_t> state = stateIndex(fields[2]);
+    if (!state) {
+        return std::unexpected(AgentStatusError::UnknownState);
+    }
+    QByteArray text;
+    QByteArray keys;
+    QByteArray event;
+    bool decoded = true;
+    std::ranges::for_each(fields | std::views::drop(3), [&](const QByteArray &field) {
+        const qsizetype separator = field.indexOf('=');
+        const QByteArray name = field.left(separator);
+        const QByteArray value = separator < 0 ? QByteArray{} : field.mid(separator + 1);
+        if (name == "keys") {
+            keys = value;
+        } else if (name == "text" || name == "event") {
+            const auto bytes = QByteArray::fromBase64Encoding(value, QByteArray::AbortOnBase64DecodingErrors);
+            decoded = decoded && static_cast<bool>(bytes);
+            (name == "text" ? text : event) = bytes.decoded;
+        }
+    });
+    if (!decoded) {
+        return std::unexpected(AgentStatusError::Malformed);
+    }
+    const QString message =
+        !text.isEmpty() ? QString::fromUtf8(text) : agentEventField(event, QString::fromLatin1(keys));
+    return AgentStatusMessage{
+        .token = {},
+        .agent = QString::fromLatin1(fields[1]),
+        .message = message.simplified().left(kMaxMessageLength),
+        .stateValue = *state
+    };
+}
+
+QString agentEventField(const QByteArray &event, const QString &keys)
+{
+    if (event.isEmpty()) {
+        return {};
+    }
+    const QJsonDocument document = QJsonDocument::fromJson(event);
+    const QString text = QString::fromUtf8(event);
+    const QStringList paths = keys.split(QLatin1Char('|'), Qt::SkipEmptyParts);
+    auto fields = paths | std::views::transform([&document, &text](const QString &path) {
+                      return eventFieldAt(document, text, path);
+                  });
+    const auto found = std::ranges::find_if(fields, [](const QString &field) { return !field.isEmpty(); });
+    return found != fields.end() ? *found : QString{};
 }
 
 QString agentStatusSocketPath()

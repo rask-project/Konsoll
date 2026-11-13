@@ -1,0 +1,37 @@
+#!/bin/sh
+# konsoll-agent-hook for a shell Konsoll set up over ssh (konsoll-ssh.sh):
+# the same arguments as the one on the Mac,
+#
+#   konsoll-agent-hook AGENT STATE [MESSAGE | @KEY[|KEY2...]]
+#
+# but Konsoll's socket is on the other side of the connection, so the state
+# goes to the pane as an escape sequence written to the agent's terminal
+# ($KONSOLL_TTY, recorded when the shell started: hooks may run without a
+# controlling terminal). It carries the connection's token, so text that
+# only prints the sequence (cat of a file) cannot fake a state. @KEY sends
+# the start of the hook's JSON event and Konsoll reads the key from it.
+# POSIX sh: the host may have nothing else. It never fails: a hook's exit
+# status can change what the agent does.
+
+# Hooks get the event as JSON on stdin: read it all, so the agent never
+# blocks writing it; the start is enough for the keys Konsoll reads.
+event=''
+if [ ! -t 0 ]; then
+    event=$(head -c 2000 2>/dev/null)
+    cat >/dev/null 2>&1
+fi
+
+[ -n "${KONSOLL_REMOTE_AGENT_TOKEN-}" ] && [ -n "${KONSOLL_TTY-}" ] && [ -w "$KONSOLL_TTY" ] && [ $# -ge 2 ] || exit 0
+
+fields="$KONSOLL_REMOTE_AGENT_TOKEN;$1;$2"
+case ${3-} in
+'') ;;
+@?*) fields="$fields;keys=${3#@};event=$(printf '%s' "$event" | base64 | tr -d '\n')" ;;
+*) fields="$fields;text=$(printf '%s' "$3" | head -c 400 | base64 | tr -d '\n')" ;;
+esac
+
+# One write: dd reblocks to a single output block, so the agent's own
+# output cannot land inside the sequence.
+printf '\033]1337;KonsollAgent=%s\007' "$fields" |
+    dd ibs=4096 obs=65536 conv=notrunc of="$KONSOLL_TTY" 2>/dev/null
+exit 0

@@ -5,6 +5,7 @@
 #include "AgentStatus.h"
 #include "BackgroundJobs.h"
 #include "ShellFunctions.h"
+#include "SshIntegration.h"
 #include "TerminalManager.h"
 #include "WindowRegistry.h"
 #include "term/Terminal.h"
@@ -18,6 +19,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QThread>
@@ -939,6 +941,206 @@ void checkWrappedLineText(int &failures)
     );
 }
 
+// Reports from an agent over ssh (OSC 1337 ; KonsollAgent=): the token is
+// checked, and the message comes from the text or the hook's event, which
+// may be cut short.
+void checkRemoteAgentReports(int &failures)
+{
+    const QString token = konsoll::remoteAgentToken(QStringLiteral("session"));
+    const auto report = [&token](const QByteArray &fields) {
+        return konsoll::parseRemoteAgentReport(token.toLatin1() + fields, token);
+    };
+    const auto approval = report(";claude;approval;text=" + QByteArray("rm -rf build").toBase64());
+    const auto event = report(
+        ";codex;approval;keys=tool_input.command|tool_name;event=" +
+        QByteArray(R"({"session_id":"s","tool_input":{"command":"make test"}})").toBase64()
+    );
+    const auto cut = [](const QByteArray &json) { return konsoll::agentEventField(json, QStringLiteral("x|prompt")); };
+    check(
+        failures,
+        token.size() == 32 && token != konsoll::remoteAgentToken(QStringLiteral("other")) && approval &&
+            approval->state() == konsoll::AgentState::Approval && approval->agent == QStringLiteral("claude") &&
+            approval->message == QStringLiteral("rm -rf build") && event &&
+            event->message == QStringLiteral("make test") &&
+            !konsoll::parseRemoteAgentReport("bogus;claude;error", token) && !report(";claude;dancing") &&
+            !report(";claude;idle;text=%%%"),
+        "ssh agents: reports checked by token, message from text or event"
+    );
+    check(
+        failures,
+        cut(R"({"prompt":"Fix the \"build\" now","x":)") == QStringLiteral("Fix the \"build\" now") &&
+            cut(R"({"session_id":"s","prompt":"Fix the bu)") == QStringLiteral("Fix the bu") &&
+            cut(R"({"prompt":"a\u00)") == QStringLiteral("a") && cut(R"({"prompt":"a\)") == QStringLiteral("a"),
+        "ssh agents: a key read from an event cut short"
+    );
+    const QByteArray codex = konsoll::codexHooksToml();
+    check(
+        failures,
+        codex.startsWith("{UserPromptSubmit=[{hooks=[{type=\"command\",command=\"[ -x \\\"$KONSOLL_AGENT_HOOK\\\" ]") &&
+            codex.contains("SessionEnd=[{hooks=[") && codex.contains("timeout=3}"),
+        "ssh agents: Codex hooks as a TOML table"
+    );
+}
+
+// Which ssh command lines konsoll-ssh.sh brings the integration to, in zsh
+// and bash, and the hosts Settings excludes.
+void checkSshCommandLines(int &failures)
+{
+    QTemporaryDir dir;
+    QFile source(QStringLiteral(":/shell-integration/konsoll-ssh.sh"));
+    QFile copy(dir.filePath(QStringLiteral("konsoll-ssh.sh")));
+    QFile excluded(dir.filePath(QStringLiteral("ssh-excluded-hosts")));
+    const bool written = source.open(QIODevice::ReadOnly) && copy.open(QIODevice::WriteOnly) &&
+                         copy.write(source.readAll()) > 0 && excluded.open(QIODevice::WriteOnly) &&
+                         excluded.write("other\nbox\n") > 0;
+    copy.close();
+    excluded.close();
+    const QString script =
+        QStringLiteral("source \"$1\"; _KONSOLL_SSH_DIR=$2\n"
+                       "t() { if _konsoll_ssh_interactive \"$@\"; then printf '[%s]' \"$_KONSOLL_SSH_TARGET\"; "
+                       "else printf '[-]'; fi; }\n"
+                       "t host; t -p 22 user@host; t -p22 -A host; t host ls; t -N host; t -o RemoteCommand=x host; "
+                       "t -l me -- host; t -vT host; t -W h:22 host; t\n"
+                       "_konsoll_ssh_excluded me@box && printf E; _konsoll_ssh_excluded boxer || printf N\n");
+    const QString expected = QStringLiteral("[host][user@host][host][-][-][host][host][-][-][-]EN");
+    const auto output = [&](const QString &shell) {
+        QProcess process;
+        process.start(shell, {QStringLiteral("-c"), script, QStringLiteral("t"), copy.fileName(), dir.path()});
+        process.waitForFinished(10000);
+        return QString::fromUtf8(process.readAllStandardOutput());
+    };
+    const QString zsh = output(QStringLiteral("/bin/zsh"));
+    const QString bash = output(QStringLiteral("/bin/bash"));
+    if (zsh != expected || bash != expected) {
+        std::println("  ssh command lines: zsh {} bash {}", zsh.toStdString(), bash.toStdString());
+    }
+    check(
+        failures,
+        written && zsh == expected && bash == expected,
+        "ssh: interactive logins recognized, hosts excluded"
+    );
+}
+
+// The bootstrap ssh sends, run here in a subshell: it sets up the shell with the
+// integration in a temporary directory, an agent started there gets
+// Konsoll's hooks and reports through the terminal, and the directory goes
+// when the shell exits.
+void checkSshBootstrap(int &failures, TerminalManager &manager, const QString &shellPath)
+{
+    const QTemporaryDir dir;
+    QDir().mkpath(dir.filePath(QStringLiteral("bin")));
+    QFile command(dir.filePath(QStringLiteral("remote-command")));
+    QFile agent(dir.filePath(QStringLiteral("bin/claude")));
+    const bool written =
+        command.open(QIODevice::WriteOnly) && command.write(konsoll::sshRemoteCommand()) > 0 &&
+        agent.open(QIODevice::WriteOnly) &&
+        agent.write("#!/bin/sh\n"
+                    "echo \"ARGS[$*]\"\n"
+                    "printf '{\"session_id\":\"s\",\"prompt\":\"Fix the build\"}' | \"$KONSOLL_AGENT_HOOK\" claude "
+                    "working @prompt\n"
+                    "\"$KONSOLL_AGENT_HOOK\" claude approval 'rm -rf build' </dev/null\n"
+                    "sleep 30\n") > 0;
+    command.close();
+    agent.close();
+    agent.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+    // zsh: the user's startup files run at the top level, where `local`
+    // (an oh-my-zsh theme's) keeps its value.
+    const bool zsh = shellPath.endsWith(QStringLiteral("/zsh"));
+    QDir().mkpath(dir.filePath(QStringLiteral("zdot")));
+    QFile zshrc(dir.filePath(QStringLiteral("zdot/.zshrc")));
+    const bool userFiles = zshrc.open(QIODevice::WriteOnly) && zshrc.write("local konsoll_selftest_local=KEPT\n") > 0;
+    zshrc.close();
+
+    manager.addWorkspace();
+    auto *shell = activeSession(manager);
+    waitFor("ssh bootstrap: tab shell", [shell]() { return !shell->bufferText().isEmpty(); }, 15000);
+    shell->writeText(
+        QStringLiteral("(export SHELL=%1 %3; eval \"$(cat %2) $KONSOLL_REMOTE_AGENT_TOKEN\"); echo BACK_HOME\n")
+            .arg(
+                shellPath,
+                command.fileName(),
+                zsh ? QStringLiteral("KONSOLL_USER_ZDOTDIR=") + dir.filePath(QStringLiteral("zdot")) : QString{}
+            )
+    );
+    shell->writeText(
+        QStringLiteral("echo \"REMOTE[$KONSOLL_REMOTE]DIR[$KONSOLL_REMOTE_DIR]LOCAL[$konsoll_selftest_local]\"\n")
+    );
+    QString remoteDir;
+    const bool started = waitFor(
+        "ssh bootstrap: remote shell",
+        [shell, &remoteDir]() {
+            static const QRegularExpression kDir(QStringLiteral("REMOTE\\[1\\]DIR\\[(/[^\\]]+)\\]"));
+            const QRegularExpressionMatch match = kDir.match(shell->bufferText());
+            remoteDir = match.captured(1);
+            return match.hasMatch();
+        },
+        20000
+    );
+    check(
+        failures,
+        written && started && QFileInfo(remoteDir).isDir(),
+        "ssh bootstrap: the shell set up in a temporary directory"
+    );
+    if (zsh) {
+        check(
+            failures,
+            userFiles && shell->bufferText().contains(QStringLiteral("LOCAL[KEPT]")),
+            "ssh bootstrap: `local` in the user's .zshrc keeps its value"
+        );
+    }
+
+    // The user's startup files may put their own directories first.
+    shell->writeText(QStringLiteral("PATH=%1:$PATH; claude\n").arg(dir.filePath(QStringLiteral("bin"))));
+    const bool reported = started &&
+                          waitFor(
+                              "ssh bootstrap: agent reports",
+                              [shell]() {
+                                  return shell->agentState() == QStringLiteral("approval") &&
+                                         shell->agentName() == QStringLiteral("claude") &&
+                                         shell->agentMessage() == QStringLiteral("rm -rf build") &&
+                                         shell->agentTask() == QStringLiteral("Fix the build");
+                              },
+                              15000
+                          ) &&
+                          shell->bufferText().contains(QStringLiteral("claude-settings.json"));
+    if (!reported) {
+        std::println(
+            "  ssh bootstrap ({}): state [{}] agent [{}] task [{}] message [{}]\n{}",
+            shellPath.toStdString(),
+            shell->agentState().toStdString(),
+            shell->agentName().toStdString(),
+            shell->agentTask().toStdString(),
+            shell->agentMessage().toStdString(),
+            shell->bufferText().right(1500).toStdString()
+        );
+    }
+    check(failures, reported, "ssh bootstrap: the agent gets the hooks and reports through the terminal");
+    shell->writeText(QStringLiteral("\x03"));
+    check(
+        failures,
+        waitFor(
+            "ssh bootstrap: agent ended",
+            [shell]() { return shell->agentState().isEmpty(); },
+            10000
+        ),
+        "ssh bootstrap: the state clears when the agent's command ends"
+    );
+    shell->writeText(QStringLiteral("exit\n"));
+    check(
+        failures,
+        waitFor(
+            "ssh bootstrap: back",
+            [shell, &remoteDir]() {
+                return shell->bufferText().contains(QStringLiteral("BACK_HOME")) && !remoteDir.isEmpty() &&
+                       !QFileInfo::exists(remoteDir);
+            },
+            15000
+        ),
+        "ssh bootstrap: the temporary directory goes with the shell"
+    );
+    manager.closeSession(shell);
+}
+
 } // namespace
 
 int runSelfTest()
@@ -1086,6 +1288,8 @@ int runSelfTest()
     checkAgentConnectOffer(failures);
     checkAgentWorktree(failures);
     checkWrappedLineText(failures);
+    checkRemoteAgentReports(failures);
+    checkSshCommandLines(failures);
 
     // 1. Concurrent output: three sessions produce output at the same time.
     auto *a = activeSession(manager);
@@ -1397,6 +1601,8 @@ int runSelfTest()
     // 5d. Commands in the background.
     checkBackgroundJobs(failures, manager);
     checkShellFunctions(failures, manager);
+    checkSshBootstrap(failures, manager, QStringLiteral("/bin/zsh"));
+    checkSshBootstrap(failures, manager, QStringLiteral("/bin/bash"));
 
     // 6. App shutdown while a shell is running: no orphaned process group.
     manager.addWorkspace();

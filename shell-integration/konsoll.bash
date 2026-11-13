@@ -43,8 +43,12 @@ _konsoll_prompt_command() {
     if (( _KONSOLL_COMMAND_ACTIVE )); then
         printf '\e]133;D;%d\a' "$_KONSOLL_CAPTURED_STATUS"
     fi
-    printf '\e]1337;RemoteHost=%s;\a' "$KONSOLL_REMOTE_HOST_TOKEN"
-    printf '\e]7;file://localhost%s\a' "$encoded_path"
+    # Over ssh (konsoll-ssh.sh) the directory is the host's, not one on the
+    # Mac, and the host is the one the Mac connected to.
+    if [[ -z "${KONSOLL_REMOTE-}" ]]; then
+        printf '\e]1337;RemoteHost=%s;\a' "$KONSOLL_REMOTE_HOST_TOKEN"
+        printf '\e]7;file://localhost%s\a' "$encoded_path"
+    fi
     printf '\e]133;A\a'
     if [[ "$PS1" != *"$_KONSOLL_PROMPT_MARKER" ]]; then
         PS1+=$_KONSOLL_PROMPT_MARKER
@@ -73,9 +77,14 @@ _konsoll_preexec() {
     printf '\e]133;C\a'
 }
 
-# Remember a direct SSH destination so image and file drops can be uploaded
-# through the user's SSH configuration while the remote shell is active.
-if [[ "$(type -t ssh)" != function ]]; then
+if [[ -n "${KONSOLL_REMOTE-}" ]]; then
+    # A shell Konsoll set up over ssh: the agents started here report to it.
+    [[ -r "${KONSOLL_SHELL_INTEGRATION%/*}/konsoll-remote.sh" ]] && source "${KONSOLL_SHELL_INTEGRATION%/*}/konsoll-remote.sh"
+elif [[ "$(type -t ssh)" != function ]]; then
+  # ssh to a host brings the integration along (konsoll-ssh.sh).
+  [[ -r "${KONSOLL_SHELL_INTEGRATION%/*}/konsoll-ssh.sh" ]] && source "${KONSOLL_SHELL_INTEGRATION%/*}/konsoll-ssh.sh"
+  # Remember a direct SSH destination so image and file drops can be uploaded
+  # through the user's SSH configuration while the remote shell is active.
   ssh() {
     local port="" user="" target="" argument
     local -a original_args=("$@")
@@ -100,7 +109,11 @@ if [[ "$(type -t ssh)" != function ]]; then
       [[ -n "$user" && "$target" != *@* ]] && target="$user@$target"
       printf '\e]1337;RemoteHost=%s;%s%s\a' "$KONSOLL_REMOTE_HOST_TOKEN" "$target" "${port:+;port=$port}"
     fi
-    command ssh "${original_args[@]}"
+    if [[ "$(type -t _konsoll_ssh)" == function ]]; then
+      _konsoll_ssh "${original_args[@]}"
+    else
+      command ssh "${original_args[@]}"
+    fi
   }
 fi
 

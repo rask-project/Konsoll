@@ -251,6 +251,9 @@ void TerminalBackend::handleRequests()
             emit windowOperationRequested(8, 0, request.a);
             resize(request.a, m_rows);
             break;
+        case TerminalRequest::AgentReport:
+            applyRemoteAgentReport(request.data);
+            break;
         case TerminalRequest::Notification:
             // An agent reporting through its hooks gets Konsoll's own
             // notification (TerminalManager): its OSC 9 would repeat it.
@@ -545,6 +548,13 @@ void TerminalBackend::setAgentStatus(AgentState state, const QString &agent, con
     m_agentName = name;
     m_agentMessage = text;
     emit agentStatusChanged();
+}
+
+void TerminalBackend::applyRemoteAgentReport(const QByteArray &payload)
+{
+    if (const auto report = parseRemoteAgentReport(payload, remoteAgentToken(m_remoteHostToken))) {
+        setAgentStatus(report->state(), report->agent, report->message);
+    }
 }
 
 bool TerminalBackend::answerApproval(bool allow)

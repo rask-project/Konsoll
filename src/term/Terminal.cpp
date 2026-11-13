@@ -1640,6 +1640,18 @@ void Terminal::handleOsc(const QByteArray &body)
         handleOscRemoteHost(body);
         return;
     }
+    if (body.startsWith("1337;KonsollAgent=")) {
+        // Checked by TerminalBackend, which knows the token.
+        m_requests.push_back(TerminalRequest{
+            .data = body.mid(sizeof("1337;KonsollAgent=") - 1),
+            .body = {},
+            .kind = TerminalRequest::AgentReport,
+            .a = 0,
+            .b = 0,
+            .c = 0
+        });
+        return;
+    }
     if (body.startsWith("52;")) {
         handleOscClipboard(body);
         return;

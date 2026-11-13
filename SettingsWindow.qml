@@ -625,6 +625,56 @@ Window {
                             wrapMode: Text.Wrap
                         }
 
+                        // ssh brings the shell integration to the host
+                        // (SshIntegration.h): agents there report too.
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.topMargin: 12
+                            Layout.leftMargin: 10
+
+                            text: qsTr("Agents over SSH")
+                            font.pointSize: 11
+                            font.weight: Font.DemiBold
+                            color: control.secondaryTextColor
+                        }
+
+                        Controls.FormGroup {
+                            Controls.FormRow {
+                                label: qsTr("Bring Konsoll to SSH sessions")
+                                detail: qsTr("For “ssh host” typed in a zsh or bash tab")
+                                showSeparator: false
+
+                                Switch {
+                                    checked: AgentIntegrations.sshIntegration
+                                    onToggled: AgentIntegrations.sshIntegration = checked
+                                }
+                            }
+
+                            Controls.FormRow {
+                                label: qsTr("Leave these hosts alone")
+                                detail: qsTr("“host” or “user@host”, separated by spaces")
+                                enabled: AgentIntegrations.sshIntegration
+
+                                TextField {
+                                    Layout.preferredWidth: 200
+                                    text: AgentIntegrations.sshExcludedHosts.split("\n").join(" ")
+                                    placeholderText: qsTr("None")
+                                    onEditingFinished: AgentIntegrations.sshExcludedHosts = text
+                                }
+                            }
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 10
+                            Layout.rightMargin: 10
+
+                            text: qsTr("Claude Code, Codex and Qwen Code started on the host then show their state in the tab, and Send to Agent can reach them. Nothing is installed there: the shell setup lives in a private temporary folder for the session, and the agents get Konsoll's hooks for that run only (Codex runs them once you trust them with /hooks).")
+                            font.pointSize: 11
+                            color: control.secondaryTextColor
+                            wrapMode: Text.Wrap
+                        }
+
                         Controls.FormGroup {
                             Layout.topMargin: 12
 

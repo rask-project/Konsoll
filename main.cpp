@@ -15,6 +15,7 @@
 #include "NativeKeyTracker.h"
 #include "Notifications.h"
 #include "ShellFunctions.h"
+#include "SshIntegration.h"
 #include "TerminalBackend.h"
 #include "TerminalManager.h"
 #include "WindowRegistry.h"
@@ -73,6 +74,10 @@ int main(int argc, char *argv[])
     // The functions defined in Konsoll, for the shells about to start.
     if (const auto installed = konsoll::ShellFunctions::installScripts(); !installed) {
         qWarning("Konsoll: %s", qUtf8Printable(installed.error()));
+    }
+    // What ssh brings to a host (konsoll-ssh.sh), for this version.
+    if (const auto written = konsoll::writeSshIntegration(); !written) {
+        qWarning("Konsoll: %s", qUtf8Printable(written.error()));
     }
 
     // A clicked notification about a session (an agent waiting, a program's

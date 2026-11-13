@@ -425,6 +425,18 @@ connected, it also reports what it is doing, and the tab shows it:
   existing branch or worktree is reused) and starts the agent there in a new
   tab. Each agent works apart from your checkout, and Window ▸ AI Agents
   lists them all.
+- **Agents over SSH.** `ssh host` typed in a zsh or bash tab brings
+  Konsoll's shell integration to the host for that session, with nothing
+  installed there: Claude Code, Codex and Qwen Code started on the host show
+  their state in the tab, ask for permission through Konsoll's notifications
+  (Allow / Deny answer in the pane), and are listed by Send to Agent; the
+  host's commands become command blocks, so Send Last Command works there
+  too. The setup lives in a private temporary folder removed when the
+  shell exits, and the agents get Konsoll's hooks for that run only (Codex
+  runs them once you trust them with `/hooks`; opencode is only listed).
+  Logins with a remote command, `-N`, `-W`, a `RemoteCommand` in
+  `ssh_config` or a host excluded in Settings ▸ AI Agents run ssh as usual;
+  so does `command ssh`. The remote shell must be zsh or bash.
 - **A background tab** flags a waiting agent like the bell, a finished turn
   with ✓ and a failure with ✗. Hovering the tab shows the agent's message
   (what it needs permission for). With several panes in a tab, the pane that

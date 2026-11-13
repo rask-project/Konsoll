@@ -1,15 +1,19 @@
 #include "AgentIntegrations.h"
 
+#include "SshIntegration.h"
+
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QSettings>
 #include <QVariantMap>
@@ -31,7 +35,7 @@ using namespace std::string_view_literals;
 // What marks a hook command as Konsoll's (agentHookCommand).
 constexpr auto kHookMarker = "KONSOLL_AGENT_HOOK"sv;
 constexpr int kHookTimeoutSeconds = 5;
-// Codex caps its Interrupt hooks at three seconds.
+// Codex caps its Interrupt and SessionEnd hooks at three seconds.
 constexpr int kInterruptTimeoutSeconds = 3;
 
 // The tool a permission prompt is about, as the notification shows it.
@@ -298,6 +302,20 @@ QVariantMap agentEntry(const AgentInfo &agent)
     };
 }
 
+// How long the agent lets the hook run.
+int hookTimeout(std::string_view agent, const AgentHookSpec &spec)
+{
+    const bool capped = spec.event == "Interrupt"sv || (agent == "codex"sv && spec.event == "SessionEnd"sv);
+    return capped ? kInterruptTimeoutSeconds : kHookTimeoutSeconds;
+}
+
+// A TOML basic string.
+QString tomlString(QString text)
+{
+    text.replace(QLatin1Char('\\'), QStringLiteral("\\\\")).replace(QLatin1Char('"'), QStringLiteral("\\\""));
+    return QLatin1Char('"') + text + QLatin1Char('"');
+}
+
 // `settings` with Konsoll's hooks for `agent` in place of any it had.
 QJsonObject withAgentHooks(const QJsonObject &read, std::string_view agent, std::span<const AgentHookSpec> specs)
 {
@@ -307,7 +325,7 @@ QJsonObject withAgentHooks(const QJsonObject &read, std::string_view agent, std:
         const QJsonObject handler{
             {QStringLiteral("type"), QStringLiteral("command")},
             {QStringLiteral("command"), agentHookCommand(agent, spec)},
-            {QStringLiteral("timeout"), spec.event == "Interrupt"sv ? kInterruptTimeoutSeconds : kHookTimeoutSeconds},
+            {QStringLiteral("timeout"), hookTimeout(agent, spec)},
         };
         QJsonObject group{{QStringLiteral("hooks"), QJsonArray{handler}}};
         if (!spec.matcher.empty()) {
@@ -362,6 +380,34 @@ std::span<const AgentHookSpec> qwenHookSpecs()
     return kQwenHooks;
 }
 
+QJsonObject agentHooksSettings(std::string_view agent, std::span<const AgentHookSpec> specs)
+{
+    return withAgentHooks(QJsonObject{}, agent, specs);
+}
+
+QByteArray codexHooksToml()
+{
+    // Event -> its groups, in the order of the specs.
+    QStringList events;
+    QHash<QString, QStringList> groups;
+    std::ranges::for_each(kCodexHooks, [&events, &groups](const AgentHookSpec &spec) {
+        const QString event = fromView(spec.event);
+        if (!groups.contains(event)) {
+            events.append(event);
+        }
+        const QString matcher =
+            spec.matcher.empty() ? QString{} : QStringLiteral("matcher=%1,").arg(tomlString(fromView(spec.matcher)));
+        groups[event].append(QStringLiteral("{%1hooks=[{type=\"command\",command=%2,timeout=%3}]}")
+                                 .arg(matcher, tomlString(agentHookCommand("codex", spec)))
+                                 .arg(hookTimeout("codex", spec)));
+    });
+    QStringList tables;
+    std::ranges::transform(events, std::back_inserter(tables), [&groups](const QString &event) {
+        return event + QStringLiteral("=[") + groups.value(event).join(QLatin1Char(',')) + QLatin1Char(']');
+    });
+    return (QLatin1Char('{') + tables.join(QLatin1Char(',')) + QLatin1Char('}')).toUtf8();
+}
+
 QString agentHookCommand(std::string_view agent, const AgentHookSpec &spec)
 {
     QString arguments = fromView(agent) + QLatin1Char(' ') + fromView(spec.state);
@@ -413,6 +459,43 @@ bool hasAgentHooks(const QString &path)
 }
 
 AgentIntegrations::AgentIntegrations(QObject *parent) : QObject(parent) {}
+
+bool AgentIntegrations::sshIntegration() const
+{
+    return sshIntegrationEnabled();
+}
+
+void AgentIntegrations::setSshIntegration(bool enabled)
+{
+    if (enabled == sshIntegrationEnabled()) {
+        return;
+    }
+    konsoll::setSshIntegrationEnabled(enabled);
+    if (const auto written = writeSshIntegration(); !written) {
+        qWarning("Konsoll: %s", qUtf8Printable(written.error()));
+    }
+    emit sshIntegrationChanged();
+}
+
+QString AgentIntegrations::sshExcludedHosts() const
+{
+    return konsoll::sshExcludedHosts().join(QLatin1Char('\n'));
+}
+
+void AgentIntegrations::setSshExcludedHosts(const QString &hosts)
+{
+    // One per line, or separated by spaces or commas.
+    static const QRegularExpression kSeparators(QStringLiteral("[\\s,]+"));
+    const QStringList list = hosts.split(kSeparators, Qt::SkipEmptyParts);
+    if (list == konsoll::sshExcludedHosts()) {
+        return;
+    }
+    konsoll::setSshExcludedHosts(list);
+    if (const auto written = writeSshIntegration(); !written) {
+        qWarning("Konsoll: %s", qUtf8Printable(written.error()));
+    }
+    emit sshIntegrationChanged();
+}
 
 QVariantList AgentIntegrations::agents() const
 {

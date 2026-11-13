@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QJsonObject>
 #include <QObject>
 #include <QString>
 #include <QVariantList>
@@ -32,6 +33,12 @@ std::span<const AgentHookSpec> qwenHookSpecs();
 // a no-op outside Konsoll.
 QString agentHookCommand(std::string_view agent, const AgentHookSpec &spec);
 
+// Settings holding just Konsoll's hooks for `agent`, for one run of it
+// (SshIntegration: Claude Code's --settings, Qwen Code's system defaults).
+QJsonObject agentHooksSettings(std::string_view agent, std::span<const AgentHookSpec> specs);
+// Codex's hooks as a TOML inline table, for `codex -c hooks=<table>`.
+QByteArray codexHooksToml();
+
 // Adds the hooks for `agent` to the JSON settings file at `path` (created
 // when missing), replacing ones Konsoll added before and keeping
 // everything else. The previous file is kept as `path`.konsoll-backup.
@@ -61,11 +68,20 @@ class AgentIntegrations final : public QObject
     // (connected with hooks an older Konsoll wrote) and declined (its
     // connect offer was turned down).
     Q_PROPERTY(QVariantList agents READ agents NOTIFY agentsChanged)
+    // ssh brings the shell integration to the host (SshIntegration.h), so
+    // agents there report to the pane; the hosts it leaves alone, one per
+    // line ("host" or "user@host").
+    Q_PROPERTY(bool sshIntegration READ sshIntegration WRITE setSshIntegration NOTIFY sshIntegrationChanged)
+    Q_PROPERTY(QString sshExcludedHosts READ sshExcludedHosts WRITE setSshExcludedHosts NOTIFY sshIntegrationChanged)
 
 public:
     explicit AgentIntegrations(QObject *parent = nullptr);
 
     QVariantList agents() const;
+    bool sshIntegration() const;
+    void setSshIntegration(bool enabled);
+    QString sshExcludedHosts() const;
+    void setSshExcludedHosts(const QString &hosts);
 
     // Return an error message, or an empty string on success.
     Q_INVOKABLE QString install(const QString &id);
@@ -99,6 +115,7 @@ public:
 
 signals:
     void agentsChanged();
+    void sshIntegrationChanged();
 };
 
 } // namespace konsoll

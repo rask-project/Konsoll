@@ -51,6 +51,26 @@ enum class AgentStatusError : std::uint8_t {
 
 std::expected<AgentStatusMessage, AgentStatusError> parseAgentStatus(QByteArrayView line);
 
+// The token an agent in a shell Konsoll set up over ssh (konsoll-ssh.sh)
+// reports with: derived from the session's, so the host never learns the
+// one that drives this Mac's socket. KONSOLL_REMOTE_AGENT_TOKEN.
+QString remoteAgentToken(const QString &sessionToken);
+
+// An agent's report from over ssh, written to its terminal as
+// OSC 1337 ; KonsollAgent=<token>;<agent>;<state>[;text=<base64>]
+//                       [;keys=<key>|<key>...;event=<base64 JSON>]
+// (`payload` is what follows "KonsollAgent="). The message is the text, or
+// the first of the keys present in the hook's event (dotted paths, as
+// konsoll-agent-hook's @key), which may be cut short. Malformed unless the
+// token is `token`. The returned token is empty.
+std::expected<AgentStatusMessage, AgentStatusError>
+parseRemoteAgentReport(QByteArrayView payload, const QString &token);
+
+// The string at the first of `keys` ("a.b|c") present in the JSON `event`;
+// `event` may be cut short (the remote hook sends its start), and then a
+// key is looked up by its last component in what arrived.
+QString agentEventField(const QByteArray &event, const QString &keys);
+
 // Where the agent hooks reach Konsoll: a Unix socket private to the user,
 // exported to every session as KONSOLL_AGENT_SOCKET, and the helper script
 // the hooks run (KONSOLL_AGENT_HOOK). Both are fixed for the process and

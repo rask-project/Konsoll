@@ -32,7 +32,8 @@ struct TerminalRequest {
         TitleReport,   // XTWINOPS 21 (a = 0) / 20 icon label (a = 1)
         WindowOp,      // XTWINOPS 1-10: a = operation, b / c = its parameters
         Notification,  // OSC 9 / OSC 777 notify: data = title (may be empty), body = text
-        ColumnMode     // DECCOLM with ?40: a = the new column count (80 / 132)
+        ColumnMode,    // DECCOLM with ?40: a = the new column count (80 / 132)
+        AgentReport    // OSC 1337 ; KonsollAgent= (an agent over ssh): data = the rest
     };
     QByteArray data;
     QByteArray body;

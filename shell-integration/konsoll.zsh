@@ -34,8 +34,12 @@ function _konsoll_precmd() {
     if (( _KONSOLL_COMMAND_ACTIVE )); then
         printf '\e]133;D;%d\a' "$command_status"
     fi
-    printf '\e]1337;RemoteHost=%s;\a' "$KONSOLL_REMOTE_HOST_TOKEN"
-    printf '\e]7;file://localhost%s\a' "$encoded_path"
+    # Over ssh (konsoll-ssh.sh) the directory is the host's, not one on the
+    # Mac, and the host is the one the Mac connected to.
+    if [[ -z $KONSOLL_REMOTE ]]; then
+        printf '\e]1337;RemoteHost=%s;\a' "$KONSOLL_REMOTE_HOST_TOKEN"
+        printf '\e]7;file://localhost%s\a' "$encoded_path"
+    fi
     printf '\e]133;A\a'
     if [[ "$PROMPT" != *"$_KONSOLL_PROMPT_MARKER" ]]; then
         PROMPT+=$_KONSOLL_PROMPT_MARKER
@@ -50,7 +54,7 @@ function _konsoll_preexec() {
     local ssh_port=""
     local ssh_user=""
     [[ ${command_words[1]} == command || ${command_words[1]} == sudo ]] && (( command_index++ ))
-    if [[ ${command_words[command_index]##*/} == ssh ]]; then
+    if [[ -z $KONSOLL_REMOTE && ${command_words[command_index]##*/} == ssh ]]; then
         local target_index=$((command_index + 1))
         while (( target_index <= ${#command_words} )); do
             local argument=${command_words[target_index]}
@@ -82,3 +86,13 @@ function _konsoll_preexec() {
 
 add-zsh-hook precmd _konsoll_precmd
 add-zsh-hook preexec _konsoll_preexec
+
+if [[ -n $KONSOLL_REMOTE ]]; then
+    # A shell Konsoll set up over ssh: the agents started here report to it.
+    [[ -r ${KONSOLL_SHELL_INTEGRATION:h}/konsoll-remote.sh ]] && source ${KONSOLL_SHELL_INTEGRATION:h}/konsoll-remote.sh
+elif [[ -r ${KONSOLL_SHELL_INTEGRATION:h}/konsoll-ssh.sh ]]; then
+    # ssh to a host brings the integration along (unless ssh is already a
+    # function of the user's).
+    source ${KONSOLL_SHELL_INTEGRATION:h}/konsoll-ssh.sh
+    (( ${+functions[ssh]} )) || function ssh() { _konsoll_ssh "$@"; }
+fi

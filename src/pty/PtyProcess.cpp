@@ -3,6 +3,7 @@
 #include "AgentStatus.h"
 #include "ProcessKind.h"
 #include "ShellFunctions.h"
+#include "ShellStartup.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -70,30 +71,11 @@ void prepareZshIntegration(const QString &supportDir, ShellIntegration &integrat
     }
     QDir().mkpath(integration.startupDir);
     installResource(QStringLiteral(":/shell-integration/konsoll.zsh"), integration.integrationFile);
-    const QByteArray sourceHelper = "typeset -g _KONSOLL_WRAPPER_ZDOTDIR=\"$ZDOTDIR\"\n"
-                                    "typeset -g _KONSOLL_USER_ZDOTDIR=\"${KONSOLL_USER_ZDOTDIR:-$HOME}\"\n"
-                                    "function _konsoll_source_startup_file() {\n"
-                                    "  local file=\"$1\"\n"
-                                    "  local startup_path=\"$_KONSOLL_USER_ZDOTDIR/$file\"\n"
-                                    "  if [[ -r \"$startup_path\" ]]; then\n"
-                                    "    ZDOTDIR=\"$_KONSOLL_USER_ZDOTDIR\"\n"
-                                    "    source \"$startup_path\"\n"
-                                    "    _KONSOLL_USER_ZDOTDIR=\"${ZDOTDIR:-$_KONSOLL_USER_ZDOTDIR}\"\n"
-                                    "  fi\n"
-                                    "  ZDOTDIR=\"$_KONSOLL_WRAPPER_ZDOTDIR\"\n"
-                                    "}\n";
-    const std::array<std::pair<QString, QByteArray>, 3> startupFiles{{
-        {QStringLiteral(".zshenv"), sourceHelper + "_konsoll_source_startup_file .zshenv\n"},
-        {QStringLiteral(".zprofile"), "_konsoll_source_startup_file .zprofile\n"},
-        {QStringLiteral(".zshrc"),
-         "_konsoll_source_startup_file .zshrc\n"
-         "if [[ \"$HISTFILE\" == \"$_KONSOLL_WRAPPER_ZDOTDIR/.zsh_history\" ]]; then\n"
-         "  HISTFILE=\"$_KONSOLL_USER_ZDOTDIR/.zsh_history\"\n"
-         "  [[ -r \"$HISTFILE\" ]] && fc -R \"$HISTFILE\"\n"
-         "fi\n"
-         "source \"$KONSOLL_SHELL_INTEGRATION\"\n"
-         "ZDOTDIR=\"$_KONSOLL_USER_ZDOTDIR\"\n"},
-    }};
+    installResource(
+        QStringLiteral(":/shell-integration/konsoll-ssh.sh"),
+        supportDir + QStringLiteral("/konsoll-ssh.sh")
+    );
+    const auto startupFiles = konsoll::zshStartupFiles();
     for (const auto &[name, contents] : startupFiles) {
         QSaveFile file(integration.startupDir + QLatin1Char('/') + name);
         if (file.open(QIODevice::WriteOnly)) {
@@ -113,16 +95,13 @@ void prepareBashIntegration(const QString &supportDir, ShellIntegration &integra
     }
     QDir().mkpath(integration.startupDir);
     installResource(QStringLiteral(":/shell-integration/konsoll.bash"), integration.integrationFile);
+    installResource(
+        QStringLiteral(":/shell-integration/konsoll-ssh.sh"),
+        supportDir + QStringLiteral("/konsoll-ssh.sh")
+    );
     QSaveFile profile(integration.startupDir + QStringLiteral("/.bash_profile"));
     if (profile.open(QIODevice::WriteOnly)) {
-        profile.write("export HOME=\"$KONSOLL_ORIGINAL_HOME\"\n"
-                      "for _konsoll_profile in .bash_profile .bash_login .profile; do\n"
-                      "  if [[ -r \"$HOME/$_konsoll_profile\" ]]; then\n"
-                      "    source \"$HOME/$_konsoll_profile\"\n"
-                      "    break\n"
-                      "  fi\n"
-                      "done\n"
-                      "source \"$KONSOLL_SHELL_INTEGRATION\"\n");
+        profile.write(konsoll::bashProfile());
         profile.commit();
     }
 }
@@ -178,6 +157,9 @@ std::vector<QByteArray> buildPtyEnvironment(
         setEnvironmentVariable("KONSOLL_SESSION_TOKEN", remoteHostToken.toUtf8());
         setEnvironmentVariable("KONSOLL_AGENT_SOCKET", konsoll::agentStatusSocketPath().toLocal8Bit());
         setEnvironmentVariable("KONSOLL_AGENT_HOOK", konsoll::agentHookPath().toLocal8Bit());
+        // ssh brings the shell integration to the host (konsoll-ssh.sh); its
+        // agents report with this one, which opens nothing on this Mac.
+        setEnvironmentVariable("KONSOLL_REMOTE_AGENT_TOKEN", konsoll::remoteAgentToken(remoteHostToken).toUtf8());
     }
     if (!integration.integrationFile.isEmpty()) {
         const QByteArray integrationPath = integration.integrationFile.toLocal8Bit();

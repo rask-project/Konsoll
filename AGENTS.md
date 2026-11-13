@@ -73,6 +73,21 @@ Guidance for AI agents working in this repository.
   Send to Agent (the pane's context menu) pastes the selection or the last
   command block (`lastCommandText`) into an agent from `TerminalManager::agentSessionsFor`
   (the same tab's first; several become a submenu) with `pasteText`.
+  Over ssh (`SshIntegration`): the `ssh` function of the zsh/bash
+  integration (`shell-integration/konsoll-ssh.sh`) sends, for an
+  interactive login only, `ssh-remote-command` (a base64 POSIX bootstrap
+  Konsoll writes into `shellIntegrationDirectory()`) plus
+  `KONSOLL_REMOTE_AGENT_TOKEN` (`remoteAgentToken`, derived from the
+  session's: the host never gets the socket's token). The bootstrap unpacks
+  the integration into a private temporary directory (pid-owned, removed at
+  exit) and execs the login shell with `KONSOLL_REMOTE`; there
+  `konsoll-remote.sh` wraps claude/codex/qwen/opencode to pass Konsoll's
+  hooks for that run (Claude `--settings`, Codex `-c hooks=`
+  `codexHooksToml()`, Qwen `QWEN_CODE_SYSTEM_DEFAULTS_PATH`) and the remote
+  `konsoll-agent-hook` (`konsoll-remote-hook`, POSIX sh) writes
+  `OSC 1337 ; KonsollAgent=<token>;<agent>;<state>[;text=|keys=;event=]` to
+  the agent's tty (`KONSOLL_TTY`) in one write; `parseRemoteAgentReport`
+  checks the token. Nothing is installed on the host.
   New Agent in Worktree (Shell menu) asks with
   `NativeDialogs::promptAgentWorktree`; `AgentIntegrations::worktreePlan`
   builds the command (`git worktree add` beside the repository, then the

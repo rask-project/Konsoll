@@ -350,6 +350,9 @@ private:
     // Clipboard reads, title reports and window operations, by the user's
     // Settings > Security choices.
     void handleRequests();
+    // OSC 1337 ; KonsollAgent=: an agent in a shell Konsoll set up over ssh
+    // (konsoll-ssh.sh) reports with the session's remoteAgentToken.
+    void applyRemoteAgentReport(const QByteArray &payload);
     void answerClipboardRead(const QByteArray &selection);
     bool optionAsMeta() const;
     void checkScrollOffsetChanged();
