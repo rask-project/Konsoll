@@ -1555,13 +1555,19 @@ QString TerminalBackend::linesText(int first, int last, int firstColumn) const
     Line cells;
     std::ranges::for_each(std::views::iota(from, std::max(from, to + 1)), [&](int line) {
         screen.copyLine(line, cells);
+        // A line that wraps onto the next keeps its trailing blanks: a space
+        // in the last column is part of the text ("false; echo" wrapped
+        // after the semicolon), not padding.
+        const bool wraps = line < to && screen.isWrappedContinuation(line + 1);
         const auto reversedCells = std::views::reverse(cells);
         const auto lastContent = std::ranges::find_if(reversedCells, [](const Cell &cell) { return cell.ch != ' '; });
-        const int end =
-            lastContent == reversedCells.end() ? 0 : static_cast<int>(std::distance(cells.begin(), lastContent.base()));
+        const int end = wraps ? static_cast<int>(cells.size())
+                        : lastContent == reversedCells.end()
+                            ? 0
+                            : static_cast<int>(std::distance(cells.begin(), lastContent.base()));
         const int begin = line == from ? std::min(firstColumn, end) : 0;
         std::ranges::for_each(std::views::iota(begin, end), [&](int col) { appendCellText(text, cells[col]); });
-        if (line < to && !screen.isWrappedContinuation(line + 1)) {
+        if (line < to && !wraps) {
             text.append('\n');
         }
     });

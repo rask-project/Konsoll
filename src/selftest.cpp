@@ -925,6 +925,22 @@ void checkShellFunctions(int &failures, TerminalManager &manager)
 
 } // namespace
 
+// Text of soft-wrapped lines (command blocks, buffer saves): a space in the
+// last column before the wrap is kept, on screen and in the history.
+static void checkWrappedLineText(int &failures)
+{
+    TerminalBackend onScreen;
+    onScreen.startReplay(10, 4, QByteArrayLiteral("false;    echo OK\r\n"));
+    TerminalBackend inHistory;
+    inHistory.startReplay(10, 2, QByteArrayLiteral("false;    echo OK\r\nb\r\nc\r\n"));
+    check(
+        failures,
+        onScreen.bufferText().startsWith(QStringLiteral("false;    echo OK\n")) &&
+            inHistory.bufferText().startsWith(QStringLiteral("false;    echo OK\nb\n")),
+        "wrapped text: a space in the last column before the wrap is kept"
+    );
+}
+
 int runSelfTest()
 {
     // Multi-session validation: the real manager/backend/worker stack.
@@ -1069,6 +1085,7 @@ int runSelfTest()
     checkAgentIntegrations(failures);
     checkAgentConnectOffer(failures);
     checkAgentWorktree(failures);
+    checkWrappedLineText(failures);
 
     // 1. Concurrent output: three sessions produce output at the same time.
     auto *a = activeSession(manager);
