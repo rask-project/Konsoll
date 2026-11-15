@@ -1,0 +1,2 @@
+{%- comment -%} A line icon from resources/icons, drawn in the current text color. {%- endcomment -%}
+<span class="glyph{% if include.class %} {{ include.class }}{% endif %}" style="--glyph:url('{{ '/assets/icons/' | append: include.name | append: '.svg' | relative_url }}')" aria-hidden="true"></span>

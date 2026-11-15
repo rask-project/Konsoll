@@ -1,0 +1,23 @@
+---
+layout: default
+title: News
+description: What's new in each Konsoll release.
+---
+<div class="page container container-narrow">
+  <header class="page-header">
+    <p class="eyebrow">News</p>
+    <h1>What's new in Konsoll</h1>
+    <p class="lead">Release notes and stories from the project. <a href="{{ '/news/feed.xml' | relative_url }}">Subscribe with RSS</a>.</p>
+  </header>
+  <ul class="news-list">
+    {%- for post in site.posts %}
+    <li class="news-item">
+      <a class="glass-card" href="{{ post.url | relative_url }}">
+        <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%B %-d, %Y" }}</time>
+        <h2>{{ post.title }}</h2>
+        <p>{{ post.summary | default: post.excerpt | strip_html | truncatewords: 40 }}</p>
+      </a>
+    </li>
+    {%- endfor %}
+  </ul>
+</div>

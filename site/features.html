@@ -1,0 +1,165 @@
+---
+layout: default
+title: Features
+description: Tabs, split panes, windows, macOS keys, command blocks, Background Commands, a modern VT emulator and see-through glass.
+permalink: /features/
+---
+{%- assign icons = '/assets/icons/' | relative_url -%}
+<div class="page container">
+  <header class="page-header">
+    <p class="eyebrow">Features</p>
+    <h1>Everything Konsoll does</h1>
+    <p class="lead">A tour of the app, laid out like its own Settings window.</p>
+  </header>
+
+  <div class="settings glass-card">
+    <aside class="settings-sidebar" aria-label="Sections">
+      <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+      <ul>
+        <li><a href="#tabs"><img src="{{ icons }}window.svg" alt="">Tabs</a></li>
+        <li><a href="#panes"><img src="{{ icons }}terminal.svg" alt="">Split Panes</a></li>
+        <li><a href="#windows"><img src="{{ icons }}background-sessions.svg" alt="">Windows</a></li>
+        <li><a href="#keyboard"><img src="{{ icons }}keyboard.svg" alt="">Keyboard</a></li>
+        <li><a href="#selection"><img src="{{ icons }}background-functions.svg" alt="">Selection &amp; Search</a></li>
+        <li><a href="#background"><img src="{{ icons }}background-running.svg" alt="">Background Commands</a></li>
+        <li><a href="{{ '/agents/' | relative_url }}"><img src="{{ icons }}agents.svg" alt="">AI Agents</a></li>
+        <li><a href="#emulation"><img src="{{ icons }}background-saved.svg" alt="">Emulation</a></li>
+        <li><a href="#window"><img src="{{ icons }}appearance.svg" alt="">Appearance</a></li>
+        <li><a href="#security"><img src="{{ icons }}security.svg" alt="">Security</a></li>
+        <li><a href="#updates"><img src="{{ icons }}updates.svg" alt="">Updates</a></li>
+      </ul>
+    </aside>
+
+    <div class="settings-content">
+      <section class="settings-section" id="tabs">
+        <header><img src="{{ icons }}window.svg" alt=""><h2>Tabs</h2></header>
+        <p>Every tab is a workspace: one shell, or several split panes, with its own running programs.</p>
+        <ul>
+          <li><strong>Open</strong> with <kbd>⌘T</kbd> or the <strong>+</strong> button; <kbd>⇧⌘T</kbd> asks for a name first.</li>
+          <li><strong>Switch</strong> with <kbd>⌃Tab</kbd> / <kbd>⌃⇧Tab</kbd>, in the order you last used them.</li>
+          <li><strong>Reorder</strong> by pressing and holding a tab until it lifts, then dragging it.</li>
+          <li><strong>Read the tab at a glance:</strong> an icon for the program in its active pane (ssh, editors, git, containers, REPLs, databases, builds, downloads, package managers, AI agents…), a progress ring when the program reports progress, and why a background tab wants a look — new output, a finished ✓ or failed ✗ command, or the bell.</li>
+        </ul>
+        {% include shot.html name="tabs.png" w=1600 h=1019 alt="The tab strip with a system-monitor icon and new-output dot, a finished-command check mark, and the tab context menu" %}
+      </section>
+
+      <section class="settings-section" id="panes">
+        <header><img src="{{ icons }}terminal.svg" alt=""><h2>Split Panes</h2></header>
+        <p>Split the active pane with <kbd>⌘D</kbd> (side by side) or <kbd>⇧⌘D</kbd> (top and bottom). Splits nest as deep as you like, and every pane is an independent shell with its own title bar.</p>
+        <ul>
+          <li><strong>Rearrange by dragging</strong> a pane by its title bar: drop it on the left or right half of another pane to place them side by side, on the top or bottom half to stack them.</li>
+          <li><strong>Promote a pane to a tab</strong> by dropping it on a tab strip, in this window or another, or tear it off into a new window.</li>
+          <li>Moving a pane or a tab never restarts anything: the shell, its programs and its scrollback move with it.</li>
+        </ul>
+        {% include shot.html name="drag-pane.gif" w=900 h=573 alt="Dragging a pane by its title bar to re-split it, then onto the tab strip to make it a tab" %}
+      </section>
+
+      <section class="settings-section" id="windows">
+        <header><img src="{{ icons }}background-sessions.svg" alt=""><h2>Windows</h2></header>
+        <p>Open as many windows as you need with <kbd>⌘N</kbd>; each is listed in the Window menu. Press and hold a tab and drag it out of the strip: drop it on another window to join its tabs, or anywhere else to give it a window of its own.</p>
+        <p>The last active window's size and position come back on the next launch.</p>
+        {% include shot.html name="tab-to-window.gif" w=1000 h=481 alt="Dragging a tab out of the strip into a new window, then into another window" %}
+      </section>
+
+      <section class="settings-section" id="keyboard">
+        <header><img src="{{ icons }}keyboard.svg" alt=""><h2>Keyboard</h2></header>
+        <p>Konsoll sends the keys macOS users expect to the shell's line editor, so word movement and deletion work in zsh, bash and fish without any configuration.</p>
+        <div class="form-group">
+          <div class="form-row"><span><kbd>⌥←</kbd> <kbd>⌥→</kbd></span><span>Move one word left / right</span></div>
+          <div class="form-row"><span><kbd>⌥⌫</kbd></span><span>Delete the word before the cursor</span></div>
+          <div class="form-row"><span><kbd>⌥⌦</kbd> or <kbd>fn⌥⌫</kbd></span><span>Delete the word after the cursor</span></div>
+          <div class="form-row"><span><kbd>⌥.</kbd></span><span>Insert the last argument of the previous command</span></div>
+          <div class="form-row"><span><kbd>⇧↩</kbd></span><span>A new line in the prompt of Claude Code, Codex and other TUIs</span></div>
+        </div>
+        <p><strong>Use Option as Meta key</strong> (Settings ▸ Keyboard) sends every Option+key as Alt/Meta for Emacs, tmux or Neovim; off, Option still types ™ and accents. Programs that enable the kitty keyboard protocol or modifyOtherKeys receive the full encoding of every key.</p>
+        <h3>Shortcuts</h3>
+        <div class="form-group">
+          <div class="form-row"><span><kbd>⌘N</kbd> / <kbd>⌘T</kbd></span><span>New window / new tab</span></div>
+          <div class="form-row"><span><kbd>⌘D</kbd> / <kbd>⇧⌘D</kbd></span><span>Split side by side / top and bottom</span></div>
+          <div class="form-row"><span><kbd>⌘W</kbd></span><span>Close the active pane</span></div>
+          <div class="form-row"><span><kbd>⌘F</kbd></span><span>Find in the scrollback</span></div>
+          <div class="form-row"><span><kbd>⇧⌘B</kbd></span><span>Background Commands</span></div>
+          <div class="form-row"><span><kbd>⇧⌘A</kbd></span><span>AI Agents in every window</span></div>
+          <div class="form-row"><span><kbd>⌃L</kbd> / <kbd>⌃K</kbd></span><span>Clear the screen / the scrollback</span></div>
+          <div class="form-row"><span><kbd>⌘</kbd>-click</span><span>Open a link</span></div>
+          <div class="form-row"><span><kbd>⌘,</kbd></span><span>Settings</span></div>
+        </div>
+      </section>
+
+      <section class="settings-section" id="selection">
+        <header><img src="{{ icons }}background-functions.svg" alt=""><h2>Selection &amp; Search</h2></header>
+        <ul>
+          <li><strong>Command blocks.</strong> Shell integration loads by itself for zsh, bash and fish — it never edits your startup files. Click a command or a line of its output to highlight the whole block; <kbd>⌘C</kbd> copies it.</li>
+          <li><strong>Find</strong> with <kbd>⌘F</kbd> across the whole scrollback, literal or with regular expressions.</li>
+          <li><strong>Save</strong> the selection or the whole buffer as a UTF-8 text file.</li>
+          <li><strong>Paste an image or drop files</strong> into an ssh session to upload them and insert their remote path.</li>
+        </ul>
+        {% include shot.html name="command-block.png" w=1600 h=1019 alt="A command and its output highlighted as one block after a click" %}
+        {% include shot.html name="search.png" w=1600 h=1019 alt="The find bar searching the scrollback for zip, on match 4 of 20" %}
+      </section>
+
+      <section class="settings-section" id="background">
+        <header><img src="{{ icons }}background-running.svg" alt=""><h2>Background Commands</h2></header>
+        <p>Run commands and shells without a tab: dev servers, build watchers, tunnels, long jobs. Open it with <kbd>⇧⌘B</kbd>.</p>
+        <div class="form-group">
+          <div class="form-row"><span>Running</span><span>Live output, Interrupt, Stop, Run Again, Save Output, Open in Tab</span></div>
+          <div class="form-row"><span>Saved Commands</span><span>The commands you start often, with their folder, one click away</span></div>
+          <div class="form-row"><span>Functions</span><span>Shell functions every tab and background command can call</span></div>
+          <div class="form-row"><span>Sessions</span><span>Every pane of every window: Show, or Move to Background</span></div>
+        </div>
+        <p>Commands run in your login shell, with your aliases and <code>PATH</code>, and a notification tells you when one ends.</p>
+        {% include shot.html name="background-running.png" w=1600 h=1272 alt="The Running section with a command field, a list of jobs and the live output of the selected job" %}
+        {% include shot.html name="move-to-background.gif" w=1000 h=390 alt="Sending a tab running a dev server to the background and opening it again as a tab" %}
+      </section>
+
+      <section class="settings-section" id="emulation">
+        <header><img src="{{ icons }}background-saved.svg" alt=""><h2>Emulation</h2></header>
+        <p>An in-house VT500-class state machine, validated against <code>vttest</code> and Neovim, with the modern xterm, kitty and iTerm2 extensions.</p>
+        <ul>
+          <li>Every SGR attribute: 256 colors, truecolor, curly and colored underlines.</li>
+          <li>Unicode done right: wide CJK and emoji, combining marks, grapheme clusters (mode 2027).</li>
+          <li>Images: the kitty graphics protocol (with animation), sixel and iTerm2 inline images.</li>
+          <li>xterm keys with modifyOtherKeys and every kitty keyboard protocol enhancement.</li>
+          <li>Mouse reporting (SGR and SGR-pixels), bracketed paste, synchronized output, focus events.</li>
+          <li><code>OSC 8</code> hyperlinks, <code>OSC 52</code> clipboard, <code>OSC 9</code> notifications, <code>OSC 9;4</code> progress, <code>OSC 7</code> and <code>OSC 133</code> shell integration.</li>
+        </ul>
+        <p>A native Qt Quick scene-graph renderer draws the screen, and unlimited scrollback is stored compacted, so a line of plain text costs about one byte per character.</p>
+      </section>
+
+      <section class="settings-section" id="window">
+        <header><img src="{{ icons }}appearance.svg" alt=""><h2>Appearance</h2></header>
+        <p>The whole window is see-through: the terminal background, the title bar and the tab strip are tinted with your terminal's color and blurred, with native Liquid Glass on macOS 26. Opacity and blur are yours to set, along with the font and the cursor.</p>
+        <div class="form-group">
+          <div class="form-row"><span>Font</span><span>Family, size, weight, italic</span></div>
+          <div class="form-row"><span>Cursor</span><span>Block, underline, bar or hollow block; blinking</span></div>
+          <div class="form-row"><span>Window</span><span>Background opacity and blur</span></div>
+          <div class="form-row"><span>Scrollback</span><span>Unlimited, or a line limit</span></div>
+        </div>
+        {% include shot.html name="overview.png" w=1600 h=1019 alt="A Konsoll window with three tabs and a workspace split into panes over the desktop" %}
+      </section>
+
+      <section class="settings-section" id="security">
+        <header><img src="{{ icons }}security.svg" alt=""><h2>Security</h2></header>
+        <p>Programs ask; you decide.</p>
+        <div class="form-group">
+          <div class="form-row"><span>Clipboard reads (<code>OSC 52</code>)</span><span>Never, ask (the default) or always</span></div>
+          <div class="form-row"><span>Window title reports</span><span>Allowed or not</span></div>
+          <div class="form-row"><span>Desktop notifications</span><span>Allowed or not</span></div>
+          <div class="form-row"><span>Moving and resizing the window</span><span>Allowed or not</span></div>
+        </div>
+        <p>Konsoll asks before closing a pane, tab or window whose shell is still running a command.</p>
+        {% include shot.html name="settings.png" w=1600 h=1658 alt="The Settings window with its sections" %}
+      </section>
+
+      <section class="settings-section" id="updates">
+        <header><img src="{{ icons }}updates.svg" alt=""><h2>Updates</h2></header>
+        <p>Once a day Konsoll looks for a newer release, downloads it in the background and installs it when you quit. <strong>Konsoll ▸ Check for Updates…</strong> checks right away and shows what changed. Updates are signed.</p>
+        <div class="form-group">
+          <div class="form-row"><span>Check automatically</span><span>On by default</span></div>
+          <div class="form-row"><span>Download automatically</span><span>On by default</span></div>
+          <div class="form-row"><span>Channel</span><span>Stable only, or stable and beta</span></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>

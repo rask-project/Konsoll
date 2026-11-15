@@ -1,0 +1,54 @@
+---
+layout: default
+title: Download
+description: Download Konsoll for macOS on Apple Silicon, install it, and build it from source.
+permalink: /download/
+---
+<div class="page container container-narrow">
+  <header class="page-header">
+    <p class="eyebrow">Download</p>
+    <h1>Get Konsoll</h1>
+  </header>
+
+  <div class="download-card glass-card">
+    <img src="{{ '/assets/konsoll.png' | relative_url }}" alt="" width="112" height="112">
+    <div>
+      <h2>Konsoll for Mac</h2>
+      <p>Free and open source. A disk image with the app, signed updates from then on.</p>
+      <a class="button" href="{{ site.releases_url }}" data-download>Download .dmg</a>
+      <div class="download-meta">
+        <span data-version="Version %v" hidden></span>
+        <span>macOS 14.4 or later</span>
+        <span>Apple Silicon</span>
+        <a href="{{ site.github_url }}/releases">All releases</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="prose">
+    <h2>Install</h2>
+    <ol class="steps">
+      <li>Open the <code>.dmg</code> and drag <strong>Konsoll</strong> to <strong>Applications</strong>.</li>
+      <li>
+        <p>Konsoll is not notarized by Apple yet, so Gatekeeper blocks the first launch. Clear the quarantine flag once:</p>
+        <div class="code-copy"><pre><code>xattr -dr com.apple.quarantine /Applications/konsoll.app</code></pre></div>
+        <p>or open it, then choose <strong>System Settings ▸ Privacy &amp; Security ▸ Open Anyway</strong>.</p>
+      </li>
+      <li>That is the only time: Konsoll updates itself, and updates open without this step.</li>
+    </ol>
+
+    <h2>Updates</h2>
+    <p>Once a day Konsoll looks for a newer release, downloads it in the background and installs it when you quit. <strong>Konsoll ▸ Check for Updates…</strong> checks right away. In <strong>Settings ▸ Updates</strong> you can turn the automatic checks off or choose <strong>Stable and beta</strong> to test pre-releases.</p>
+
+    <h2>Build from source</h2>
+    <p>You need Qt 6.12, CMake 3.21.1+ and the Xcode command-line tools (a C++23 compiler).</p>
+    <div class="code-copy"><pre><code>git clone https://github.com/rask-project/Konsoll.git
+cd Konsoll
+cmake -S . -B build -G Ninja \
+    -DCMAKE_PREFIX_PATH=/path/to/Qt/6.12.0/macos-arm64/lib/cmake \
+    -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target konsoll
+open build/konsoll.app</code></pre></div>
+    <p>The <a href="{{ site.github_url }}#readme">README</a> covers the release bundle, the tests and the project layout.</p>
+  </div>
+</div>

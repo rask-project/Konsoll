@@ -1,0 +1,253 @@
+---
+layout: default
+title: Konsoll — a native terminal for macOS
+body_class: home
+---
+{%- assign icons = '/assets/icons/' | relative_url -%}
+<section class="hero container">
+  <img class="hero-icon" src="{{ '/assets/konsoll.png' | relative_url }}" alt="" width="128" height="128">
+  <a class="badge" href="#qml"><img src="{{ '/assets/qtlogo.png' | relative_url }}" alt="" width="18" height="18">Built with QML · Qt Quick</a>
+  <h1><span class="gradient-text">The terminal that feels like a Mac.</span></h1>
+  <p class="lead">Konsoll is a fast, native macOS terminal built in QML: glass tabs that tell you what runs in them, split panes you drag anywhere, commands that run without a tab, and AI agents that ask for you in a notification.</p>
+  <div class="hero-actions">
+    <a class="button" href="{{ site.releases_url }}" data-download>Download for Mac</a>
+    <a class="button button-secondary" href="{{ '/features/' | relative_url }}">See the features</a>
+  </div>
+  <p class="button-note"><span data-version="Version %v · " hidden></span>Free and open source · macOS 14.4+ on Apple Silicon</p>
+
+  <div class="hero-stage">
+    <div class="notification" role="img" aria-label="A Konsoll notification: Claude Code asks for permission to run npm test in webapp, with its Options menu open on Allow and Deny">
+      <span class="notification-close" aria-hidden="true">✕</span>
+      <img class="notification-icon" src="{{ '/assets/konsoll.png' | relative_url }}" alt="">
+      <div class="notification-text">
+        <strong>Claude Code asks for permission</strong>
+        <span>npm test — webapp</span>
+      </div>
+      <span class="notification-options">Options <svg viewBox="0 0 10 6" width="10" height="6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <div class="notification-menu"><span>Allow</span><span>Deny</span></div>
+    </div>
+
+    <div class="kwin" role="img" aria-label="A Konsoll window: three glass tabs, an agent waiting for permission in one pane and a dev server in another">
+      <div class="kwin-bar">
+        <span class="lights"><i></i><i></i><i></i></span>
+        <div class="ktabs">
+          <span class="ktab"><span class="close">✕</span>{% include icon.html name="kind-monitor" %}<span class="label">top</span><span class="dot end"></span></span>
+          <span class="ktab is-done"><span class="close">✕</span>{% include icon.html name="agent-idle" %}<span class="label">api</span><span class="ok end">✓</span></span>
+          <span class="ktab is-active"><span class="close">✕</span>{% include icon.html name="agent-waiting" class="waiting" %}<span class="label">webapp</span></span>
+        </div>
+        <span class="kwin-plus">+</span>
+      </div>
+      <div class="kwin-body">
+        <div class="kpane is-focused">
+          <div class="kpane-head"><span class="close">✕</span><span>claude</span></div>
+<pre class="kpane-term"><span class="t-purple">✻</span> <span class="t-bold">Claude Code</span>  <span class="t-dim">~/webapp</span>
+
+<span class="t-dim">&gt;</span> fix the failing date test
+
+<span class="t-green">●</span> formatDate ignored the time zone.
+  Updated <span class="t-blue">src/date.js</span>.
+
+<span class="t-green">●</span> <span class="t-bold">Bash</span>(npm test)
+<span class="t-box"><span class="t-amber">Allow running npm test?</span>
+<span class="t-blue">❯ 1. Yes</span>   2. Always   3. No</span></pre>
+        </div>
+        <div class="kpane">
+          <div class="kpane-head"><span class="close">✕</span><span>npm run dev</span></div>
+<pre class="kpane-term"><span class="t-blue">webapp</span> <span class="t-purple">❯</span> npm run dev
+
+  <span class="t-green t-bold">VITE</span> <span class="t-green">v6.0</span>  ready in 312 ms
+
+  <span class="t-green">➜</span>  Local:   <span class="t-blue">http://localhost:5173/</span>
+  <span class="t-dim">➜  Network: use --host</span>
+
+<span class="t-dim">12:04:18</span> <span class="t-blue">[vite]</span> hmr update
+         <span class="t-dim">/src/date.js</span>
+<span class="t-cursor"></span></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section container">
+  <div class="section-head">
+    <p class="eyebrow">Everything in one window</p>
+    <h2>Made for the way you work on a Mac</h2>
+    <p class="lead">Native rendering, real macOS keys and menus, and the extensions modern command-line programs expect.</p>
+  </div>
+  <div class="feature-grid">
+    <a class="feature-card glass-card" href="{{ '/features/#tabs' | relative_url }}">
+      <img class="app-icon" src="{{ icons }}window.svg" alt="">
+      <h3>Tabs, panes and windows</h3>
+      <p>Glass tabs show what runs in them. Split panes as deep as you like, then drag panes and tabs between windows: the shells keep running.</p>
+    </a>
+    <a class="feature-card glass-card" href="{{ '/agents/' | relative_url }}">
+      <img class="app-icon" src="{{ icons }}agents.svg" alt="">
+      <h3>AI agents in your tabs</h3>
+      <p>Claude Code, Codex, Qwen Code and opencode report their state to the tab and ask for permission in a notification you answer in place.</p>
+    </a>
+    <a class="feature-card glass-card" href="{{ '/features/#background' | relative_url }}">
+      <img class="app-icon" src="{{ icons }}background-running.svg" alt="">
+      <h3>Background Commands</h3>
+      <p>Dev servers, watchers and tunnels run without a tab. Save the ones you start often, and send a tab to the background and back.</p>
+    </a>
+    <a class="feature-card glass-card" href="{{ '/features/#window' | relative_url }}">
+      <img class="app-icon" src="{{ icons }}appearance.svg" alt="">
+      <h3>See-through glass</h3>
+      <p>A translucent, blurred window tinted with your terminal's background, with native Liquid Glass on macOS 26.</p>
+    </a>
+    <a class="feature-card glass-card" href="{{ '/features/#keyboard' | relative_url }}">
+      <img class="app-icon" src="{{ icons }}keyboard.svg" alt="">
+      <h3>Keys that feel like macOS</h3>
+      <p><kbd>⌥←</kbd> <kbd>⌥→</kbd> <kbd>⌥⌫</kbd> move and delete by words in zsh, bash and fish with no configuration. IME and dead keys just work.</p>
+    </a>
+    <a class="feature-card glass-card" href="{{ '/features/#emulation' | relative_url }}">
+      <img class="app-icon" src="{{ icons }}terminal.svg" alt="">
+      <h3>A modern emulator</h3>
+      <p>VT500-class emulation with xterm, kitty and iTerm2 extensions: truecolor, the kitty keyboard protocol, kitty graphics, sixel and inline images.</p>
+    </a>
+    <a class="feature-card glass-card" href="{{ '/features/#selection' | relative_url }}">
+      <img class="app-icon" src="{{ icons }}background-functions.svg" alt="">
+      <h3>Command blocks</h3>
+      <p>Shell integration loads by itself: click a command to select it with its output, copy it, save it, or send it to an agent.</p>
+    </a>
+    <a class="feature-card glass-card" href="{{ '/features/#security' | relative_url }}">
+      <img class="app-icon" src="{{ icons }}security.svg" alt="">
+      <h3>You stay in control</h3>
+      <p>Decide whether programs may read the clipboard, the window title, post notifications or move the window.</p>
+    </a>
+    <a class="feature-card glass-card" href="{{ '/features/#updates' | relative_url }}">
+      <img class="app-icon" src="{{ icons }}updates.svg" alt="">
+      <h3>Updates itself</h3>
+      <p>Signed updates download in the background and install when you quit. Stable by default, beta if you want it.</p>
+    </a>
+  </div>
+</section>
+
+<section class="section container" id="qml">
+  <div class="showcase is-flipped qml-showcase">
+    <div class="showcase-text">
+      <p class="eyebrow">Under the hood</p>
+      <h2>Built with QML.</h2>
+      <p>Konsoll's whole interface is QML on Qt Quick: the windows, the glass tabs, the split panes you drag around, Settings and Background Commands. Underneath, a C++23 core does the terminal work and shows up in QML as ordinary types.</p>
+      <ul>
+        <li><strong>QML for the interface</strong>, declarative and bound to live state: a tab's icon, title and attention dot simply follow its session.</li>
+        <li><strong>A scene-graph renderer</strong> in C++ draws the cell grid straight into Qt Quick's scene graph, with updates coalesced to about 60 frames a second.</li>
+        <li><strong>C++23 for the terminal</strong>: the VT500 parser, the PTY on its own thread, compacted scrollback.</li>
+        <li><strong>Objective-C++ where macOS needs it</strong>: the see-through window, Liquid Glass, notifications, exposed to QML as properties.</li>
+      </ul>
+      <ul class="stack" aria-label="Technologies">
+        <li>QML</li><li>Qt Quick 6.12</li><li>C++23</li><li>Objective-C++</li><li>CMake</li>
+      </ul>
+    </div>
+    <div class="kwin code-window" role="img" aria-label="controls/GlassSurface.qml, the QML item that draws Konsoll's glass tabs">
+      <div class="kwin-bar">
+        <span class="lights"><i></i><i></i><i></i></span>
+        <div class="ktabs">
+          <span class="ktab is-active">{% include icon.html name="kind-editor" %}<span class="label">GlassSurface.qml</span></span>
+        </div>
+      </div>
+<pre class="kpane-term code"><span class="q-k">import</span> <span class="q-t">QtQuick</span>
+
+<span class="q-c">// A glass-looking surface drawn in QML, no native view</span>
+<span class="q-c">// and nothing animated: Konsoll's tabs.</span>
+<span class="q-t">Item</span> {
+    <span class="q-p">id</span>: glass
+
+    <span class="q-k">property</span> <span class="q-t">real</span> <span class="q-p">radius</span>: height / <span class="q-n">2</span>
+    <span class="q-k">property</span> <span class="q-t">color</span> <span class="q-p">tint</span>: <span class="q-s">"transparent"</span>
+    <span class="q-k">property</span> <span class="q-t">real</span> <span class="q-p">tintStrength</span>: <span class="q-n">0</span>
+    <span class="q-k">readonly property</span> <span class="q-t">bool</span> <span class="q-p">dark</span>:
+        Application.styleHints.colorScheme === Qt.Dark
+
+    <span class="q-c">// Sheen: a highlight fading out over the upper half.</span>
+    <span class="q-t">Rectangle</span> {
+        <span class="q-p">width</span>: parent.width
+        <span class="q-p">height</span>: parent.height * <span class="q-n">0.5</span>
+        <span class="q-p">radius</span>: glass.radius
+        <span class="q-p">gradient</span>: <span class="q-t">Gradient</span> {
+            <span class="q-t">GradientStop</span> {
+                <span class="q-p">position</span>: <span class="q-n">0</span>
+                <span class="q-p">color</span>: Qt.rgba(<span class="q-n">1</span>, <span class="q-n">1</span>, <span class="q-n">1</span>, glass.dark ? <span class="q-n">0.035</span> : <span class="q-n">0.18</span>)
+            }
+            <span class="q-t">GradientStop</span> {
+                <span class="q-p">position</span>: <span class="q-n">1</span>
+                <span class="q-p">color</span>: Qt.rgba(<span class="q-n">1</span>, <span class="q-n">1</span>, <span class="q-n">1</span>, <span class="q-n">0</span>)
+            }
+        }
+    }
+}</pre>
+    </div>
+  </div>
+</section>
+
+<section class="container">
+  <div class="showcase">
+    <div class="showcase-text">
+      <p class="eyebrow">Tabs and split panes</p>
+      <h2>Arrange it any way. Nothing restarts.</h2>
+      <p>Every tab is a workspace of split panes. Drag a pane by its title bar to re-split it, drop it on a tab strip to make it a tab, or outside the windows to tear it off.</p>
+      <ul>
+        <li><strong>Tabs that tell you why</strong> they want a look: new output, a finished ✓ or failed ✗ command, the bell.</li>
+        <li><strong>An icon for what runs</strong> in each tab: ssh, editors, git, containers, builds, agents.</li>
+        <li><strong>Nothing animates</strong> in the tab strip, so a long job costs no redraws.</li>
+      </ul>
+    </div>
+    {% include shot.html name="drag-pane.gif" w=900 h=573 alt="Dragging a pane by its title bar to re-split it, then onto the tab strip to make it a tab" %}
+  </div>
+
+  <div class="showcase is-flipped">
+    <div class="showcase-text">
+      <p class="eyebrow">AI agents</p>
+      <h2>Your agents ask. You answer from anywhere.</h2>
+      <p>Connected agents show in the tab whether they are working, waiting for you, done or failed. When one asks to run a tool, the notification shows the command with <strong>Allow</strong> and <strong>Deny</strong>.</p>
+      <ul>
+        <li><strong>Window ▸ AI Agents</strong> lists every agent, the ones waiting first.</li>
+        <li><strong>Send to Agent</strong> pastes a failed command and its output as the next prompt.</li>
+        <li><strong>Works over ssh</strong>, with nothing installed on the host.</li>
+      </ul>
+      <p><a href="{{ '/agents/' | relative_url }}">More about AI agents →</a></p>
+    </div>
+    {% include shot.html name="agent-approval.gif" w=900 h=580 alt="The agent asks to run npm test, the request is allowed from Konsoll and the agent finishes the turn" %}
+  </div>
+
+  <div class="showcase">
+    <div class="showcase-text">
+      <p class="eyebrow">Background Commands</p>
+      <h2>Long jobs, out of your way.</h2>
+      <p>Run dev servers, build watchers and tunnels without a tab, watch their live output, and get a notification when one ends. Send a running tab to the background and open it again later.</p>
+      <ul>
+        <li><strong>Saved commands</strong> start with one click, in the folder you chose.</li>
+        <li><strong>Shell functions</strong> defined in Konsoll reach every tab, no dotfiles to edit.</li>
+      </ul>
+    </div>
+    {% include shot.html name="move-to-background.gif" w=1000 h=390 alt="Sending a tab running a dev server to the background and opening it again as a tab" %}
+  </div>
+</section>
+
+<section class="section container">
+  <div class="section-head">
+    <p class="eyebrow">Performance</p>
+    <h2>Light when idle. Fast under load.</h2>
+    <p class="lead">Measured on an 8 GB Apple Silicon Mac with unlimited scrollback.</p>
+  </div>
+  <div class="stats">
+    <div class="stat glass-card"><span class="stat-value">0.0–0.6%</span><span class="stat-label">CPU with 1, 2 or 3 idle tabs</span><span class="stat-compare">147–152 MB of memory</span></div>
+    <div class="stat glass-card"><span class="stat-value">6.7 s</span><span class="stat-label">to parse 5M lines of <code>yes</code></span><span class="stat-compare">the macOS PTY alone takes 6.1 s</span></div>
+    <div class="stat glass-card"><span class="stat-value">466–483 MB</span><span class="stat-label">peak after 15 s of <code>yes</code></span><span class="stat-compare">97–192 MB after a clear (<kbd>⌃K</kbd>)</span></div>
+    <div class="stat glass-card"><span class="stat-value">10–14 bytes</span><span class="stat-label">per line of <code>yes</code> in the history</span><span class="stat-compare">unlimited scrollback, memory returned on clear</span></div>
+  </div>
+  <p class="button-note" style="text-align:center">The method and every scenario are in <a href="{{ site.github_url }}/blob/main/docs/PERFORMANCE-FINDINGS.md">PERFORMANCE-FINDINGS.md</a>.</p>
+</section>
+
+<section class="section container">
+  <div class="cta glass-card">
+    <img src="{{ '/assets/konsoll.png' | relative_url }}" alt="" width="88" height="88">
+    <h2>Try Konsoll</h2>
+    <p class="lead">Free and open source. It updates itself from then on.</p>
+    <div class="hero-actions">
+      <a class="button" href="{{ site.releases_url }}" data-download>Download for Mac</a>
+      <a class="button button-secondary" href="{{ '/download/' | relative_url }}">Install instructions</a>
+    </div>
+  </div>
+</section>

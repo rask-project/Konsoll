@@ -1,0 +1,95 @@
+---
+layout: default
+title: AI Agents
+description: Claude Code, Codex, Qwen Code and opencode report their state to Konsoll's tabs and ask for permission in notifications you answer in place.
+permalink: /agents/
+---
+{%- assign icons = '/assets/icons/' | relative_url -%}
+<section class="hero container">
+  <img class="hero-icon" src="{{ icons }}agents.svg" alt="" width="96" height="96" style="width:96px;height:96px">
+  <p class="eyebrow">AI agents</p>
+  <h1><span class="gradient-text">A terminal that works with your agents.</span></h1>
+  <p class="lead">Konsoll recognizes AI coding agents, shows what they are doing in the tab, and brings their questions to you, wherever you are.</p>
+  <ul class="agent-names" aria-label="Supported agents">
+    <li>Claude Code</li><li>Codex</li><li>Qwen Code</li><li>opencode</li><li>Gemini CLI</li>
+  </ul>
+</section>
+
+<section class="container">
+  <div class="showcase">
+    <div class="showcase-text">
+      <h2>The tab shows the agent's state</h2>
+      <p>Connect an agent once and it reports its state from its own hooks. With several panes in a tab, the one that most needs you sets the icon.</p>
+      <ul class="state-list">
+        <li><span style="color:var(--accent)">{% include icon.html name="kind-agent" %}</span><span><strong>Working</strong>on a turn</span></li>
+        <li><span style="color:var(--amber)">{% include icon.html name="agent-waiting" %}</span><span><strong>Waiting</strong>for permission or an answer</span></li>
+        <li><span style="color:var(--green)">{% include icon.html name="agent-idle" %}</span><span><strong>Done</strong>with the turn</span></li>
+        <li><span style="color:var(--red)">{% include icon.html name="agent-error" %}</span><span><strong>Failed</strong></span></li>
+      </ul>
+    </div>
+    {% include shot.html name="agent-status.png" w=1600 h=1031 alt="An agent asking for permission to run npm test in the webapp tab, other tabs with agents working and done" %}
+  </div>
+
+  <div class="showcase is-flipped">
+    <div class="showcase-text">
+      <h2>Allow or Deny, from the notification</h2>
+      <p>When an agent asks to run a tool, the macOS notification shows what it wants — the command, the file — with <strong>Allow</strong> and <strong>Deny</strong>. The answer goes to the agent's pane as if typed there, and Konsoll stays in the background.</p>
+      <p>Notifications also tell you when an agent waits for an answer, finishes (with the task it was given) or fails while you look elsewhere. The Dock icon counts the agents waiting for you.</p>
+    </div>
+    {% include shot.html name="agent-approval.gif" w=900 h=580 alt="The agent asks to run npm test, the request is allowed from Konsoll and the agent finishes the turn" %}
+  </div>
+
+  <div class="showcase">
+    <div class="showcase-text">
+      <h2>Every agent, in one list</h2>
+      <p><strong>Window ▸ AI Agents</strong> (<kbd>⇧⌘A</kbd>) lists every pane running an agent in every window, the ones that need you first: what each asks for, the task it works on and how long it has waited, with Allow, Deny and Show.</p>
+    </div>
+    {% include shot.html name="agents-window.png" w=1600 h=980 alt="Window AI Agents: two agents asking for permission with Allow and Deny, one working on a task, one done" %}
+  </div>
+
+  <div class="showcase is-flipped">
+    <div class="showcase-text">
+      <h2>Your terminal as the agent's context</h2>
+      <p>Right-click a pane: <strong>Send Selection to Agent</strong> and <strong>Send Last Command to Agent</strong> paste the text, or a command with its exit status and output, into the agent's prompt, ready for your question.</p>
+      <p><strong>Shell ▸ New Agent in Worktree…</strong> creates a git worktree on a branch and starts an agent there in a new tab, so agents work in parallel apart from your checkout.</p>
+    </div>
+    {% include shot.html name="send-to-agent.png" w=1600 h=1031 alt="A failed npm test, and the pane menu's Send Last Command To submenu listing three agents" %}
+  </div>
+
+  <div class="showcase">
+    <div class="showcase-text">
+      <h2>Over ssh, with nothing to install</h2>
+      <p><code>ssh host</code> in a zsh or bash tab brings Konsoll's shell integration to the host for that session. Claude Code, Codex and Qwen Code started there show their state in the tab and ask through Konsoll's notifications. Everything lives in a private temporary folder removed when the shell exits.</p>
+    </div>
+    {% include shot.html name="ssh-agent.gif" w=900 h=580 alt="ssh to a Linux host, Claude Code started there asks to run a command, and the request is allowed from Konsoll" %}
+  </div>
+</section>
+
+<section class="section container container-narrow">
+  <div class="section-head">
+    <h2>Tools for agents (MCP)</h2>
+    <p class="lead"><code>konsoll --mcp</code> gives an agent running in Konsoll tools that act from its own pane.</p>
+  </div>
+  <div class="glass-card table-card table-wrap">
+    <table>
+      <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>open_pane</code></td><td>Opens a pane beside the agent's running a dev server or watcher, without taking the focus.</td></tr>
+        <tr><td><code>run_in_background</code></td><td>Starts a Background Command.</td></tr>
+        <tr><td><code>background_job_status</code></td><td>The state and last output of a background command that agent started.</td></tr>
+        <tr><td><code>recent_commands</code></td><td>Your last commands in the agent's pane with their status and output: “why did my build fail?” works without pasting.</td></tr>
+        <tr><td><code>list_panes</code></td><td>The panes of the window: tab, program, directory — no output.</td></tr>
+        <tr><td><code>read_pane</code></td><td>Reads another pane only after you choose <strong>Allow Once</strong>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section container container-narrow prose">
+  <h2>Connect an agent</h2>
+  <p>Start an agent in a pane and Konsoll offers to connect it. Or open <strong>Settings ▸ AI Agents</strong>: <em>Connect</em> adds Konsoll's hooks to the agent's settings (keeping a backup), <em>Remove</em> takes them out, and <strong>Copy</strong> gives the MCP setup for each agent. The hooks do nothing outside Konsoll.</p>
+  <p>Claude Code can use the Konsoll plugin instead:</p>
+  <div class="code-copy"><pre><code>claude plugin marketplace add rask-project/Konsoll
+claude plugin install konsoll@konsoll</code></pre></div>
+  {% include shot.html name="settings-agents.png" w=1600 h=1120 alt="Settings AI Agents: Claude Code and Qwen Code connected, Codex not connected, and the MCP setup" %}
+</section>
