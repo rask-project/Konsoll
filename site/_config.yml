@@ -19,6 +19,11 @@ kramdown:
 plugins:
   - jekyll-seo-tag
   - jekyll-feed
+  - jekyll-sitemap
+
+# Google Search Console (jekyll-seo-tag writes the meta tag).
+webmaster_verifications:
+  google: qeoOLTSMTaGabKf32fyRufuplEvzC9VOFarZJhqGveM
 
 feed:
   path: news/feed.xml
