@@ -6,6 +6,9 @@
 
 A native terminal for macOS, built in QML (Qt Quick) on top of Qt 6.12.
 
+**Website: [rask-project.github.io/Konsoll](https://rask-project.github.io/Konsoll/)**
+— features, AI agents, download and news.
+
 Konsoll is a clean, native macOS terminal with a real pseudo-terminal (PTY)
 running your default shell. It renders the screen
 with a native Qt Quick scene-graph renderer, emulates a VT500-class terminal

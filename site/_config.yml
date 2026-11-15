@@ -30,11 +30,16 @@ feed:
 
 permalink: /news/:year/:month/:day/:title/
 
+# Link previews (Open Graph / Twitter) and the logo in the structured data.
+logo: /assets/konsoll.png
+twitter:
+  card: summary_large_image
+
 defaults:
   - scope: { path: "", type: posts }
-    values: { layout: post }
+    values: { layout: post, image: /assets/screenshots/overview.png }
   - scope: { path: "" }
-    values: { layout: page }
+    values: { layout: page, image: /assets/screenshots/overview.png }
 
 exclude:
   - Gemfile
