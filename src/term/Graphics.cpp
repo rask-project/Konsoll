@@ -219,6 +219,18 @@ const GraphicsImage *GraphicsStore::image(std::uint32_t id) const
     return found == m_images.end() ? nullptr : &found->second;
 }
 
+const QImage *GraphicsStore::framePixels(std::uint64_t serial) const
+{
+    const QImage *found = nullptr;
+    std::ranges::for_each(m_images, [&](const auto &entry) {
+        const auto frame = std::ranges::find(entry.second.frames, serial, &GraphicsFrame::serial);
+        if (frame != entry.second.frames.end()) {
+            found = &frame->pixels;
+        }
+    });
+    return found;
+}
+
 std::uint32_t GraphicsStore::idForNumber(std::uint64_t number) const
 {
     // The newest image with this number.
@@ -240,13 +252,13 @@ std::uint32_t GraphicsStore::storeImage(std::uint32_t id, std::uint64_t number, 
     }
     // Re-transmitting an id replaces the image and its placements.
     std::erase_if(m_placements, [id](const GraphicsPlacement &placement) { return placement.imageId == id; });
-    auto pixels = std::make_shared<const QImage>(std::move(image));
     const std::uint64_t serial = m_nextSerial++;
+    std::vector<GraphicsFrame> frames;
+    frames.push_back(GraphicsFrame{.pixels = std::move(image), .serial = serial, .gap = 40});
     m_images[id] = GraphicsImage{
-        .pixels = pixels,
         .serial = serial,
         .number = number,
-        .frames = {GraphicsFrame{.pixels = pixels, .serial = serial, .gap = 40}},
+        .frames = std::move(frames),
         .current = 0,
         .elapsed = 0,
         .running = 0,
@@ -261,7 +273,9 @@ void GraphicsStore::evict()
 {
     const auto total = [this] {
         qsizetype bytes = 0;
-        std::ranges::for_each(m_images, [&bytes](const auto &entry) { bytes += entry.second.pixels->sizeInBytes(); });
+        std::ranges::for_each(m_images, [&bytes](const auto &entry) {
+            bytes += entry.second.shownPixels().sizeInBytes();
+        });
         return bytes;
     };
     // Oldest first, unplaced images before placed ones.
@@ -387,7 +401,7 @@ KittyResult GraphicsStore::place(const QByteArray &control, std::uint32_t imageI
         }
         return result;
     }
-    const QRect whole(0, 0, stored->pixels->width(), stored->pixels->height());
+    const QRect whole(0, 0, stored->shownPixels().width(), stored->shownPixels().height());
     QRect source(keys.number('x'), keys.number('y'), keys.number('w'), keys.number('h'));
     source.setWidth(source.width() > 0 ? source.width() : whole.width() - source.x());
     source.setHeight(source.height() > 0 ? source.height() : whole.height() - source.y());
@@ -613,7 +627,6 @@ void GraphicsStore::showFrame(GraphicsImage &image, std::int64_t index)
     const auto count = static_cast<std::int64_t>(image.frames.size());
     image.current = std::clamp<std::int64_t>(index, 0, count - 1);
     const GraphicsFrame &frame = image.frames[static_cast<std::size_t>(image.current)];
-    image.pixels = frame.pixels;
     image.serial = frame.serial;
     image.elapsed = 0;
     touch();
@@ -635,10 +648,10 @@ KittyResult GraphicsStore::addFrame(const QByteArray &control, const QByteArray 
         return result;
     }
     GraphicsImage &image = found->second;
-    const QImage &root = *image.frames.front().pixels;
+    const QImage &root = image.frames.front().pixels;
     const int base = keys.number('c');
     QImage canvas = base >= 1 && base <= static_cast<int>(image.frames.size())
-                        ? *image.frames[static_cast<std::size_t>(base - 1)].pixels
+                        ? image.frames[static_cast<std::size_t>(base - 1)].pixels
                         : QImage(root.size(), QImage::Format_RGBA8888_Premultiplied);
     if (base < 1) {
         canvas.fill(Qt::transparent);
@@ -648,16 +661,16 @@ KittyResult GraphicsStore::addFrame(const QByteArray &control, const QByteArray 
         QPainter painter(&canvas);
         painter.drawImage(QPoint(keys.number('x'), keys.number('y')), data);
     }
-    const GraphicsFrame frame{
-        .pixels = std::make_shared<const QImage>(std::move(canvas)),
+    GraphicsFrame frame{
+        .pixels = std::move(canvas),
         .serial = m_nextSerial++,
         .gap = std::max(keys.number('z', 40), 1)
     };
     const int edit = keys.number('r');
     if (edit >= 1 && edit <= static_cast<int>(image.frames.size())) {
-        image.frames[static_cast<std::size_t>(edit - 1)] = frame;
+        image.frames[static_cast<std::size_t>(edit - 1)] = std::move(frame);
     } else {
-        image.frames.push_back(frame);
+        image.frames.push_back(std::move(frame));
     }
     if (image.current == edit - 1) {
         showFrame(image, image.current);
@@ -712,8 +725,8 @@ void GraphicsStore::composeFrames(const QByteArray &control)
     if (source < 1 || source > count || target < 1 || target > count) {
         return;
     }
-    const QImage &from = *image.frames[static_cast<std::size_t>(source - 1)].pixels;
-    QImage to = *image.frames[static_cast<std::size_t>(target - 1)].pixels;
+    const QImage &from = image.frames[static_cast<std::size_t>(source - 1)].pixels;
+    QImage to = image.frames[static_cast<std::size_t>(target - 1)].pixels;
     const QRect
         rect(keys.number('x'), keys.number('y'), keys.number('w', from.width()), keys.number('h', from.height()));
     {
@@ -724,7 +737,7 @@ void GraphicsStore::composeFrames(const QByteArray &control)
         painter.drawImage(QPoint(keys.number('X'), keys.number('Y')), from, rect);
     }
     GraphicsFrame &frame = image.frames[static_cast<std::size_t>(target - 1)];
-    frame.pixels = std::make_shared<const QImage>(std::move(to));
+    frame.pixels = std::move(to);
     frame.serial = m_nextSerial++;
     if (image.current == target - 1) {
         showFrame(image, image.current);

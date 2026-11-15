@@ -769,7 +769,7 @@ void graphicsProtocols(int &failures)
         selfTestCheck(
             failures,
             term.takeResponses() == "\x1b_Gi=7;OK\x1b\\" && image != nullptr &&
-                image->pixels->pixelColor(1, 0) == QColor(0, 255, 0) && graphics.placements().size() == 1 &&
+                image->shownPixels().pixelColor(1, 0) == QColor(0, 255, 0) && graphics.placements().size() == 1 &&
                 term.screen().cursorCol() == 1,
             "kitty graphics: transmit and display raw RGBA, reply OK, move the cursor"
         );
@@ -814,7 +814,7 @@ void graphicsProtocols(int &failures)
         const QByteArray replies = term.takeResponses();
         selfTestCheck(
             failures,
-            term.graphics().image(1) != nullptr && term.graphics().image(1)->pixels->width() == 3 &&
+            term.graphics().image(1) != nullptr && term.graphics().image(1)->shownPixels().width() == 3 &&
                 term.graphics().image(2) != nullptr && term.graphics().image(9) == nullptr &&
                 replies.contains("\x1b_Gi=9;OK") && replies.contains("\x1b_Gi=10;EBADPNG"),
             "kitty graphics: PNG, zlib-compressed data, queries (valid and invalid)"
@@ -828,8 +828,8 @@ void graphicsProtocols(int &failures)
         const GraphicsImage *const image = placed ? graphics.image(graphics.placements().front().imageId) : nullptr;
         selfTestCheck(
             failures,
-            image != nullptr && image->pixels->width() == 2 && image->pixels->height() == 6 &&
-                image->pixels->pixelColor(1, 5) == QColor(255, 0, 0) && term.screen().cursorRow() == 1,
+            image != nullptr && image->shownPixels().width() == 2 && image->shownPixels().height() == 6 &&
+                image->shownPixels().pixelColor(1, 5) == QColor(255, 0, 0) && term.screen().cursorRow() == 1,
             "sixel: decode color registers and data, cursor below the image"
         );
         term.write("\r\n\r\n\r\n\r\n");
@@ -1178,7 +1178,7 @@ void kittyAnimationAndPlaceholders(int &failures)
         const bool playing = term.animating() && term.graphics().image(3)->frames.size() == 2;
         const bool stillRed = !term.advanceAnimations(20) && term.graphics().image(3)->current == 0;
         const bool nowBlue =
-            term.advanceAnimations(30) && term.graphics().image(3)->pixels->pixelColor(0, 0) == QColor(Qt::blue);
+            term.advanceAnimations(30) && term.graphics().image(3)->shownPixels().pixelColor(0, 0) == QColor(Qt::blue);
         term.advanceAnimations(50); // back to frame 1: the single extra loop (v=2) ends
         term.advanceAnimations(40);
         selfTestCheck(

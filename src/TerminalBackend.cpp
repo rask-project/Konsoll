@@ -187,6 +187,11 @@ TerminalBackend::TerminalBackend(QObject *parent) : QObject(parent)
 
 TerminalBackend::~TerminalBackend()
 {
+    if (m_readAnswer) {
+        // Answered from the event loop, which takes the callback over: never
+        // run outside code from a destructor.
+        QTimer::singleShot(0, [answer = std::exchange(m_readAnswer, {})]() { answer(ReadAnswer::PaneClosed); });
+    }
     close();
 }
 
@@ -544,10 +549,11 @@ void TerminalBackend::setAgentStatus(AgentState state, const QString &agent, con
     } else if (state == AgentState::Working && !text.isEmpty() && !isAgentSystemMessage(text)) {
         m_agentTask = text; // a new prompt (UserPromptSubmit)
     }
+    const AgentState previous = m_agentState;
     m_agentState = state;
     m_agentName = name;
     m_agentMessage = text;
-    emit agentStatusChanged();
+    emit agentStatusChanged(previous);
 }
 
 void TerminalBackend::applyRemoteAgentReport(const QByteArray &payload)
@@ -1609,7 +1615,7 @@ QJsonArray TerminalBackend::recentCommands(int count, qsizetype outputLimit) con
     return commands;
 }
 
-bool TerminalBackend::requestRead(const QString &description, std::function<void(bool allow)> answer)
+bool TerminalBackend::requestRead(const QString &description, std::function<void(ReadAnswer)> answer)
 {
     if (m_readAnswer) {
         return false;
@@ -1634,7 +1640,7 @@ void TerminalBackend::answerReadRequest(bool allow)
     if (m_agentState == AgentState::Approval) {
         setAgentStatus(AgentState::Working, m_agentName, {}); // the tool call goes on
     }
-    answer(allow);
+    answer(allow ? ReadAnswer::Allowed : ReadAnswer::Denied);
 }
 
 bool TerminalBackend::saveTextToFile(const QUrl &url, bool selectionOnly) const
@@ -2049,7 +2055,6 @@ std::vector<TerminalBackend::VisibleImage> TerminalBackend::visibleImages() cons
             scaled ? placement.rows : placement.source.height() / cellHeight
         );
         out.push_back(VisibleImage{
-            .image = image->pixels,
             .target = target,
             .source = QRectF(placement.source),
             .serial = image->serial,
@@ -2059,6 +2064,11 @@ std::vector<TerminalBackend::VisibleImage> TerminalBackend::visibleImages() cons
     appendPlaceholderImages(out);
     std::ranges::stable_sort(out, {}, &VisibleImage::z);
     return out;
+}
+
+const QImage *TerminalBackend::imagePixels(std::uint64_t serial) const
+{
+    return m_terminal ? m_terminal->graphics().framePixels(serial) : nullptr;
 }
 
 namespace
@@ -2153,7 +2163,6 @@ std::optional<TerminalBackend::VisibleImage> TerminalBackend::placeholderSlice(
         return std::nullopt;
     }
     return VisibleImage{
-        .image = image->pixels,
         .target = QRectF(
             col + ((piece.x() - cell.x()) / cellWidth),
             row + ((piece.y() - cell.y()) / cellHeight),

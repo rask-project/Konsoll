@@ -178,11 +178,20 @@ Guidance for AI agents working in this repository.
 
 - **C++23** is required (enforced in `CMakeLists.txt`).
 - **Qt 6.12.**
-- **Ownership:** always use smart pointers (`std::unique_ptr` /
-  `std::shared_ptr`).
+- **Ownership:** every owned object has exactly one owner, a
+  `std::unique_ptr` (or a plain value member). Ownership moves with
+  `std::move`; code that only uses an object gets a non-owning
+  `const T *` (or a reference) and never keeps it past the owner's lifetime.
+- **`std::shared_ptr` is forbidden** (and with it `std::make_shared`,
+  `std::weak_ptr`, `QSharedPointer`). Shared ownership is never the answer:
+  if the logic seems to need it, rethink it so one object owns the thing
+  and the others borrow it (look it up by id/serial when they need it, hand
+  the owner the callback, keep the state in the owner or in the one lambda
+  that uses it).
 - **Raw pointers are forbidden** — no `new`/`delete`, no owning raw
-  pointers. Sole exception: non-owning pointers/references required by
-  C/POSIX/Qt APIs (e.g. `getpwuid_r`, `ioctl`, `forkpty`). Qt Quick
+  pointers. Exceptions: the non-owning `const T *` above, and non-owning
+  pointers/references required by C/POSIX/Qt APIs (e.g. `getpwuid_r`,
+  `ioctl`, `forkpty`). Qt Quick
   scene-graph nodes (`updatePaintNode`) are the one ownership hand-off: create
   them with `std::make_unique` and pass `release()` to the parent node, which
   owns them (see `src/TerminalRenderer.cpp`).

@@ -655,7 +655,15 @@ void TerminalRenderer::syncImages(QSGNode &below, QSGNode &above, ImageCacheNode
             used.emplace(visible.serial, std::move(cached->second));
             cache.textures.erase(cached);
         } else if (used.find(visible.serial) == used.end()) {
-            used.emplace(visible.serial, std::unique_ptr<QSGTexture>(window()->createTextureFromImage(*visible.image)));
+            // updatePaintNode runs with the GUI thread blocked, so the
+            // session's store is read here, not kept since refresh(). A frame
+            // replaced since then is skipped: its replacement's frameReady
+            // brings a refresh().
+            const QImage *const pixels = m_session ? m_session->imagePixels(visible.serial) : nullptr;
+            if (pixels == nullptr) {
+                return;
+            }
+            used.emplace(visible.serial, std::unique_ptr<QSGTexture>(window()->createTextureFromImage(*pixels)));
         }
         std::unique_ptr<QSGImageNode> node(window()->createImageNode());
         node->setTexture(used.at(visible.serial).get());

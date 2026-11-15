@@ -4,9 +4,9 @@
 #include <QImage>
 #include <QRect>
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
-#include <memory>
 #include <vector>
 
 namespace konsoll
@@ -48,15 +48,16 @@ inline constexpr short kPlacementVirtual = 2;
 
 // One animation frame (kitty a=f): its pixels and how long it shows (ms).
 struct GraphicsFrame {
-    std::shared_ptr<const QImage> pixels;
+    QImage pixels;
     std::uint64_t serial{0};
     std::int64_t gap{40};
 };
 
-// `pixels` / `serial` are the frame on screen; `frames` holds every frame
-// (the transmitted image is frame 1).
+// `frames` holds every frame (the transmitted image is frame 1); `current`
+// and `serial` are the frame on screen.
 struct GraphicsImage {
-    std::shared_ptr<const QImage> pixels;
+    const QImage &shownPixels() const { return frames[static_cast<std::size_t>(current)].pixels; }
+
     std::uint64_t serial{0}; // unique per decoded frame, for texture caches
     std::uint64_t number{0}; // kitty image number (I=)
     std::vector<GraphicsFrame> frames;
@@ -122,6 +123,10 @@ public:
     bool animating() const;
     bool advanceAnimations(int ms);
     const GraphicsImage *image(std::uint32_t id) const;
+    // The pixels of the frame `serial` names, or nullptr once that frame is
+    // gone (replaced, deleted or evicted). The store keeps them: the pointer
+    // is only valid until the store next changes.
+    const QImage *framePixels(std::uint64_t serial) const;
     // Increments on every change, so renderers know to rebuild.
     std::uint64_t generation() const { return m_generation; }
 

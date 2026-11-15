@@ -12,7 +12,6 @@
 
 #include <algorithm>
 #include <iterator>
-#include <memory>
 #include <utility>
 
 namespace konsoll
@@ -175,25 +174,27 @@ void AgentCommands::readPane(const QString &token, const QJsonObject &arguments,
     const QString title = target->displayTitle();
     const QString directory = target->currentDirectory();
     const QString place = directory.isEmpty() || title == directory ? title : title + QStringLiteral(" — ") + directory;
-    // Answered once: by the user, or refused if the agent's pane closes first.
-    auto pending = std::make_shared<Reply>(answer);
+    // Answered once, by the user or, if the agent's pane closes first, by its
+    // session: it owns the callback.
     const bool asked = agent->requestRead(
         QObject::tr("%1 wants to read the pane “%2”: its recent commands and output.").arg(name, place),
-        [pending, contents](bool allow) {
-            if (const Reply once = std::exchange(*pending, {})) {
-                once(allow ? contents() : reply(QObject::tr("The user did not allow reading that pane."), true));
+        [answer, contents](TerminalBackend::ReadAnswer choice) {
+            switch (choice) {
+            case TerminalBackend::ReadAnswer::Allowed:
+                answer(contents());
+                break;
+            case TerminalBackend::ReadAnswer::Denied:
+                answer(reply(QObject::tr("The user did not allow reading that pane."), true));
+                break;
+            case TerminalBackend::ReadAnswer::PaneClosed:
+                answer(reply(QObject::tr("Your pane was closed."), true));
+                break;
             }
         }
     );
     if (!asked) {
         answer(reply(QObject::tr("Another request to read a pane is waiting for the user."), true));
-        return;
     }
-    QObject::connect(agent, &QObject::destroyed, [pending]() {
-        if (const Reply once = std::exchange(*pending, {})) {
-            once(reply(QObject::tr("Your pane was closed."), true));
-        }
-    });
 }
 
 QJsonObject AgentCommands::openPane(const QString &token, const QJsonObject &arguments, const QString &cwd) const

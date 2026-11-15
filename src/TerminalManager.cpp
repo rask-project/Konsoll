@@ -469,15 +469,14 @@ void TerminalManager::connectSession(TerminalBackend *sessionPtr)
     connect(sessionPtr, &TerminalBackend::foregroundProcessChanged, this, refreshStatus);
     connect(sessionPtr, &TerminalBackend::commandRunningChanged, this, refreshStatus);
     connect(sessionPtr, &TerminalBackend::progressChanged, this, refreshStatus);
-    // The state before each change: "done" counts only after work.
-    auto previousAgentState = std::make_shared<AgentState>(AgentState::None);
+    // "done" counts only after work: the signal carries the state before.
     connect(
         sessionPtr,
         &TerminalBackend::agentStatusChanged,
         this,
-        [this, refreshStatus, sessionPtr, previousAgentState]() {
+        [this, refreshStatus, sessionPtr](AgentState previous) {
             refreshStatus();
-            onAgentStatusChanged(sessionPtr, std::exchange(*previousAgentState, sessionPtr->agentStateValue()));
+            onAgentStatusChanged(sessionPtr, previous);
         }
     );
     const auto notifyWorkspaceTitle = [this, sessionPtr]() {

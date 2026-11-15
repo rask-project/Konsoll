@@ -219,14 +219,18 @@ public:
     bool cursorBlinking() const;
     // Images placed on the visible rows: `target` in cell units (fractions
     // for pixel offsets and natural sizes), `source` in image pixels.
+    // `serial` names the frame shown: its pixels stay in the terminal's
+    // GraphicsStore and are looked up with imagePixels when needed.
     struct VisibleImage {
-        std::shared_ptr<const QImage> image;
         QRectF target;
         QRectF source;
         std::uint64_t serial{0};
         std::int64_t z{0}; // kitty z-index: below the text when negative
     };
     std::vector<VisibleImage> visibleImages() const;
+    // The pixels of frame `serial` (VisibleImage::serial), or nullptr when
+    // that frame is gone. Valid until the terminal next parses output.
+    const QImage *imagePixels(std::uint64_t serial) const;
     // Images shown through kitty Unicode placeholders on the visible rows.
     void appendPlaceholderImages(std::vector<VisibleImage> &out) const;
     std::optional<VisibleImage>
@@ -281,9 +285,15 @@ public:
     QJsonArray recentCommands(int count, qsizetype outputLimit) const;
 
     QString readRequest() const { return m_readRequest; }
+    enum class ReadAnswer : unsigned char {
+        Allowed,
+        Denied,
+        PaneClosed
+    };
     // Asks the user (in this pane) to let its agent read another pane;
-    // `answer` gets the choice. False, without asking, while one waits.
-    bool requestRead(const QString &description, std::function<void(bool allow)> answer);
+    // `answer` (owned by this session) gets the choice, or PaneClosed when
+    // the session goes first. False, without asking, while one waits.
+    bool requestRead(const QString &description, std::function<void(ReadAnswer)> answer);
     Q_INVOKABLE void answerReadRequest(bool allow);
     // The session's secret (KONSOLL_SESSION_TOKEN in its environment): agent
     // hooks and notifications name the session by it.
@@ -321,7 +331,8 @@ signals:
     void foregroundProcessChanged();
     void processKindChanged();
     void progressChanged();
-    void agentStatusChanged();
+    // `previous` is the state before this change.
+    void agentStatusChanged(konsoll::AgentState previous);
     void readRequestChanged();
     // The program rang the bell (BEL).
     void bellRang();
@@ -426,7 +437,7 @@ private:
     QString m_agentMessage;
     QString m_agentTask;
     QString m_readRequest;
-    std::function<void(bool)> m_readAnswer;
+    std::function<void(ReadAnswer)> m_readAnswer;
     qint64 m_agentSince{0};
     qint64 m_paneId{0};
     AbsPos m_selAnchor{.line = -1, .col = 0};
