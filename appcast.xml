@@ -6,6 +6,32 @@
     <description>Konsoll releases</description>
     <language>en</language>
     <item>
+      <title>Konsoll 3.7.1-beta.1</title>
+      <link>https://github.com/rask-project/Konsoll/releases/tag/v3.7.1-beta.1</link>
+      <sparkle:version>3.7.1.101</sparkle:version>
+      <sparkle:shortVersionString>3.7.1-beta.1</sparkle:shortVersionString>
+      <sparkle:channel>beta</sparkle:channel>
+      <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+      <pubDate>Sun, 15 Nov 2026 23:47:49 GMT</pubDate>
+      <description sparkle:format="markdown"><![CDATA[## What's new (beta)
+
+A beta of internal changes on the way to 3.7.1. The stable release is still
+3.7.0, and nothing should look different.
+
+### Changed
+
+- Images (kitty graphics, sixel, iTerm2 inline images) are kept in one place
+  only. The renderer takes the pixels from there when it draws them, instead
+  of holding its own reference to every image on screen.
+- An agent whose pane closes while `read_pane` waits for your answer now
+  gets its "Your pane was closed" reply from the closing pane itself.
+
+Please report images that flicker, go missing or show stale frames
+(animations included), and anything odd with agents asking to read a pane.
+]]></description>
+      <enclosure url="https://github.com/rask-project/Konsoll/releases/download/v3.7.1-beta.1/Konsoll-3.7.1-beta.1-arm64.zip" length="41036101" type="application/octet-stream" sparkle:edSignature="3mAemekevDw7HE2Nc4XY+UEAfmUEqKWw5lTf/BoNd0cFwUNfuU6eC/Sunl2zvt3Gi4vaA4mHh77HT3aJvMmGCQ=="/>
+    </item>
+    <item>
       <title>Konsoll 3.7.0</title>
       <link>https://github.com/rask-project/Konsoll/releases/tag/v3.7.0</link>
       <sparkle:version>3.7.0.1000</sparkle:version>
