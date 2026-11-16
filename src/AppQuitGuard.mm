@@ -9,8 +9,11 @@
 // ObjC delegate that routes the macOS app-quit decision into the C++ logic.
 // It is installed after the Qt launch has completed.
 @interface KonsollAppQuitDelegate : NSObject <NSApplicationDelegate>
+// Qt's own delegate, which this one replaces; Qt keeps it alive.
+@property(nonatomic, assign) id<NSApplicationDelegate> qtDelegate;
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender;
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender;
+- (void)application:(NSApplication *)sender openFiles:(NSArray<NSString *> *)filenames;
 @end
 
 @implementation KonsollAppQuitDelegate
@@ -51,6 +54,15 @@
     return NO;
 }
 
+- (void)application:(NSApplication *)sender openFiles:(NSArray<NSString *> *)filenames
+{
+    // Qt turns them into QFileOpenEvents (a folder dropped on the Dock icon
+    // opens a tab there: FinderIntegration).
+    if ([self.qtDelegate respondsToSelector:_cmd]) {
+        [self.qtDelegate application:sender openFiles:filenames];
+    }
+}
+
 @end
 
 namespace konsoll
@@ -59,6 +71,7 @@ namespace konsoll
 void installQuitGuard()
 {
     KonsollAppQuitDelegate *const delegate = [[KonsollAppQuitDelegate alloc] init];
+    delegate.qtDelegate = [NSApp delegate];
     [NSApp setDelegate:delegate];
 }
 

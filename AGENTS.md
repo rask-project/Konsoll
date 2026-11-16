@@ -134,6 +134,14 @@ Guidance for AI agents working in this repository.
   menu by `Updater::start()`: a QML item in the app-named `Menu` that Qt does
   not recognize (About/Settings/Quit) would open a second app menu. No feed
   URL or public key (Debug builds) leaves the updater off.
+- **Open at a folder from the Finder** (`FinderIntegration`, QML
+  singleton): the `NSServices` "New Konsoll Tab/Window Here" (Info.plist,
+  message `openFolder`) and folders opened with the app
+  (`CFBundleDocumentTypes` `public.folder`, rank Alternate → QFileOpenEvent)
+  emit `openRequested`, which `Main.qml` answers with a tab or a window
+  (`addWorkspaceInDirectory`). A launch for a folder replaces the launch
+  window's untouched tab. `AppQuitGuard`'s delegate replaces Qt's, so it
+  forwards `application:openFiles:` to Qt.
 - **Threading:** each session has a `PtyWorker` on its own `QThread` that
   alone touches the PTY descriptor, its notifier and the child process. PTY
   writes, resizes and shutdown go to it as queued calls; output comes back as

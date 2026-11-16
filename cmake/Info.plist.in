@@ -38,5 +38,81 @@
 
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
+
+	<!-- A folder opened with the app (dropped on the Dock icon, open -a):
+	     a tab there. Alternate: never the default app for folders. -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Folder</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.folder</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- Finder's context menu for a folder (and Services in other apps for a
+	     selected path): FinderIntegration's provider. -->
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>New ${MACOSX_BUNDLE_BUNDLE_NAME} Tab Here</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>openFolder</string>
+			<key>NSUserData</key>
+			<string>tab</string>
+			<key>NSPortName</key>
+			<string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
+			<key>NSRequiredContext</key>
+			<dict>
+				<key>NSTextContent</key>
+				<string>FilePath</string>
+			</dict>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.folder</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>New ${MACOSX_BUNDLE_BUNDLE_NAME} Window Here</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>openFolder</string>
+			<key>NSUserData</key>
+			<string>window</string>
+			<key>NSPortName</key>
+			<string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
+			<key>NSRequiredContext</key>
+			<dict>
+				<key>NSTextContent</key>
+				<string>FilePath</string>
+			</dict>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.folder</string>
+			</array>
+		</dict>
+	</array>
 ${KONSOLL_SPARKLE_PLIST_KEYS}</dict>
 </plist>

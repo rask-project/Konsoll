@@ -362,6 +362,11 @@ void TerminalManager::addWorkspace()
     createWorkspace(QString{});
 }
 
+void TerminalManager::addWorkspaceInDirectory(const QString &directory)
+{
+    createWorkspace(QString{}, directory);
+}
+
 void TerminalManager::addNamedWorkspace(const QString &title)
 {
     createWorkspace(title);

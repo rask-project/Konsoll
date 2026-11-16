@@ -221,6 +221,31 @@ Item {
         Qt.callLater(() => w.destroy());
     }
 
+    // A folder from the Finder ("New Konsoll Tab/Window Here", the Dock
+    // icon): a tab in the last active window, or a window of its own.
+    Connections {
+        target: FinderIntegration
+
+        function onOpenRequested(directory: string, newWindow: bool, atLaunch: bool) {
+            manager.openFolder(directory, newWindow, atLaunch);
+        }
+    }
+
+    // `atLaunch`: the app was launched for this folder, so it takes the place
+    // of the launch window's untouched tab rather than adding a window.
+    function openFolder(directory: string, newWindow: bool, atLaunch: bool) {
+        let w = manager.lastActiveWindow();
+        if (!w || (newWindow && !atLaunch))
+            w = manager.openWindow("", true);
+        const terminal = w.terminalManager;
+        const initial = atLaunch && terminal.workspaces.length === 1 ? terminal.workspaces[0] : null;
+        terminal.addWorkspaceInDirectory(directory);
+        if (initial && !terminal.workspaceNeedsCloseConfirmation(initial))
+            terminal.closeWorkspace(initial);
+        w.raise();
+        w.requestActivate();
+    }
+
     Component.onCompleted: {
         // Reopen a single window. Only the last active window's geometry is
         // restored (via its saved state); sessions always start fresh.

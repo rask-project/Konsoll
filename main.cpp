@@ -11,6 +11,7 @@
 #include "AgentStatus.h"
 #include "AppQuitGuard.h"
 #include "BackgroundJobs.h"
+#include "FinderIntegration.h"
 #include "McpServer.h"
 #include "NativeKeyTracker.h"
 #include "Notifications.h"
@@ -115,6 +116,9 @@ int main(int argc, char *argv[])
             agentCommands.handle(request, reply);
         }
     );
+    // "New Konsoll Tab/Window Here" (Services) and folders opened with the
+    // app; installed before the event loop, which delivers a launch's folder.
+    konsoll::FinderIntegration::shared().install();
     QQmlApplicationEngine engine;
 
     QObject::connect(

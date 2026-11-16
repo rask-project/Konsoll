@@ -238,6 +238,8 @@ programs and its scrollback move with it.
   window*, *Move to window ▸ name*), or **press and hold the tab and drag it
   out of the strip**: drop it on another window's tab strip to join its tabs,
   or anywhere else to tear it off into a window of its own.
+- **Open Konsoll at a folder from the Finder**: see
+  [Opening Konsoll from the Finder](#opening-konsoll-from-the-finder).
 - The last active window's size and position are restored on the next launch.
 - The window is **see-through**: the terminal background, the title bar and
   the tab strip are tinted and blurred (native Liquid Glass on macOS 26).
@@ -246,6 +248,33 @@ programs and its scrollback move with it.
 <p align="center">
   <img src="docs/images/tab-to-window.gif" alt="Dragging a tab out of the strip into a new window, then into another window" width="900">
 </p>
+
+### Opening Konsoll from the Finder
+
+Right-click a folder in the Finder and choose **New Konsoll Tab Here** (a
+tab in the front window) or **New Konsoll Window Here**. When the menu is
+long, the Finder puts them under **Services ▸** (or **Quick Actions ▸**) at
+the bottom. They also work on a path selected as text in any app (under
+*App name ▸ Services*). Other ways to open a folder:
+
+- drop it on Konsoll's icon in the Dock;
+- run `open -a Konsoll ~/some/folder`.
+
+If Konsoll was not running, the folder takes the place of the tab it opens
+at launch.
+
+**If the items don't show up**, turn them on once:
+
+1. Make sure Konsoll is in **/Applications** and has been opened at least
+   once since it was installed or updated. That registers its Services.
+2. Open **System Settings ▸ Keyboard**, click **Keyboard Shortcuts…** and
+   pick **Services** in the sidebar.
+3. Under **Files and Folders**, tick **New Konsoll Tab Here** and **New
+   Konsoll Window Here**. Double-click a row's shortcut column to give it a
+   keyboard shortcut (it then works on the folder selected in the Finder).
+4. Still missing? Refresh the Services list by running
+   `/System/Library/CoreServices/pbs -update` (or log out and back in), then
+   relaunch the Finder (⌥-right-click its Dock icon ▸ *Relaunch*).
 
 ### Selecting, copying and searching
 

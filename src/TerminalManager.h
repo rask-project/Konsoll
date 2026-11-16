@@ -179,6 +179,8 @@ public:
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void addWorkspace();
+    // A new tab whose shell starts in `directory`.
+    Q_INVOKABLE void addWorkspaceInDirectory(const QString &directory);
     // A new tab titled `title`, its shell in `directory`, running `command`
     // (New Agent in Worktree).
     Q_INVOKABLE void addWorkspaceRunning(const QString &title, const QString &directory, const QString &command);

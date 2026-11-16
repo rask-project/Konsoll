@@ -154,6 +154,8 @@ qt_add_qml_module(konsoll
         src/AppQuitGuard.mm
         src/BackgroundJobs.cpp
         src/BackgroundJobs.h
+        src/FinderIntegration.h
+        src/FinderIntegration.mm
         src/KeyEncoder.cpp
         src/KeyEncoder.h
         src/McpServer.cpp
