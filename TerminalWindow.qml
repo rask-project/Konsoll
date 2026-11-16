@@ -476,15 +476,24 @@ Window {
             // repository: not over ssh, where the directory is the host's (or
             // the local one ssh was started from) and the worktree would be
             // made on this Mac. A native menu ignores MenuItem.visible, so the
-            // item is inserted and removed instead.
+            // item is inserted and removed instead. Qt does not sync a native
+            // item inserted after the menu was built (it would stay blank), only
+            // when its Action changes: the item has its own Action, whose text
+            // is set once it is in the menu.
             Instantiator {
                 model: sessionManager.activeSession !== null && sessionManager.activeSession.processKind !== "remote" && AgentIntegrations.isInGitRepository(sessionManager.activeSession.currentDirectory) ? 1 : 0
 
                 delegate: MenuItem {
-                    action: newAgentWorktreeAction
+                    action: Action {
+                        enabled: newAgentWorktreeAction.enabled
+                        onTriggered: newAgentWorktreeAction.trigger()
+                    }
                 }
 
-                onObjectAdded: (index, object) => shellMenu.insertItem(2, object)
+                onObjectAdded: (index, object) => {
+                    shellMenu.insertItem(2, object);
+                    object.action.text = Qt.binding(() => newAgentWorktreeAction.text);
+                }
                 onObjectRemoved: (index, object) => shellMenu.removeItem(object)
             }
 
