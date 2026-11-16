@@ -460,6 +460,8 @@ Window {
         }
 
         Menu {
+            id: shellMenu
+
             title: qsTr("Shell")
 
             MenuItem {
@@ -470,8 +472,20 @@ Window {
                 action: newWorkspaceAction
             }
 
-            MenuItem {
-                action: newAgentWorktreeAction
+            // Listed only while the active pane's directory is in a local git
+            // repository: not over ssh, where the directory is the host's (or
+            // the local one ssh was started from) and the worktree would be
+            // made on this Mac. A native menu ignores MenuItem.visible, so the
+            // item is inserted and removed instead.
+            Instantiator {
+                model: sessionManager.activeSession !== null && sessionManager.activeSession.processKind !== "remote" && AgentIntegrations.isInGitRepository(sessionManager.activeSession.currentDirectory) ? 1 : 0
+
+                delegate: MenuItem {
+                    action: newAgentWorktreeAction
+                }
+
+                onObjectAdded: (index, object) => shellMenu.insertItem(2, object)
+                onObjectRemoved: (index, object) => shellMenu.removeItem(object)
             }
 
             MenuSeparator {}

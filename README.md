@@ -469,7 +469,8 @@ connected, it also reports what it is doing, and the tab shows it:
   repository on it (beside the repository, in `<repo>-worktrees/`; an
   existing branch or worktree is reused) and starts the agent there in a new
   tab. Each agent works apart from your checkout, and Window ▸ AI Agents
-  lists them all.
+  lists them all. The item is listed while the current pane is in a local
+  git repository (not over ssh).
 - **Agents over SSH.** `ssh host` typed in a zsh or bash tab brings
   Konsoll's shell integration to the host for that session, with nothing
   installed there: Claude Code, Codex and Qwen Code started on the host show

@@ -591,6 +591,20 @@ QString AgentIntegrations::gitRoot(const QString &directory) const
         .value_or(QString{});
 }
 
+bool AgentIntegrations::isInGitRepository(const QString &directory) const
+{
+    if (directory.isEmpty() || !QDir::isAbsolutePath(directory)) {
+        return false;
+    }
+    QDir dir(directory);
+    while (!QFileInfo::exists(dir.filePath(QStringLiteral(".git")))) {
+        if (!dir.cdUp()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 QVariantMap AgentIntegrations::worktreePlan(const QString &root, const QString &branch, const QString &id) const
 {
     const auto failure = [](const QString &error) { return QVariantMap{{QStringLiteral("error"), error}}; };

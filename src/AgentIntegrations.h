@@ -107,6 +107,10 @@ public:
 
     // The top of the git repository `directory` is in, or empty.
     Q_INVOKABLE QString gitRoot(const QString &directory) const;
+    // Whether `directory` or a parent holds a `.git` (a folder, or the file of
+    // a worktree or submodule). Only stats files: cheap enough for a binding
+    // that follows the active pane's directory.
+    Q_INVOKABLE bool isInGitRepository(const QString &directory) const;
     // New Agent in Worktree: the shell command a new tab in `root` runs to
     // create (or reuse) a worktree for `branch` beside the repository
     // (<repo>-worktrees/<branch>) and start agent `id` in it.

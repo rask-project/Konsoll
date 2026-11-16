@@ -92,6 +92,9 @@ Guidance for AI agents working in this repository.
   `NativeDialogs::promptAgentWorktree`; `AgentIntegrations::worktreePlan`
   builds the command (`git worktree add` beside the repository, then the
   agent) that `TerminalManager::addWorkspaceRunning` types in a new tab.
+  The item is inserted in the menu only while the active pane is in a local
+  repository (`isInGitRepository`, stats only; not a `remote` pane): native
+  menus ignore `MenuItem.visible`.
   The script is zsh (`zsocket`): `nc` can linger after the write.
 - **Agent integrations** (`AgentIntegrations`, QML singleton, Settings ▸ AI
   Agents): merges Konsoll's hooks into Claude Code / Codex / Qwen Code JSON

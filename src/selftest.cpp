@@ -441,8 +441,12 @@ void checkAgentWorktree(int &failures)
             again.startsWith(QStringLiteral("cd ")) && again.endsWith(QStringLiteral("&& claude")) &&
             integrations.worktreePlan(root, QStringLiteral("bad..name"), QStringLiteral("claude"))
                 .contains(QStringLiteral("error")) &&
-            integrations.gitRoot(directory.path()).isEmpty(),
-        "agent worktree: a worktree beside the repository on a new branch, reused, bad names refused"
+            integrations.gitRoot(directory.path()).isEmpty() &&
+            integrations.isInGitRepository(repository + QStringLiteral("/sub")) &&
+            integrations.isInGitRepository(path) && !integrations.isInGitRepository(directory.path()) &&
+            !integrations.isInGitRepository(QString{}),
+        "agent worktree: a worktree beside the repository on a new branch, reused, bad names refused, menu item "
+        "only in a repository"
     );
 }
 
