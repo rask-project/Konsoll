@@ -3,8 +3,8 @@ tagline: A native terminal for macOS
 description: >-
   Konsoll is a fast, native macOS terminal with glass tabs, split panes,
   Background Commands and AI coding agents that report to your tabs.
-url: https://rask-project.github.io
-baseurl: /Konsoll
+url: https://konsoll.app
+baseurl: ""
 repository: rask-project/Konsoll
 github_url: https://github.com/rask-project/Konsoll
 releases_url: https://github.com/rask-project/Konsoll/releases/latest

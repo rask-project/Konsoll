@@ -1,7 +1,7 @@
 # Konsoll site
 
 The project's home page, built by Jekyll and published to GitHub Pages
-(https://rask-project.github.io/Konsoll/) by `.github/workflows/pages.yml`
+(https://konsoll.app, a custom domain on rask-project.github.io) by `.github/workflows/pages.yml`
 on every push to `main` that touches it.
 
 - `index.html` (home), `features.html`, `agents.html`, `download.html`,
@@ -19,7 +19,7 @@ on every push to `main` that touches it.
 
 ```sh
 cd site && bundle install   # once: the github-pages gem (Ruby 3.x)
-tools/site-serve.sh         # http://127.0.0.1:4000/Konsoll/
+tools/site-serve.sh         # http://127.0.0.1:4000/
 ```
 
 ## A new post

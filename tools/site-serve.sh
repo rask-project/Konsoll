@@ -1,5 +1,5 @@
 #!/bin/sh
-# Previews the site at http://127.0.0.1:4000/Konsoll/ with live rebuilds.
+# Previews the site at http://127.0.0.1:4000/ with live rebuilds.
 # Needs Jekyll: `cd site && bundle install` (the github-pages gem, the same
 # versions GitHub Pages builds with).
 set -eu
