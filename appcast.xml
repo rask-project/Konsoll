@@ -6,6 +6,40 @@
     <description>Konsoll releases</description>
     <language>en</language>
     <item>
+      <title>Konsoll 3.7.1-beta.5</title>
+      <link>https://github.com/rask-project/Konsoll/releases/tag/v3.7.1-beta.5</link>
+      <sparkle:version>3.7.1.105</sparkle:version>
+      <sparkle:shortVersionString>3.7.1-beta.5</sparkle:shortVersionString>
+      <sparkle:channel>beta</sparkle:channel>
+      <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+      <pubDate>Mon, 16 Nov 2026 16:31:20 GMT</pubDate>
+      <description sparkle:format="markdown"><![CDATA[## What's new (beta)
+
+The stable release is still 3.7.0. This beta tidies the Shell menu, on top
+of the changes in 3.7.1-beta.4.
+
+### Changed
+
+- **Shell ▸ New Agent in Worktree…** is listed only while the current pane
+  is in a git repository on this Mac. It used to show in every pane and
+  answer with a warning outside a repository. Over ssh it stays out of the
+  menu: the worktree would be made locally, not on the host. The item
+  follows the pane as you `cd` and switch tabs.
+
+### Since 3.7.1-beta.1
+
+- Open Konsoll at a folder from the Finder (**New Konsoll Tab Here** /
+  **New Konsoll Window Here**, a folder dropped on the Dock icon, or
+  `open -a Konsoll ~/some/folder`) — see the 3.7.1-beta.4 notes.
+- Images are kept in one place only, and an agent whose pane closes while
+  `read_pane` waits gets its reply from the closing pane.
+
+Please report the item missing in a repository, or showing where it
+shouldn't.
+]]></description>
+      <enclosure url="https://github.com/rask-project/Konsoll/releases/download/v3.7.1-beta.5/Konsoll-3.7.1-beta.5-arm64.zip" length="41044097" type="application/octet-stream" sparkle:edSignature="OS3OiKuhR2BnoKksQ1HXHfEOphaPyHTFSjOEklSAyLVfpsGlAFdtqwGax+bCxCHNDfCNDU3y/xxWOPfwzl+EBw=="/>
+    </item>
+    <item>
       <title>Konsoll 3.7.1-beta.4</title>
       <link>https://github.com/rask-project/Konsoll/releases/tag/v3.7.1-beta.4</link>
       <sparkle:version>3.7.1.104</sparkle:version>
