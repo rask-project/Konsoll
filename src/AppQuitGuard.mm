@@ -2,6 +2,7 @@
 
 #include "AppQuitGuard.h"
 #include "BackgroundJobs.h"
+#include "DockMenu.h"
 #include "NativeDialogs.h"
 #include "WindowRegistry.h"
 #include "WindowStateStore.h"
@@ -14,6 +15,7 @@
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender;
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender;
 - (void)application:(NSApplication *)sender openFiles:(NSArray<NSString *> *)filenames;
+- (NSMenu *)applicationDockMenu:(NSApplication *)sender;
 @end
 
 @implementation KonsollAppQuitDelegate
@@ -61,6 +63,13 @@
     if ([self.qtDelegate respondsToSelector:_cmd]) {
         [self.qtDelegate application:sender openFiles:filenames];
     }
+}
+
+- (NSMenu *)applicationDockMenu:(NSApplication *)sender
+{
+    Q_UNUSED(sender);
+    // New Tab / New Window; AppKit adds the window list above them.
+    return konsoll::DockMenu::menu();
 }
 
 @end

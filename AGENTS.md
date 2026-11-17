@@ -145,6 +145,10 @@ Guidance for AI agents working in this repository.
   (`addWorkspaceInDirectory`). A launch for a folder replaces the launch
   window's untouched tab. `AppQuitGuard`'s delegate replaces Qt's, so it
   forwards `application:openFiles:` to Qt.
+- **Dock menu** (`DockMenu`, QML singleton): "New Tab" / "New Window"
+  above AppKit's window list. Qt's `applicationDockMenu:` is lost with its
+  delegate, so `AppQuitGuard`'s answers it with `DockMenu::menu()`;
+  `Main.qml` answers the signals (a tab in the last active window).
 - **Threading:** each session has a `PtyWorker` on its own `QThread` that
   alone touches the PTY descriptor, its notifier and the child process. PTY
   writes, resizes and shutdown go to it as queued calls; output comes back as

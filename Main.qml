@@ -231,6 +231,27 @@ Item {
         }
     }
 
+    // The Dock icon's menu: a tab in the last active window (a window when
+    // none is open), or a new window.
+    Connections {
+        target: DockMenu
+
+        function onNewTabRequested() {
+            const w = manager.lastActiveWindow();
+            if (!w) {
+                manager.openWindow();
+                return;
+            }
+            w.terminalManager.addWorkspace();
+            w.raise();
+            w.requestActivate();
+        }
+
+        function onNewWindowRequested() {
+            manager.openWindow();
+        }
+    }
+
     // `atLaunch`: the app was launched for this folder, so it takes the place
     // of the launch window's untouched tab rather than adding a window.
     function openFolder(directory: string, newWindow: bool, atLaunch: bool) {
