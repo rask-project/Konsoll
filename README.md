@@ -628,6 +628,10 @@ An in-house VT500-style state machine (no `libvterm`), validated against
   opens the editor at that line, names with spaces from `ls` work; nothing
   is linked over ssh or on network volumes, and apps, scripts and installers
   are never run
+- ⌥-click a folder in the output to `cd` into it (at an empty prompt; holding
+  ⌥ underlines the folders you can enter)
+- ⌘ + hover over an image, PDF or video file in the output shows a QuickLook
+  preview beside the pointer
 - `OSC 52` clipboard (reads ask first by default)
 - `OSC 9` / `OSC 777` desktop notifications, `OSC 9;4` progress in the tab
 - AI agent state in the tab (working, waiting for you, done, failed) from the
