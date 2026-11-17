@@ -6,6 +6,39 @@
     <description>Konsoll releases</description>
     <language>en</language>
     <item>
+      <title>Konsoll 3.7.1-beta.7</title>
+      <link>https://github.com/rask-project/Konsoll/releases/tag/v3.7.1-beta.7</link>
+      <sparkle:version>3.7.1.107</sparkle:version>
+      <sparkle:shortVersionString>3.7.1-beta.7</sparkle:shortVersionString>
+      <sparkle:channel>beta</sparkle:channel>
+      <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+      <pubDate>Tue, 17 Nov 2026 02:46:47 GMT</pubDate>
+      <description sparkle:format="markdown"><![CDATA[## What's new (beta)
+
+The stable release is still 3.7.0.
+
+### Added
+
+- **New Tab** and **New Window** in the Dock icon's menu (right-click or
+  hold the icon). New Tab opens a tab in the last window you used, or a
+  window when none is open.
+
+### Since 3.7.1-beta.1
+
+- **Shell ▸ New Agent in Worktree…** is listed only while the current pane
+  is in a git repository on this Mac, and follows the pane as you `cd` and
+  switch tabs — see the 3.7.1-beta.5 and 3.7.1-beta.6 notes.
+- Open Konsoll at a folder from the Finder (**New Konsoll Tab Here** /
+  **New Konsoll Window Here**, a folder dropped on the Dock icon, or
+  `open -a Konsoll ~/some/folder`) — see the 3.7.1-beta.4 notes.
+- Images are kept in one place only, and an agent whose pane closes while
+  `read_pane` waits gets its reply from the closing pane.
+
+Please report a Dock menu item that does nothing or opens the wrong window.
+]]></description>
+      <enclosure url="https://github.com/rask-project/Konsoll/releases/download/v3.7.1-beta.7/Konsoll-3.7.1-beta.7-arm64.zip" length="41046365" type="application/octet-stream" sparkle:edSignature="6Boc+Ea4Iunq4W7M8zBtmSVTaxzAGHkIqIyKFgS+if1wkBb+zMvxSPb2pK1zv9wpcEe5jtNUvG6bE6vTRD6LBw=="/>
+    </item>
+    <item>
       <title>Konsoll 3.7.1-beta.6</title>
       <link>https://github.com/rask-project/Konsoll/releases/tag/v3.7.1-beta.6</link>
       <sparkle:version>3.7.1.106</sparkle:version>
