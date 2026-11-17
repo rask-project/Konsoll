@@ -6,6 +6,7 @@
 
 #include <QChar>
 #include <QList>
+#include <QSysInfo>
 #include <QUrl>
 
 #include <algorithm>
@@ -34,9 +35,7 @@ void Terminal::write(const QByteArray &data)
 void Terminal::resize(int rows, int cols)
 {
     m_screen.resize(rows, cols);
-    // Images follow their text when the main screen re-wraps.
-    const Screen::ReflowMap reflow = m_screen.takeReflowMap();
-    m_graphics.remapAnchors(reflow.base, reflow.anchors);
+    followReflow();
     clearCommandBlocks();
     if ((m_extraFlags & InBandResize) != 0) {
         reportInBandSize();
@@ -1183,8 +1182,10 @@ void Terminal::setAltScreenMode(int mode, bool set)
     // go with that screen.
     m_graphics.clearAlternate();
     m_screen.leaveAltScreen(mode == 1049);
-    const Screen::ReflowMap reflow = m_screen.takeReflowMap();
-    m_graphics.remapAnchors(reflow.base, reflow.anchors);
+    followReflow();
+    // A directory change reported while the alternate screen was up starts
+    // applying here.
+    markDirectory();
     if (mode == 1049) {
         restoreCursorState(false);
     }
@@ -1725,10 +1726,7 @@ void Terminal::handleOscIterm(const QByteArray &command)
         placeItermImage(std::exchange(m_itermFileArgs, {}), std::exchange(m_itermFileData, {}));
     } else if (command.startsWith("CurrentDir=")) {
         const QString path = QString::fromUtf8(command.mid(11));
-        if (path.startsWith(QLatin1Char('/')) && path != m_currentDirectory) {
-            m_currentDirectory = path;
-            setExtraFlag(CurrentDirectoryDirty, true);
-        }
+        setCurrentDirectory(path);
     } else if (command.startsWith("SetUserVar=")) {
         const QByteArray assignment = command.mid(11);
         const qsizetype equals = assignment.indexOf('=');
@@ -1833,6 +1831,7 @@ void Terminal::handleOscRemoteHost(const QByteArray &body)
     if (host != m_remoteHost) {
         m_remoteHost = host;
         m_extraFlags |= RemoteHostDirty;
+        markDirectory();
     }
 }
 
@@ -1898,10 +1897,7 @@ void Terminal::handleOscVsCode(const QByteArray &body)
         m_commandLine = QString::fromUtf8(decoded).left(4096);
     } else if (body.startsWith("P;Cwd=")) {
         const QString path = QString::fromUtf8(body.mid(6));
-        if (path.startsWith(QLatin1Char('/')) && path != m_currentDirectory) {
-            m_currentDirectory = path;
-            setExtraFlag(CurrentDirectoryDirty, true);
-        }
+        setCurrentDirectory(path);
     }
 }
 
@@ -2003,14 +1999,125 @@ void Terminal::handleOscPointerShape(const QByteArray &body)
     setExtraFlag(PointerShapeDirty, true);
 }
 
+bool isLocalHostName(const QString &host)
+{
+    const auto bare = [](QString name) {
+        name = name.toLower();
+        if (name.endsWith(QStringLiteral(".local"))) {
+            name.chop(6);
+        }
+        return name;
+    };
+    static const QString kMachine = bare(QSysInfo::machineHostName());
+    const QString name = bare(host);
+    return name.isEmpty() || name == QStringLiteral("localhost") || name == kMachine;
+}
+
 void Terminal::handleOscCurrentDirectory(const QByteArray &body)
 {
     const QUrl url = QUrl::fromEncoded(body.mid(2), QUrl::TolerantMode);
     const QString path = url.scheme() == QStringLiteral("file") ? url.path(QUrl::FullyDecoded) : QString{};
+    if (!path.startsWith(QLatin1Char('/'))) {
+        return;
+    }
+    // Konsoll's integration sends "localhost"; a shell elsewhere (ssh
+    // without the integration, a VM) names its own host.
+    setExtraFlag(ForeignDirectoryHost, !isLocalHostName(url.host()));
+    setCurrentDirectory(path);
+    markDirectory();
+}
+
+void Terminal::setCurrentDirectory(const QString &path)
+{
     if (path.startsWith(QLatin1Char('/')) && path != m_currentDirectory) {
         m_currentDirectory = path;
         setExtraFlag(CurrentDirectoryDirty, true);
+        markDirectory();
     }
+}
+
+bool Terminal::directoryIsRemote() const
+{
+    return !m_remoteHost.isEmpty() || (m_extraFlags & (ForegroundRemote | ForeignDirectoryHost)) != 0;
+}
+
+void Terminal::setForegroundRemote(bool remote)
+{
+    if (remote != ((m_extraFlags & ForegroundRemote) != 0)) {
+        setExtraFlag(ForegroundRemote, remote);
+        markDirectory();
+    }
+}
+
+void Terminal::markDirectory()
+{
+    if (m_screen.inAltScreen()) {
+        return;
+    }
+    const bool remote = directoryIsRemote();
+    // An empty directory stands for "remote": nothing to mark before the
+    // shell reports one.
+    if (!remote && m_currentDirectory.isEmpty()) {
+        return;
+    }
+    const QString directory = remote ? QString{} : m_currentDirectory;
+    const long long anchor = m_screen.rowAnchor(m_screen.cursorRow());
+    // Marks at or below the cursor row belong to lines being written over
+    // (several reports at one prompt, a cleared screen): this one replaces
+    // them.
+    m_directoryMarks.erase(
+        std::ranges::lower_bound(m_directoryMarks, anchor, {}, &DirectoryMark::anchor),
+        m_directoryMarks.end()
+    );
+    if (m_directoryMarks.empty() || m_directoryMarks.back().directory != directory) {
+        m_directoryMarks.push_back({.anchor = anchor, .directory = directory});
+    }
+    // Marks above the history are useless, except the last one of them,
+    // which still covers the oldest lines.
+    const long long oldest = m_screen.lineAnchor(0);
+    const auto firstKept = std::ranges::upper_bound(m_directoryMarks, oldest, {}, &DirectoryMark::anchor);
+    if (firstKept - m_directoryMarks.begin() > 1) {
+        m_directoryMarks.erase(m_directoryMarks.begin(), firstKept - 1);
+    }
+}
+
+std::optional<QString> Terminal::directoryAtLine(int index) const
+{
+    if (m_screen.inAltScreen()) {
+        return directoryIsRemote() ? std::nullopt : std::optional<QString>(m_currentDirectory);
+    }
+    if (m_directoryMarks.empty()) {
+        return directoryIsRemote() ? std::nullopt : std::optional<QString>(m_currentDirectory);
+    }
+    const auto after =
+        std::ranges::upper_bound(m_directoryMarks, m_screen.lineAnchor(index), {}, &DirectoryMark::anchor);
+    // Lines before the first report (a login banner) take the first
+    // directory the shell reported.
+    const DirectoryMark &mark = after == m_directoryMarks.begin() ? m_directoryMarks.front() : *std::prev(after);
+    return mark.directory.isEmpty() ? std::nullopt : std::optional<QString>(mark.directory);
+}
+
+void Terminal::followReflow()
+{
+    const Screen::ReflowMap reflow = m_screen.takeReflowMap();
+    m_graphics.remapAnchors(reflow.base, reflow.anchors);
+    remapDirectoryMarks(reflow);
+}
+
+void Terminal::remapDirectoryMarks(const Screen::ReflowMap &reflow)
+{
+    if (reflow.anchors.empty()) {
+        return;
+    }
+    const auto last = static_cast<long long>(reflow.anchors.size()) - 1;
+    std::ranges::for_each(m_directoryMarks, [&reflow, last](DirectoryMark &mark) {
+        const long long index = mark.anchor - reflow.base;
+        if (index >= 0 && index <= last) {
+            mark.anchor = reflow.anchors[static_cast<std::size_t>(index)];
+        } else if (index > last) {
+            mark.anchor = reflow.anchors.back() + (index - last);
+        }
+    });
 }
 
 void Terminal::handleOscCommandMark(const QByteArray &body)

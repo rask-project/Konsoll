@@ -135,7 +135,9 @@ On macOS, ⌘ is Command, ⌥ is Option, ⌃ is Control and ⇧ is Shift.
 | ⌘F | Find in the scrollback | — |
 | ⌃L | Clear the screen | Shell ▸ Clear |
 | ⌃K | Clear the scrollback buffer | Shell ▸ Clear Buffer |
-| ⌘-click | Open a link (`OSC 8` hyperlinks and URLs) | — |
+| ⌘-click | Open a link: `OSC 8` hyperlinks, URLs and file paths in the output (`src/main.cpp:42` opens at the line) | — |
+| ⌥-click | On a folder in the output, at an empty prompt: `cd` into it | — |
+| ⌘ + hover | On an image, PDF or video file in the output: a preview (QuickLook) | — |
 | ⌘, | Settings | Konsoll ▸ Settings… |
 | ⌘Q | Quit (asks first while commands are running) | Konsoll ▸ Quit Konsoll |
 
@@ -567,7 +569,7 @@ window right away and are saved automatically.
 | --- | --- |
 | **Appearance** | Font (family, size, weight, italic), cursor style (block, underline, bar, hollow block), blinking cursor |
 | **Window** | Background blur, background opacity |
-| **Terminal** | Scrollback: unlimited (the default) or a line limit |
+| **Terminal** | Scrollback: unlimited (the default) or a line limit; the editor ⌘-clicked files open in (a GUI editor's command or a terminal editor in a new tab) |
 | **Keyboard** | Use Option as Meta key |
 | **AI Agents** | Connect Claude Code, Codex, Qwen Code and opencode to the tab status; notify when an agent needs you |
 | **Security** | What programs may do: read the clipboard (`OSC 52`: never / ask / always), read the window title, show desktop notifications, move and resize the window |
@@ -621,6 +623,11 @@ An in-house VT500-style state machine (no `libvterm`), validated against
 - Images: kitty graphics protocol (with animation and Unicode placeholders),
   sixel, and iTerm2 `OSC 1337` inline images
 - `OSC 8` hyperlinks (⌘-click), `OSC 4/10/11/12` color control
+- File paths in the output are links too (⌘-click): relative ones resolve in
+  the directory the line was printed in, `path:line:column` (grep, compilers)
+  opens the editor at that line, names with spaces from `ls` work; nothing
+  is linked over ssh or on network volumes, and apps, scripts and installers
+  are never run
 - `OSC 52` clipboard (reads ask first by default)
 - `OSC 9` / `OSC 777` desktop notifications, `OSC 9;4` progress in the tab
 - AI agent state in the tab (working, waiting for you, done, failed) from the

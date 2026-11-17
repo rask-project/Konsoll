@@ -4,9 +4,11 @@
 #include "AgentIntegrations.h"
 #include "AgentStatus.h"
 #include "BackgroundJobs.h"
+#include "ImagePreview.h"
 #include "ShellFunctions.h"
 #include "SshIntegration.h"
 #include "TerminalManager.h"
+#include "TextLinks.h"
 #include "WindowRegistry.h"
 #include "term/Terminal.h"
 
@@ -15,14 +17,18 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QSysInfo>
 #include <QTemporaryDir>
 #include <QThread>
+
+#include <sys/stat.h>
 
 #include <algorithm>
 #include <array>
@@ -945,6 +951,311 @@ void checkWrappedLineText(int &failures)
     );
 }
 
+// Text links (Cmd+hover): the candidates found in a line of text.
+void checkTextLinkCandidates(int &failures)
+{
+    const auto first = [](std::u32string_view text, int position) {
+        const auto candidates = konsoll::textLinkCandidates(text, position);
+        return candidates.empty() ? konsoll::TextLinkCandidate{.text = QStringLiteral("<none>")} : candidates.front();
+    };
+    const auto has = [](std::u32string_view text, int position, const QString &wanted) {
+        return std::ranges::any_of(konsoll::textLinkCandidates(text, position), [&](const auto &candidate) {
+            return candidate.text == wanted;
+        });
+    };
+    const auto prose = first(U"see docs/RELEASE.md.", 6);
+    check(
+        failures,
+        prose.text == QStringLiteral("docs/RELEASE.md") && prose.start == 4 && prose.end == 19,
+        "text links: a relative path in prose, trailing punctuation dropped"
+    );
+    const auto grep = first(U"src/main.cpp:42:7: error", 3);
+    check(
+        failures,
+        grep.text == QStringLiteral("src/main.cpp") && grep.line == 42 && grep.column == 7 && grep.end == 17,
+        "text links: path:line:column (grep -n, compilers)"
+    );
+    const auto msvc = first(U"Program.cs(12,5): warning", 2);
+    check(
+        failures,
+        msvc.text == QStringLiteral("Program.cs") && msvc.line == 12 && msvc.column == 5,
+        "text links: path(line,column)"
+    );
+    check(failures, has(U"+++ b/src/x.cpp", 6, QStringLiteral("src/x.cpp")), "text links: git's b/ prefix");
+    check(failures, first(U"my\\ file.txt", 1).text == QStringLiteral("my file.txt"), "text links: escaped space");
+    const auto option = konsoll::textLinkCandidates(U"--out=build/app", 8);
+    check(
+        failures,
+        std::ranges::any_of(
+            option,
+            [](const auto &c) { return c.text == QStringLiteral("build/app") && c.start == 6; }
+        ),
+        "text links: the path after '='"
+    );
+    check(
+        failures,
+        has(U"-rw-r--r--  my file.txt", 13, QStringLiteral("my file.txt")) &&
+            has(U"'my file.txt'", 3, QStringLiteral("my file.txt")),
+        "text links: names with spaces (joined words, quotes)"
+    );
+    const auto url = first(U"open (https://example.com/a_(b)).", 10);
+    check(
+        failures,
+        url.isUrl() && url.text == QStringLiteral("https://example.com/a_(b)") &&
+            first(U"www.example.com", 0).text == QStringLiteral("https://www.example.com"),
+        "text links: URLs keep balanced parentheses, www. gets https"
+    );
+    check(
+        failures,
+        konsoll::textLinkCandidates(U"12:30", 1).empty() && konsoll::textLinkCandidates(U"-v", 1).empty() &&
+            konsoll::textLinkCandidates(U"..", 0).empty(),
+        "text links: numbers, flags and bare dots are no paths"
+    );
+}
+
+// Text links resolved by a session: relative paths in the directory the line
+// was printed in, wrapped lines, nothing from a remote shell, and how files
+// open.
+void checkTextLinks(int &failures)
+{
+    checkTextLinkCandidates(failures);
+    const QTemporaryDir tmp;
+    const QString root = QDir(tmp.path()).canonicalPath();
+    QDir(root).mkpath(QStringLiteral("docs"));
+    QDir(root).mkpath(QStringLiteral("other"));
+    const auto touch = [&root](const QString &name) {
+        QFile file(root + u'/' + name);
+        return file.open(QIODevice::WriteOnly);
+    };
+    check(
+        failures,
+        touch(QStringLiteral("docs/RELEASE.md")) && touch(QStringLiteral("my file.txt")) &&
+            touch(QStringLiteral("other/b.txt")) &&
+            QFile::link(root + QStringLiteral("/docs"), root + QStringLiteral("/other/docs-link")),
+        "text links: fixture files"
+    );
+    const QByteArray cd = "\x1b]7;file://localhost" + QUrl::toPercentEncoding(root, "/") + "\a";
+    const QByteArray cdOther =
+        "\x1b]7;file://localhost" + QUrl::toPercentEncoding(root + QStringLiteral("/other"), "/") + "\a";
+    const auto targetOf = [](const QVariantMap &link) { return link.value(QStringLiteral("target")).toString(); };
+    const auto fileUrl = [&root](const QString &name) { return QUrl::fromLocalFile(root + u'/' + name).toString(); };
+
+    TerminalBackend session;
+    session.startReplay(
+        40,
+        6,
+        cd + "docs/RELEASE.md:3 nope.md\r\n-rw-r--r-- my file.txt\r\n" + cdOther +
+            "b.txt docs/RELEASE.md docs-link/RELEASE.md\r\n"
+    );
+    const QVariantMap release = session.linkAt(0, 2);
+    check(
+        failures,
+        targetOf(release) == fileUrl(QStringLiteral("docs/RELEASE.md")) &&
+            release.value(QStringLiteral("line")).toInt() == 3 && release.value(QStringLiteral("end")).toInt() == 17 &&
+            session.linkAt(0, 20).isEmpty(),
+        "text links: an existing relative path links, a missing one does not"
+    );
+    check(
+        failures,
+        targetOf(session.linkAt(1, 12)) == fileUrl(QStringLiteral("my file.txt")),
+        "text links: ls output with a space in the name"
+    );
+    check(
+        failures,
+        targetOf(session.linkAt(2, 1)) == fileUrl(QStringLiteral("other/b.txt")) && session.linkAt(2, 8).isEmpty() &&
+            targetOf(session.linkAt(0, 2)) == fileUrl(QStringLiteral("docs/RELEASE.md")),
+        "text links: each line resolves in the directory it was printed in"
+    );
+    check(
+        failures,
+        targetOf(session.linkAt(2, 25)) == fileUrl(QStringLiteral("other/docs-link/RELEASE.md")),
+        "text links: paths through a symbolic link"
+    );
+    session.resize(20, 8);
+    check(
+        failures,
+        std::ranges::any_of(
+            std::views::iota(0, 8),
+            [&](int row) { return targetOf(session.linkAt(row, 1)) == fileUrl(QStringLiteral("other/b.txt")); }
+        ),
+        "text links: directories follow their lines through a reflow"
+    );
+
+    TerminalBackend wrapped;
+    wrapped.startReplay(10, 4, cd + "xx docs/RELEASE.md\r\n");
+    const QVariantMap span = wrapped.linkAt(1, 2);
+    check(
+        failures,
+        targetOf(span) == fileUrl(QStringLiteral("docs/RELEASE.md")) &&
+            span.value(QStringLiteral("row")).toInt() == 0 && span.value(QStringLiteral("start")).toInt() == 3 &&
+            span.value(QStringLiteral("endRow")).toInt() == 1 && span.value(QStringLiteral("end")).toInt() == 8,
+        "text links: a path wrapped over two rows"
+    );
+
+    TerminalBackend remote;
+    const QByteArray token = remote.sessionToken().toUtf8();
+    remote.startReplay(
+        60,
+        6,
+        cd + "\x1b]1337;RemoteHost=" + token + ";me@host\a" + "docs/RELEASE.md https://example.com\r\n" +
+            "\x1b]1337;RemoteHost=" + token + ";\a" + "docs/RELEASE.md\r\n" + "\x1b]7;file://elsewhere/tmp\a" +
+            "docs/RELEASE.md " + root.toUtf8() + "/docs/RELEASE.md\r\n"
+    );
+    check(
+        failures,
+        remote.linkAt(0, 2).isEmpty() && targetOf(remote.linkAt(0, 20)) == QStringLiteral("https://example.com") &&
+            targetOf(remote.linkAt(1, 2)) == fileUrl(QStringLiteral("docs/RELEASE.md")),
+        "text links: no paths in ssh output, URLs still; local again after it"
+    );
+    check(
+        failures,
+        remote.linkAt(2, 2).isEmpty() && remote.linkAt(2, 20).isEmpty(),
+        "text links: no paths after an OSC 7 from another host"
+    );
+
+    // OSC 8 file links (rg --hyperlink-format=default, ls --hyperlink) carry
+    // the host name: this Mac's links, another host's do not.
+    TerminalBackend hyperlinks;
+    const QByteArray path = QUrl::toPercentEncoding(root + QStringLiteral("/docs/RELEASE.md"), "/");
+    hyperlinks.startReplay(
+        40,
+        4,
+        cd + "\x1b]8;;file://" + QSysInfo::machineHostName().toUtf8() + path + "\x1b\\here\x1b]8;;\x1b\\ " +
+            "\x1b]8;;file://elsewhere.example" + path + "\x1b\\far\x1b]8;;\x1b\\\r\n"
+    );
+    check(
+        failures,
+        targetOf(hyperlinks.linkAt(0, 1)) == fileUrl(QStringLiteral("docs/RELEASE.md")) &&
+            hyperlinks.linkAt(0, 6).isEmpty(),
+        "text links: OSC 8 file links of this host only"
+    );
+
+    // Cmd+hover previews: images, PDF and video only; a real QuickLook
+    // thumbnail, fitted in the requested size.
+    QImage picture(400, 200, QImage::Format_RGB32);
+    picture.fill(Qt::red);
+    const QString picturePath = root + QStringLiteral("/shot one.png");
+    const QString pictureSource =
+        picture.save(picturePath) ? session.previewSourceFor(QUrl::fromLocalFile(picturePath).toString()) : QString{};
+    const QString prefix = QStringLiteral("image://%1/").arg(QLatin1StringView(konsoll::kImagePreviewProvider));
+    check(
+        failures,
+        pictureSource.startsWith(prefix) &&
+            session.previewSourceFor(fileUrl(QStringLiteral("docs/RELEASE.md"))).isEmpty() &&
+            session.previewSourceFor(QUrl::fromLocalFile(root).toString()).isEmpty() &&
+            session.previewSourceFor(QStringLiteral("https://example.com/a.png")).isEmpty(),
+        "image preview: only local image, PDF and video files"
+    );
+    konsoll::ImagePreviewProvider provider;
+    QSize thumbnailSize;
+    const QImage thumbnail = provider.requestImage(pictureSource.mid(prefix.size()), &thumbnailSize, QSize(100, 100));
+    check(
+        failures,
+        !thumbnail.isNull() && thumbnail.width() <= 100 && thumbnail.height() <= 100 && thumbnail.width() > 0 &&
+            thumbnailSize == thumbnail.size() &&
+            qRed(thumbnail.pixel(thumbnail.width() / 2, thumbnail.height() / 2)) > 200,
+        "image preview: a QuickLook thumbnail in the requested size"
+    );
+    check(
+        failures,
+        provider.requestImage(QStringLiteral("%2Fnowhere%2Fmissing.png?1"), &thumbnailSize, QSize(100, 100)).isNull(),
+        "image preview: nothing for a missing file"
+    );
+
+    using konsoll::FileOpenAction;
+    using konsoll::fileOpenAction;
+    check(
+        failures,
+        fileOpenAction(QStringLiteral("/x/A.app"), S_IFDIR | 0755, false, false) == FileOpenAction::Reveal &&
+            fileOpenAction(QStringLiteral("/x/src"), S_IFDIR | 0755, false, false) == FileOpenAction::Finder &&
+            fileOpenAction(QStringLiteral("/x/a.md"), S_IFREG | 0644, true, false) == FileOpenAction::DefaultApp &&
+            fileOpenAction(QStringLiteral("/x/a.md"), S_IFREG | 0644, true, true) == FileOpenAction::Editor &&
+            fileOpenAction(QStringLiteral("/x/run.sh"), S_IFREG | 0755, true, false) == FileOpenAction::TextEditor &&
+            fileOpenAction(QStringLiteral("/x/a.py"), S_IFREG | 0644, true, false) == FileOpenAction::TextEditor &&
+            fileOpenAction(QStringLiteral("/x/tool"), S_IFREG | 0755, false, true) == FileOpenAction::Reveal &&
+            fileOpenAction(QStringLiteral("/x/a.pkg"), S_IFREG | 0644, false, true) == FileOpenAction::Reveal,
+        "text links: opening never runs apps, scripts or installers"
+    );
+    check(
+        failures,
+        konsoll::editorCommandLine(QStringLiteral("nvim +{line} {file}"), QStringLiteral("/a/it's.txt"), 3, 0) ==
+                QStringLiteral("nvim +3 '/a/it'\\''s.txt'") &&
+            konsoll::editorCommandLine(QStringLiteral("hx"), QStringLiteral("/a b"), 0, 0) ==
+                QStringLiteral("hx '/a b'"),
+        "text links: terminal editor command line, path quoted"
+    );
+}
+
+// Option+click on a folder link types "cd <folder>" at an empty prompt,
+// and nothing while the user has typed something or a command runs. zsh
+// reports a cd inside a command line at once ("cd .. && ls").
+void checkChangeDirectoryLink(int &failures, TerminalManager &manager)
+{
+    const QTemporaryDir tmp;
+    const QString root = QDir(tmp.path()).canonicalPath();
+    const QString folder = root + QStringLiteral("/sub dir");
+    QDir().mkpath(folder);
+    manager.addWorkspace();
+    auto *shell = activeSession(manager);
+    waitFor("cd link: shell", [shell]() { return !shell->currentDirectory().isEmpty(); }, 15000);
+    shell->writeText(QStringLiteral("cd %1\n").arg(konsoll::shellQuoted(root)));
+    waitFor("cd link: in root", [&]() { return shell->currentDirectory() == root; }, 10000);
+    shell->writeText(QStringLiteral("ls\n"));
+    const QString folderUrl = QUrl::fromLocalFile(folder).toString();
+    const auto folderRows = [shell, &folderUrl]() {
+        std::vector<int> rows;
+        std::ranges::copy_if(std::views::iota(0, shell->rows()), std::back_inserter(rows), [&](int row) {
+            return shell->linkAt(row, 1).value(QStringLiteral("target")).toString() == folderUrl;
+        });
+        return rows;
+    };
+    const auto folderRow = [&folderRows]() {
+        const std::vector<int> rows = folderRows();
+        return rows.empty() ? -1 : rows.back();
+    };
+    const bool listed = waitFor("cd link: folder listed", [&]() { return folderRow() >= 0; }, 10000);
+    check(failures, listed, "cd link: the listed folder is a link");
+
+    shell->writeText(QStringLiteral("echo typed"));
+    waitFor("cd link: typed", [shell]() { return shell->bufferText().contains(QStringLiteral("echo typed")); }, 5000);
+    check(
+        failures,
+        shell->folderLinkAt(folderRow(), 1).isEmpty() && !shell->changeDirectoryToLinkAt(folderRow(), 1),
+        "cd link: not over what the user typed (no Option+hover link either)"
+    );
+    shell->writeText(QStringLiteral("\x15")); // Ctrl+U clears the line
+    const bool changed = waitFor(
+                             "cd link: cd",
+                             [&]() { return !shell->folderLinkAt(folderRow(), 1).isEmpty(); },
+                             5000
+                         ) &&
+                         shell->changeDirectoryToLinkAt(folderRow(), 1) &&
+                         waitFor("cd link: in folder", [&]() { return shell->currentDirectory() == folder; }, 10000);
+    check(failures, listed && changed, "cd link: Option+click enters the folder at the prompt");
+
+    shell->writeText(QStringLiteral("sleep 5\n"));
+    waitFor("cd link: sleep", [shell]() { return shell->foregroundProcess() == QStringLiteral("sleep"); }, 5000);
+    check(failures, !shell->changeDirectoryToLinkAt(folderRow(), 1), "cd link: not while a command runs");
+    shell->writeText(QStringLiteral("\x03"));
+
+    // Printed in the folder, "sub dir" names nothing unless the cd before
+    // it was reported first.
+    if (qEnvironmentVariable("SHELL").endsWith(QStringLiteral("/zsh"))) {
+        waitFor("cd link: prompt", [shell]() { return shell->foregroundProcess().isEmpty(); }, 5000);
+        shell->writeText(QStringLiteral("clear; cd .. && ls\n"));
+        check(
+            failures,
+            waitFor(
+                "cd link: chpwd",
+                [&]() { return shell->currentDirectory() == root && folderRows().size() == 1; },
+                10000
+            ),
+            "cd link: zsh reports a cd inside a command line at once"
+        );
+    }
+    shell->writeText(QStringLiteral("exit\n"));
+}
+
 // Reports from an agent over ssh (OSC 1337 ; KonsollAgent=): the token is
 // checked, and the message comes from the text or the hook's event, which
 // may be cut short.
@@ -1292,6 +1603,7 @@ int runSelfTest()
     checkAgentConnectOffer(failures);
     checkAgentWorktree(failures);
     checkWrappedLineText(failures);
+    checkTextLinks(failures);
     checkRemoteAgentReports(failures);
     checkSshCommandLines(failures);
 
@@ -1605,6 +1917,7 @@ int runSelfTest()
     // 5d. Commands in the background.
     checkBackgroundJobs(failures, manager);
     checkShellFunctions(failures, manager);
+    checkChangeDirectoryLink(failures, manager);
     checkSshBootstrap(failures, manager, QStringLiteral("/bin/zsh"));
     checkSshBootstrap(failures, manager, QStringLiteral("/bin/bash"));
 

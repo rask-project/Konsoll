@@ -12,6 +12,7 @@
 #include <QTimer>
 #include <QtQml>
 
+#include <cstdint>
 #include <span>
 #include <unordered_map>
 #include <vector>
@@ -46,8 +47,12 @@ class TerminalRenderer : public QQuickItem
     Q_PROPERTY(qreal cellHeight READ cellHeight NOTIFY cellSizeChanged)
     Q_PROPERTY(QColor accentColor READ accentColor WRITE setAccentColor NOTIFY colorsChanged)
     Q_PROPERTY(QColor selectedTextColor READ selectedTextColor WRITE setSelectedTextColor NOTIFY colorsChanged)
+    // The link under the pointer, underlined from (hoverRow, hoverStart) to
+    // (hoverEndRow, hoverEnd), exclusive; rows may lie out of view (a
+    // soft-wrapped link). hoverStart < 0: none.
     Q_PROPERTY(int hoverRow READ hoverRow WRITE setHoverRow NOTIFY hoverChanged)
     Q_PROPERTY(int hoverStart READ hoverStart WRITE setHoverStart NOTIFY hoverChanged)
+    Q_PROPERTY(int hoverEndRow READ hoverEndRow WRITE setHoverEndRow NOTIFY hoverChanged)
     Q_PROPERTY(int hoverEnd READ hoverEnd WRITE setHoverEnd NOTIFY hoverChanged)
     // The user's cursor style (Settings > Appearance), used until a program
     // picks one with DECSCUSR (and again after CSI 0 SP q): 0 block,
@@ -72,6 +77,8 @@ public:
     void setHoverRow(int row);
     int hoverStart() const { return m_hoverStart; }
     void setHoverStart(int col);
+    int hoverEndRow() const { return m_hoverEndRow; }
+    void setHoverEndRow(int row);
     int hoverEnd() const { return m_hoverEnd; }
     void setHoverEnd(int col);
     int defaultCursorShape() const { return (m_cursorState >> DefaultCursorShift) & CursorShapeMask; }
@@ -136,6 +143,7 @@ private:
     void appendRowBackground(std::vector<ColorRect> &rects, int row) const;
     void appendHighlightFrame(std::vector<ColorRect> &rects) const;
     void appendOverlayRects(std::vector<ColorRect> &rects) const;
+    void appendHoverUnderline(std::vector<ColorRect> &rects, float cellHeight) const;
     void syncTextRows(QSGNode &container);
     void buildRowText(QSGNode &rowNode, int row);
     void addTextRun(QSGTextNode &node, std::span<const Cell> run, qreal x, qreal top) const;
@@ -176,8 +184,7 @@ private:
     int m_highlightFirst{-1};
     int m_highlightLast{-1};
     int m_hoverRow{-1};
-    int m_hoverStart{-1};
-    int m_hoverEnd{-1};
+    int m_hoverEndRow{-1};
     QRgb m_defaultBg{0xff141414};
     QRgb m_defaultFg{0xffe0e0e0};
     QRgb m_cursorColor{0xffe0e0e0};
@@ -187,6 +194,9 @@ private:
     // 1 underline, 2 bar, 3 hollow block) at CursorShapeShift, and the user's
     // default shape | DefaultCursorBlink at DefaultCursorShift.
     int m_cursorState{0};
+    // Columns of the hovered link (-1 = none): 2 bytes each, no padding.
+    std::int16_t m_hoverStart{-1};
+    std::int16_t m_hoverEnd{-1};
 };
 
 } // namespace konsoll

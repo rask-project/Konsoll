@@ -123,6 +123,33 @@ Guidance for AI agents working in this repository.
   Deny answer it too. The socket's request handler replies asynchronously
   for it. Nothing reads another pane without that. stdout carries only
   protocol messages.
+- **Text links** (`TextLinks`, Cmd+hover / Cmd+click): besides OSC 8,
+  `TerminalBackend::linkAt` finds URLs and existing file paths in the
+  soft-wrapped line under the pointer, on demand only (nothing is scanned as
+  output arrives). `textLinkCandidates` is pure (word, `path:line:col`,
+  git's `a/` `b/`, quotes, words joined across single spaces);
+  `FileLinkResolver` checks them with cached `lstat`s and never touches a
+  slow volume (`getfsstat(MNT_NOWAIT)` mount table: network, autofs, FUSE),
+  symlink targets included. Relative paths resolve with
+  `Terminal::directoryAtLine`: directory marks anchored on
+  `Screen::lineAnchor` (remapped on reflow) record the directory each line
+  was printed in; an empty mark is remote output (RemoteHost, a foreign
+  OSC 7 host, a Remote foreground job), where only URLs link.
+  `fileOpenAction` never runs anything (executables, scripts, installers
+  are opened as text or revealed); `LinkSettings` holds the editor command
+  (Settings > Terminal), a terminal editor runs in a new tab
+  (`editorTabRequested`). Option+click on a folder types `cd '<folder>'`
+  (`changeDirectoryToLinkAt`) only at an empty prompt (`atEmptyPrompt`: no
+  foreground job, cursor still at OSC 133 ; B); Option+hover shows only
+  those folders (`folderLinkAt`). The zsh `chpwd` hook and fish's
+  `--on-variable PWD` send OSC 7 at once (to a terminal stdout only), so
+  `cd src && ls` resolves in `src`; bash reports at the prompt.
+  Cmd resting 350 ms on an image, PDF or video link shows a preview
+  (`ImagePreview.mm`): `previewSourceFor` filters by extension and gives an
+  `image://konsoll-preview/` source (path + mtime) that
+  `ImagePreviewProvider` answers with a QuickLook thumbnail
+  (`QLThumbnailGenerator`, 2 s limit) on the QML loader thread. Nothing
+  without Cmd, by design: no previews on plain hover.
 - **Updates** (`Updater`, QML singleton, Sparkle 2 pinned in
   `cmake/Sparkle.cmake` and embedded in `Contents/Frameworks`): Sparkle's
   standard UI reads the appcast (`SUFeedURL`, the `appcast` branch, written
@@ -209,7 +236,9 @@ Guidance for AI agents working in this repository.
   `ioctl`, `forkpty`). Qt Quick
   scene-graph nodes (`updatePaintNode`) are the one ownership hand-off: create
   them with `std::make_unique` and pass `release()` to the parent node, which
-  owns them (see `src/TerminalRenderer.cpp`).
+  owns them (see `src/TerminalRenderer.cpp`). QML image providers are the
+  other: `QQmlEngine::addImageProvider` takes a `release()`d `unique_ptr`
+  and owns it (`main.cpp`).
 - **Exceptions are forbidden** — no `throw`, `try`, or `catch` anywhere in
   the codebase.
 - **Error handling:** fallible operations return `std::expected<T, E>`

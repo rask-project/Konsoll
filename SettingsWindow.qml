@@ -415,6 +415,46 @@ Window {
                         wrapMode: Text.Wrap
                     }
 
+                    Controls.FormGroup {
+                        Layout.topMargin: 12
+
+                        Controls.FormRow {
+                            label: qsTr("Open text files with")
+                            detail: qsTr("Empty: each file's default app")
+                            showSeparator: false
+
+                            TextField {
+                                Layout.preferredWidth: 220
+                                text: LinkSettings.editorCommand
+                                placeholderText: qsTr("code -g {file}:{line}:{column}")
+                                onEditingFinished: LinkSettings.editorCommand = text
+                            }
+                        }
+
+                        Controls.FormRow {
+                            label: qsTr("Terminal editor")
+                            detail: qsTr("Run the command in a new tab (nvim +{line} {file})")
+                            enabled: LinkSettings.editorCommand !== ""
+                            opacity: enabled ? 1 : 0.5
+
+                            Switch {
+                                checked: LinkSettings.editorInTerminal
+                                onToggled: LinkSettings.editorInTerminal = checked
+                            }
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 10
+                        Layout.rightMargin: 10
+
+                        text: qsTr("Cmd+click a URL or a file path in the output to open it (“src/main.cpp:42:7” from grep or a compiler opens at that line with {line} and {column}). Folders open in the Finder; apps, installers and scripts are never run, only revealed or opened as text. Paths over SSH and on network volumes are not linked.")
+                        font.pointSize: 11
+                        color: control.secondaryTextColor
+                        wrapMode: Text.Wrap
+                    }
+
                     Item {
                         Layout.fillHeight: true
                     }

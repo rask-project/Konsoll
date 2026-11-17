@@ -2,6 +2,7 @@
 
 #include "AgentStatus.h"
 #include "ProcessKind.h"
+#include "TextLinks.h"
 #include "pty/PtyWorker.h"
 #include "term/Terminal.h"
 
@@ -25,7 +26,6 @@
 #include <vector>
 
 class QImage;
-class QRegularExpressionMatch;
 
 namespace konsoll
 {
@@ -129,8 +129,26 @@ public:
     // Wheel without mouse tracking: scroll the history, or send cursor keys
     // in the alternate screen (?1007).
     Q_INVOKABLE void wheelScroll(int lines);
+    // The link under a visible cell (Cmd+hover): an OSC 8 hyperlink, a URL
+    // or an existing local file named in the text (TextLinks.h). {target,
+    // row, start, endRow, end, line, column}: it runs from (row, start) to
+    // (endRow, end), exclusive, rows relative to the view (a soft-wrapped
+    // link may start or end out of view); line/column is a file location
+    // ("src/main.cpp:42:7"), 0 when none. Empty when there is no link.
     Q_INVOKABLE QVariantMap linkAt(int row, int col) const;
-    Q_INVOKABLE bool openLinkAt(int row, int col) const;
+    // Opens it: a URL in the browser, a folder in the Finder, a file as
+    // Settings > Terminal says (never running it).
+    Q_INVOKABLE bool openLinkAt(int row, int col);
+    // Option+click: when the link names a folder and the shell waits at an
+    // empty prompt, types "cd <folder>" and Return. False, doing nothing,
+    // otherwise: a program runs (vim, ssh) or the user has typed something.
+    Q_INVOKABLE bool changeDirectoryToLinkAt(int row, int col);
+    // linkAt, only for a folder changeDirectoryToLinkAt would cd into
+    // (Option+hover); empty otherwise.
+    Q_INVOKABLE QVariantMap folderLinkAt(int row, int col) const;
+    // The preview image source (ImagePreview.h) for a link target from
+    // linkAt: a local image, PDF or video; empty otherwise.
+    Q_INVOKABLE QString previewSourceFor(const QString &target) const;
     Q_INVOKABLE void transferFile(const QUrl &url);
 
     // Resize the terminal (cols x rows), driven by the QML view.
@@ -340,6 +358,9 @@ signals:
     void outputActivity();
     void pointerShapeChanged();
     void transferFailed(const QString &message);
+    // A Cmd+clicked file opens in the terminal editor of Settings >
+    // Terminal: `command` is to be typed in a new tab in `directory`.
+    void editorTabRequested(const QString &title, const QString &directory, const QString &command);
 
 private:
     void onData(const QByteArray &data);
@@ -380,7 +401,21 @@ private:
     void clearTextSelectionAndHighlight();
     void sendMouseReport(int button, int row, int col, int event, int modifiers);
     QByteArray keyOutputBytes(int key, const QString &text, unsigned int mods, bool keypad, int eventType) const;
-    QVariantMap linkFromMatch(const QRegularExpressionMatch &match, int col) const;
+    // A link found in the text (see textLinkAt), in absolute lines; the end
+    // column is exclusive.
+    struct TextLink {
+        QUrl target;
+        int startLine{0};
+        int startColumn{0};
+        int endLine{0};
+        int endColumn{0};
+        int line{0};
+        int column{0};
+    };
+    std::optional<TextLink> textLinkAt(int line, int col) const;
+    bool atEmptyPrompt() const;
+    static std::optional<QUrl>
+    resolveTextLink(const TextLinkCandidate &candidate, const std::optional<QString> &directory);
     // Route PTY I/O to the session worker via a queued call (never touch the
     // master descriptor from this thread).
     void writeToPty(const QByteArray &data);

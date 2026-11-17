@@ -200,20 +200,32 @@ void TerminalRenderer::setHoverRow(int row)
 
 void TerminalRenderer::setHoverStart(int col)
 {
-    if (col == m_hoverStart) {
+    const auto column = static_cast<std::int16_t>(std::clamp(col, -1, INT16_MAX));
+    if (column == m_hoverStart) {
         return;
     }
-    m_hoverStart = col;
+    m_hoverStart = column;
+    update();
+    emit hoverChanged();
+}
+
+void TerminalRenderer::setHoverEndRow(int row)
+{
+    if (row == m_hoverEndRow) {
+        return;
+    }
+    m_hoverEndRow = row;
     update();
     emit hoverChanged();
 }
 
 void TerminalRenderer::setHoverEnd(int col)
 {
-    if (col == m_hoverEnd) {
+    const auto column = static_cast<std::int16_t>(std::clamp(col, -1, INT16_MAX));
+    if (column == m_hoverEnd) {
         return;
     }
-    m_hoverEnd = col;
+    m_hoverEnd = column;
     update();
     emit hoverChanged();
 }
@@ -583,8 +595,27 @@ void TerminalRenderer::appendOverlayRects(std::vector<ColorRect> &rects) const
 
     appendCursor(rects, true);
 
-    if (m_hoverRow >= 0 && m_hoverStart >= 0 && m_hoverEnd > m_hoverStart) {
-        const QRectF r = cellSpan(m_hoverRow, m_hoverStart, m_hoverEnd - m_hoverStart);
+    appendHoverUnderline(rects, cellHeight);
+}
+
+// The hovered link's underline, row by row: from its start column on the
+// first row to its end column on the last, whole rows between.
+void TerminalRenderer::appendHoverUnderline(std::vector<ColorRect> &rects, float cellHeight) const
+{
+    if (m_hoverStart < 0 || m_hoverEnd < 0) {
+        return;
+    }
+    const int lastRow = std::max(m_hoverRow, m_hoverEndRow);
+    const int visibleRows = static_cast<int>(m_rows.size());
+    const auto rows = std::views::iota(std::max(m_hoverRow, 0), std::min(lastRow + 1, visibleRows));
+    std::ranges::for_each(rows, [&](int row) {
+        const int from = row == m_hoverRow ? m_hoverStart : 0;
+        const int to =
+            row == lastRow ? m_hoverEnd : static_cast<int>(m_rows[static_cast<std::size_t>(row)].cells.size());
+        if (to <= from) {
+            return;
+        }
+        const QRectF r = cellSpan(row, from, to - from);
         rects.push_back(
             {.x = static_cast<float>(r.x()),
              .y = static_cast<float>(r.y()) + cellHeight - 2.0F,
@@ -592,7 +623,7 @@ void TerminalRenderer::appendOverlayRects(std::vector<ColorRect> &rects) const
              .h = 1.0F,
              .color = withAlpha(m_accent, 1.0F)}
         );
-    }
+    });
 }
 
 // SGR 4:n underline in the SGR 58 color (resolved into `cell.ul`), drawn

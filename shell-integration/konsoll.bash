@@ -30,7 +30,7 @@ _konsoll_prompt_command() {
     _konsoll_load_functions
     local encoded_path=${PWD//%/%25}
     encoded_path=${encoded_path// /%20}
-    encoded_path=${encoded_path//#/%23}
+    encoded_path=${encoded_path//\#/%23}
     encoded_path=${encoded_path//\?/%3F}
     if (( _KONSOLL_HISTORY_CHECK )); then
         # The DEBUG trap misses a command line that is only a subshell,

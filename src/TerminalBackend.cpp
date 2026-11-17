@@ -2,12 +2,14 @@
 
 #include <QDateTime>
 
+#include "ImagePreview.h"
 #include "KeyEncoder.h"
 #include "NativeDialogs.h"
 #include "NativeKeyTracker.h"
 #include "Notifications.h"
 #include "ProcessKind.h"
 #include "ScrollbackSettings.h"
+#include "TextLinks.h"
 #include "term/Grapheme.h"
 #include "term/Palette.h"
 
@@ -29,6 +31,7 @@
 #include <QtGui>
 
 #include <pwd.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -599,6 +602,10 @@ void TerminalBackend::updateProcessKind()
         m_processKind = kind;
         emit processKindChanged();
     }
+    // What a remote client prints names the remote host's files.
+    if (m_terminal) {
+        m_terminal->setForegroundRemote(kind == ProcessKind::Remote);
+    }
 }
 
 void TerminalBackend::writeToPty(const QByteArray &data)
@@ -793,29 +800,133 @@ QVariantMap TerminalBackend::linkAt(int row, int col) const
     if (!hyperlink.isEmpty()) {
         return hyperlink;
     }
-
-    const Screen &screen = m_terminal->screen();
-    const Line &cells = screen.lineAt(visibleStart() + row);
-    QString line;
-    std::ranges::for_each(std::views::iota(0, static_cast<int>(cells.size())), [&cells, &line](int index) {
-        // A cluster becomes one placeholder so text positions stay cell columns.
-        const unsigned int ch = cells.at(static_cast<std::size_t>(index)).ch;
-        const auto codePoint = static_cast<char32_t>(ch >= kClusterBase ? 0xFFFCu : ch);
-        line.append(QString::fromUcs4(&codePoint, 1));
-    });
-
-    static const QRegularExpression linkPattern(
-        QStringLiteral(R"((?:https?|ftp|file)://[^\s<>"']+|mailto:[^\s<>"']+|www\.[^\s<>"']+|(?:~?/|\.\.?/)[^\s<>"']+)")
-    );
-    auto matches = linkPattern.globalMatch(line);
-    while (matches.hasNext()) {
-        const QRegularExpressionMatch match = matches.next();
-        const QVariantMap link = linkFromMatch(match, col);
-        if (!link.isEmpty()) {
-            return link;
-        }
+    const std::optional<TextLink> link = textLinkAt(visibleStart() + row, col);
+    if (!link) {
+        return {};
     }
-    return {};
+    const int top = visibleStart();
+    return {
+        {QStringLiteral("target"), link->target.toString()},
+        {QStringLiteral("row"), link->startLine - top},
+        {QStringLiteral("start"), link->startColumn},
+        {QStringLiteral("endRow"), link->endLine - top},
+        {QStringLiteral("end"), link->endColumn},
+        {QStringLiteral("line"), link->line},
+        {QStringLiteral("column"), link->column}
+    };
+}
+
+namespace
+{
+// Rows of a soft-wrapped line read each way from the pointed one: a path
+// of kMaxLinkLength characters fits in 13 rows of 80 columns.
+constexpr int kMaxWrappedRows = 16;
+
+// A cell as link text (TextLinks.h): one code point per cell.
+char32_t linkChar(const Cell &cell)
+{
+    if ((cell.flags & CellFlag::WideSpacer) != 0u) {
+        return kWideSpacerChar;
+    }
+    if (cell.ch >= kClusterBase) {
+        return 0xFFFC;
+    }
+    return cell.ch < 0x20u ? U' ' : static_cast<char32_t>(cell.ch);
+}
+} // namespace
+
+// A URL or an existing local file named in the text under absolute line
+// `line`, column `col`, on the soft-wrapped line it belongs to. Relative
+// paths resolve against the directory the line was printed in; output of a
+// remote shell links URLs only.
+std::optional<TerminalBackend::TextLink> TerminalBackend::textLinkAt(int line, int col) const
+{
+    const Screen &screen = m_terminal->screen();
+    int first = line;
+    while (first > 0 && line - first < kMaxWrappedRows && screen.isWrappedContinuation(first)) {
+        --first;
+    }
+    int last = line;
+    while (last + 1 < screen.totalLines() && last - line < kMaxWrappedRows && screen.isWrappedContinuation(last + 1)) {
+        ++last;
+    }
+    std::u32string text;
+    std::vector<int> offsets; // where each row starts in `text`
+    Line cells;
+    std::ranges::for_each(std::views::iota(first, last + 1), [&](int index) {
+        screen.copyLine(index, cells);
+        offsets.push_back(static_cast<int>(text.size()));
+        std::ranges::transform(cells, std::back_inserter(text), linkChar);
+    });
+    const int rowStart = offsets[static_cast<std::size_t>(line - first)];
+    const int rowEnd =
+        line < last ? offsets[static_cast<std::size_t>(line - first) + 1] : static_cast<int>(text.size());
+    if (rowStart + col >= rowEnd) {
+        return std::nullopt;
+    }
+
+    const std::optional<QString> directory = m_terminal->directoryAtLine(line);
+    const std::vector<TextLinkCandidate> candidates = textLinkCandidates(text, rowStart + col);
+    std::optional<QUrl> target;
+    const auto found = std::ranges::find_if(candidates, [&](const TextLinkCandidate &candidate) {
+        target = resolveTextLink(candidate, directory);
+        return target.has_value();
+    });
+    if (found == candidates.end() || !target) {
+        return std::nullopt;
+    }
+    // Text position -> (absolute line, column).
+    const auto locate = [&offsets, &first](int position) {
+        const auto row = std::ranges::upper_bound(offsets, position) - offsets.begin() - 1;
+        return std::pair{first + static_cast<int>(row), position - offsets[static_cast<std::size_t>(row)]};
+    };
+    const auto [startLine, startColumn] = locate(found->start);
+    const auto [endLine, lastColumn] = locate(found->end - 1);
+    return TextLink{
+        .target = *target,
+        .startLine = startLine,
+        .startColumn = startColumn,
+        .endLine = endLine,
+        .endColumn = lastColumn + 1,
+        .line = found->line,
+        .column = found->column
+    };
+}
+
+std::optional<QUrl>
+TerminalBackend::resolveTextLink(const TextLinkCandidate &candidate, const std::optional<QString> &directory)
+{
+    if (candidate.isUrl()) {
+        const QUrl url(candidate.text);
+        if (!url.isValid() || url.scheme().isEmpty()) {
+            return std::nullopt;
+        }
+        if (url.scheme().compare(QStringLiteral("file"), Qt::CaseInsensitive) != 0) {
+            return url;
+        }
+        // A file URL names a local file: not in a remote shell's output.
+        const QString path = url.path(QUrl::FullyDecoded);
+        if (!isLocalHostName(url.host()) || !directory || !FileLinkResolver::shared().probe(path)) {
+            return std::nullopt;
+        }
+        return QUrl::fromLocalFile(path);
+    }
+    if (!directory) {
+        return std::nullopt;
+    }
+    QString path = candidate.text;
+    if (path == u"~" || path.startsWith(QStringLiteral("~/"))) {
+        path.replace(0, 1, QDir::homePath());
+    } else if (!path.startsWith(u'/')) {
+        if (directory->isEmpty()) {
+            return std::nullopt;
+        }
+        path = *directory + u'/' + path;
+    }
+    if (!FileLinkResolver::shared().probe(path)) {
+        return std::nullopt;
+    }
+    return QUrl::fromLocalFile(QDir::cleanPath(path));
 }
 
 // An OSC 8 hyperlink under the cell: the run of cells sharing its id on the
@@ -835,17 +946,26 @@ QVariantMap TerminalBackend::hyperlinkAt(int row, int col) const
         QStringLiteral("mailto"),
         QStringLiteral("file")
     };
-    if (!url.isValid() || !kSchemes.contains(url.scheme().toLower()) ||
-        (url.isLocalFile() && !QFileInfo::exists(url.toLocalFile()))) {
+    if (!url.isValid() || !kSchemes.contains(url.scheme().toLower())) {
         return {};
     }
+    // file://host/path (ls --hyperlink, rg) names a file on that host: only
+    // this Mac's, in local output, off slow volumes.
+    const bool file = url.scheme().compare(QStringLiteral("file"), Qt::CaseInsensitive) == 0;
+    if (file && (!isLocalHostName(url.host()) || !m_terminal->directoryAtLine(visibleStart() + row) ||
+                 !FileLinkResolver::shared().probe(url.path(QUrl::FullyDecoded)))) {
+        return {};
+    }
+    const QString target = file ? QUrl::fromLocalFile(url.path(QUrl::FullyDecoded)).toString() : url.toString();
     const auto sameLink = [id](const Cell &cell) { return cell.link == id; };
     const auto at = cells.begin() + col;
     const auto first = std::find_if_not(std::make_reverse_iterator(at), cells.rend(), sameLink).base();
     const auto last = std::find_if_not(at, cells.end(), sameLink);
     return {
-        {QStringLiteral("target"), url.toString()},
+        {QStringLiteral("target"), target},
+        {QStringLiteral("row"), row},
         {QStringLiteral("start"), static_cast<int>(first - cells.begin())},
+        {QStringLiteral("endRow"), row},
         {QStringLiteral("end"), static_cast<int>(last - cells.begin())}
     };
 }
@@ -868,72 +988,84 @@ void TerminalBackend::wheelScroll(int lines)
     scrollBy(lines);
 }
 
-QVariantMap TerminalBackend::linkFromMatch(const QRegularExpressionMatch &match, int col) const
-{
-    if (col < match.capturedStart() || col >= match.capturedEnd()) {
-        return {};
-    }
-
-    QString target = match.captured();
-    while (!target.isEmpty() && QStringLiteral(".,;:!?) ]}").contains(target.back())) {
-        target.chop(1);
-    }
-    if (target.isEmpty()) {
-        return {};
-    }
-    const auto targetLength = target.size();
-    if (col >= match.capturedStart() + targetLength) {
-        return {};
-    }
-
-    if (target.startsWith(QStringLiteral("www."), Qt::CaseInsensitive)) {
-        target.prepend(QStringLiteral("https://"));
-    }
-    const QUrl url(target);
-    if (url.isValid() && !url.scheme().isEmpty()) {
-        if (url.isLocalFile() && !QFileInfo::exists(url.toLocalFile())) {
-            return {};
-        }
-        return {
-            {QStringLiteral("target"), url.toString()},
-            {QStringLiteral("start"), match.capturedStart()},
-            {QStringLiteral("end"), match.capturedStart() + targetLength}
-        };
-    }
-
-    if (target.startsWith(QLatin1Char('~'))) {
-        target.replace(0, 1, QDir::homePath());
-    } else if (!QDir::isAbsolutePath(target)) {
-        target = QDir(m_currentDirectory).filePath(target);
-    }
-    const QFileInfo fileInfo(QDir::cleanPath(target));
-    if (!fileInfo.exists()) {
-        return {};
-    }
-    return {
-        {QStringLiteral("target"), QUrl::fromLocalFile(fileInfo.absoluteFilePath()).toString()},
-        {QStringLiteral("start"), match.capturedStart()},
-        {QStringLiteral("end"), match.capturedStart() + targetLength}
-    };
-}
-
-bool TerminalBackend::openLinkAt(int row, int col) const
+bool TerminalBackend::openLinkAt(int row, int col)
 {
     const QVariantMap link = linkAt(row, col);
     if (link.isEmpty()) {
         return false;
     }
     const QUrl url(link.value(QStringLiteral("target")).toString());
-    if (url.isLocalFile()) {
-        const QFileInfo fileInfo(url.toLocalFile());
-        if (fileInfo.isDir()) {
-            return QProcess::startDetached(
-                QStringLiteral("/usr/bin/open"),
-                {QStringLiteral("-a"), QStringLiteral("Finder"), fileInfo.absoluteFilePath()}
-            );
-        }
+    if (!url.isLocalFile()) {
+        return QDesktopServices::openUrl(url);
     }
-    return QDesktopServices::openUrl(url);
+    const QString path = url.toLocalFile();
+    bool opened = false;
+    const QString command = openFileLink(
+        path,
+        link.value(QStringLiteral("line")).toInt(),
+        link.value(QStringLiteral("column")).toInt(),
+        opened
+    );
+    if (!command.isEmpty()) {
+        emit editorTabRequested(QFileInfo(path).fileName(), QFileInfo(path).absolutePath(), command);
+    }
+    return opened;
+}
+
+QVariantMap TerminalBackend::folderLinkAt(int row, int col) const
+{
+    if (!m_worker || !m_terminal || m_state != SessionState::Running || !atEmptyPrompt()) {
+        return {};
+    }
+    const QVariantMap link = linkAt(row, col);
+    const QUrl url(link.value(QStringLiteral("target")).toString());
+    if (!url.isLocalFile()) {
+        return {};
+    }
+    const std::optional<mode_t> mode = FileLinkResolver::shared().probe(url.toLocalFile());
+    return mode && S_ISDIR(*mode) ? link : QVariantMap{};
+}
+
+QString TerminalBackend::previewSourceFor(const QString &target) const
+{
+    const QUrl url(target);
+    if (!url.isLocalFile()) {
+        return {};
+    }
+    // linkAt checked the file (never on a slow volume); the lookup is cached.
+    const QString path = url.toLocalFile();
+    const std::optional<mode_t> mode = FileLinkResolver::shared().probe(path);
+    return mode && S_ISREG(*mode) ? imagePreviewSource(path) : QString{};
+}
+
+bool TerminalBackend::changeDirectoryToLinkAt(int row, int col)
+{
+    const QVariantMap link = folderLinkAt(row, col);
+    if (link.isEmpty()) {
+        return false;
+    }
+    const QString path = QUrl(link.value(QStringLiteral("target")).toString()).toLocalFile();
+    // Absolute, so never taken for an option; quoted for zsh, bash and fish.
+    scrollToBottom();
+    writeToPty((QStringLiteral("cd ") + shellQuoted(path) + u'\r').toUtf8());
+    return true;
+}
+
+// The shell reads a command and nothing is typed yet: no foreground job,
+// no command running, the main screen, and (with OSC 133 ; B) the cursor
+// still where the prompt ended. Without the marks the input is unknown.
+bool TerminalBackend::atEmptyPrompt() const
+{
+    if (hasForegroundProcess() || m_terminal->commandRunning() || m_terminal->screen().inAltScreen()) {
+        return false;
+    }
+    const int start = m_terminal->activeCommandStartLine();
+    if (start < 0) {
+        return true;
+    }
+    const Screen &screen = m_terminal->screen();
+    const int cursorLine = screen.totalLines() - screen.rows() + screen.cursorRow();
+    return cursorLine == start && screen.cursorCol() <= m_terminal->activeCommandStartColumn();
 }
 
 void TerminalBackend::sendMouseReport(int button, int row, int col, int event, int modifiers)

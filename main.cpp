@@ -12,6 +12,7 @@
 #include "AppQuitGuard.h"
 #include "BackgroundJobs.h"
 #include "FinderIntegration.h"
+#include "ImagePreview.h"
 #include "McpServer.h"
 #include "NativeKeyTracker.h"
 #include "Notifications.h"
@@ -120,6 +121,11 @@ int main(int argc, char *argv[])
     // app; installed before the event loop, which delivers a launch's folder.
     konsoll::FinderIntegration::shared().install();
     QQmlApplicationEngine engine;
+    // The engine owns its image providers.
+    engine.addImageProvider(
+        QString::fromLatin1(konsoll::kImagePreviewProvider),
+        std::make_unique<konsoll::ImagePreviewProvider>().release()
+    );
 
     QObject::connect(
         &engine,

@@ -158,8 +158,12 @@ qt_add_qml_module(konsoll
         src/DockMenu.mm
         src/FinderIntegration.h
         src/FinderIntegration.mm
+        src/ImagePreview.h
+        src/ImagePreview.mm
         src/KeyEncoder.cpp
         src/KeyEncoder.h
+        src/LinkSettings.cpp
+        src/LinkSettings.h
         src/McpServer.cpp
         src/McpServer.h
         src/NativeDialogs.h
@@ -184,6 +188,8 @@ qt_add_qml_module(konsoll
         src/TerminalManager.h
         src/TerminalRenderer.cpp
         src/TerminalRenderer.h
+        src/TextLinks.cpp
+        src/TextLinks.h
         src/Updater.h
         src/Updater.mm
         src/pty/PtyProcess.cpp
@@ -285,6 +291,7 @@ target_compile_definitions(konsoll PRIVATE
 target_link_libraries(konsoll
     PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::QuickDialogs2 Qt6::Svg Qt6::Network
     "-framework QuartzCore"
+    "-framework QuickLookThumbnailing"
     "-framework UserNotifications"
     "-framework Sparkle"
     z

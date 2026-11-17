@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -76,6 +77,16 @@ public:
     void clearTitleDirty() { setExtraFlag(TitleDirty, false); }
     QString currentDirectory() const { return m_currentDirectory; }
     QString remoteHost() const { return m_remoteHost; }
+    // The directory relative paths on line `index` (a Screen::lineAt index)
+    // were printed against: the shell's directory (OSC 7 and the like) when
+    // that line was written, kept across scrolling, history trimming and
+    // reflow. Empty when no directory is known yet; nullopt for output of a
+    // remote shell (ssh, a foreign OSC 7 host), whose paths are not local.
+    std::optional<QString> directoryAtLine(int index) const;
+    // The foreground job is a remote client (ssh, mosh, ...): what it prints
+    // names the remote host's files. Set by the session from its process
+    // poll, which also catches ssh started without the shell integration.
+    void setForegroundRemote(bool remote);
     // OSC 633 ; E command line (VS Code shell integration).
     QString commandLine() const { return m_commandLine; }
     // DECUDK: the string defined for Shift+F`number` (1-20), or empty.
@@ -124,6 +135,8 @@ public:
 
     const std::vector<CommandBlock> &commandBlocks() const { return m_commandBlocks; }
     int activeCommandStartLine() const { return m_commandStartLine; }
+    // Where the typed command starts on that line (OSC 133 ; B).
+    int activeCommandStartColumn() const { return m_commandStartColumn; }
     void clearCommandBlocks();
     bool commandFinished() const { return (m_extraFlags & CommandFinishedPending) != 0; }
     void clearCommandFinished() { setExtraFlag(CommandFinishedPending, false); }
@@ -225,16 +238,25 @@ private:
     static constexpr std::uint64_t RectangleExtent = std::uint64_t{1} << 28;       // DECSACE 2: rectangle, else stream
     static constexpr unsigned int OtherKeysShift = 29u; // XTMODKEYS modifyOtherKeys 0-2 (2 bits)
     static constexpr std::uint64_t OtherKeysMask = std::uint64_t{3} << OtherKeysShift;
-    static constexpr std::uint64_t OtherKeysCsiU = std::uint64_t{1} << 31;     // XTFMTKEYS formatOtherKeys 1
-    static constexpr std::uint64_t MetaSendsEscape = std::uint64_t{1} << 32;   // ?1036 / ?1039
-    static constexpr std::uint64_t HighlightStarted = std::uint64_t{1} << 33;  // ?1001 highlight in progress
-    static constexpr std::uint64_t PointerShapeDirty = std::uint64_t{1} << 34; // OSC 22 changed the pointer
-    static constexpr std::uint64_t Allow132Columns = std::uint64_t{1} << 35;   // ?40: DECCOLM may resize
-    static constexpr std::uint64_t Columns132 = std::uint64_t{1} << 36;        // ?3 DECCOLM set
-    static constexpr std::uint64_t EightBitControls = std::uint64_t{1} << 37;  // S8C1T: C1 replies
-    static constexpr std::uint64_t UdkLocked = std::uint64_t{1} << 38;         // DECUDK locked
-    static constexpr std::uint64_t BellPending = std::uint64_t{1} << 39;       // BEL not yet consumed
-    static constexpr std::uint64_t ProgressDirty = std::uint64_t{1} << 40;     // OSC 9 ; 4 changed
+    static constexpr std::uint64_t OtherKeysCsiU = std::uint64_t{1} << 31;        // XTFMTKEYS formatOtherKeys 1
+    static constexpr std::uint64_t MetaSendsEscape = std::uint64_t{1} << 32;      // ?1036 / ?1039
+    static constexpr std::uint64_t HighlightStarted = std::uint64_t{1} << 33;     // ?1001 highlight in progress
+    static constexpr std::uint64_t PointerShapeDirty = std::uint64_t{1} << 34;    // OSC 22 changed the pointer
+    static constexpr std::uint64_t Allow132Columns = std::uint64_t{1} << 35;      // ?40: DECCOLM may resize
+    static constexpr std::uint64_t Columns132 = std::uint64_t{1} << 36;           // ?3 DECCOLM set
+    static constexpr std::uint64_t EightBitControls = std::uint64_t{1} << 37;     // S8C1T: C1 replies
+    static constexpr std::uint64_t UdkLocked = std::uint64_t{1} << 38;            // DECUDK locked
+    static constexpr std::uint64_t BellPending = std::uint64_t{1} << 39;          // BEL not yet consumed
+    static constexpr std::uint64_t ProgressDirty = std::uint64_t{1} << 40;        // OSC 9 ; 4 changed
+    static constexpr std::uint64_t ForegroundRemote = std::uint64_t{1} << 41;     // see setForegroundRemote
+    static constexpr std::uint64_t ForeignDirectoryHost = std::uint64_t{1} << 42; // OSC 7 from another host
+
+    // From `anchor` (Screen::lineAnchor) on, output was printed in
+    // `directory`; empty for a remote shell. Sorted by anchor.
+    struct DirectoryMark {
+        long long anchor{0};
+        QString directory;
+    };
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
     // and the character set designations, one slot per screen.
@@ -307,6 +329,15 @@ private:
     void handleOscRemoteHost(const QByteArray &body);
     void handleOscClipboard(const QByteArray &body);
     void handleOscCurrentDirectory(const QByteArray &body);
+    void setCurrentDirectory(const QString &path);
+    bool directoryIsRemote() const;
+    // Records where the current directory (or remoteness) starts applying:
+    // at the cursor row of the main screen.
+    void markDirectory();
+    void remapDirectoryMarks(const Screen::ReflowMap &reflow);
+    // Reflow after a resize or leaving the alternate screen: images and
+    // directory marks follow their lines.
+    void followReflow();
     void handleOscCommandMark(const QByteArray &body);
     void resetProgramInputModes();
     void handleOscVsCode(const QByteArray &body);
@@ -369,6 +400,7 @@ private:
     Screen m_screen;
     GraphicsStore m_graphics;
     std::vector<CommandBlock> m_commandBlocks;
+    std::vector<DirectoryMark> m_directoryMarks;
     // CSI being parsed: parameter bytes (digits, ';', ':'), intermediate bytes
     // (0x20-0x2F; also an ESC sequence's) and the private prefix ('?', '>',
     // '<', '=', or 0).
@@ -447,5 +479,9 @@ private:
     unsigned char m_mainKittyDepth : 4 = 0;
     unsigned char m_cursorStyle = 0;
 };
+
+// A file URL's host (OSC 7, OSC 8) names this Mac: empty, "localhost" or
+// its host name, with or without ".local".
+bool isLocalHostName(const QString &host);
 
 } // namespace konsoll

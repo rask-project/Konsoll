@@ -136,6 +136,8 @@ Item {
                 linkModifiers |= Qt.ControlModifier;
             if (event.key === Qt.Key_Meta)
                 linkModifiers |= Qt.MetaModifier;
+            if (event.key === Qt.Key_Alt)
+                linkModifiers |= Qt.AltModifier;
             selectionArea.updateLinkHover(linkModifiers);
             if (!view.active) {
                 event.accepted = true;
@@ -169,6 +171,8 @@ Item {
                 linkModifiers &= ~Qt.ControlModifier;
             if (event.key === Qt.Key_Meta)
                 linkModifiers &= ~Qt.MetaModifier;
+            if (event.key === Qt.Key_Alt)
+                linkModifiers &= ~Qt.AltModifier;
             selectionArea.updateLinkHover(linkModifiers);
             // Kitty "report event types" (flag 2): key releases too.
             if (view.active && view.session && (view.session.keyboardFlags & 2) !== 0 && !event.isAutoRepeat)
@@ -213,6 +217,11 @@ Item {
             view.transferError = message;
             transferErrorTimer.restart();
         }
+
+        // A Cmd+clicked file opens in the terminal editor of Settings > Terminal.
+        function onEditorTabRequested(title, directory, command) {
+            view.sessionManager.addWorkspaceRunning(title, directory, command);
+        }
     }
 
     Rectangle {
@@ -246,6 +255,7 @@ Item {
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
 
         onWheel: event => {
+            selectionArea.hidePreview();
             // Trackpads report high-resolution pixel deltas; mouse wheels
             // generally report angle deltas. Prefer pixels when available.
             const pixelDelta = event.pixelDelta.y;
@@ -298,8 +308,9 @@ Item {
         defaultCursorBlink: view.cursorBlink
         accentColor: appPalette.accent
         selectedTextColor: appPalette.highlightedText
-        hoverRow: selectionArea._linkModifierDown ? selectionArea._hoverRow : -1
-        hoverStart: selectionArea._hoverLinkStart
+        hoverRow: selectionArea._hoverRow
+        hoverStart: selectionArea._linkModifierDown || selectionArea._cdModifierDown ? selectionArea._hoverLinkStart : -1
+        hoverEndRow: selectionArea._hoverEndRow
         hoverEnd: selectionArea._hoverLinkEnd
     }
 
@@ -320,7 +331,7 @@ Item {
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         hoverEnabled: true
         // A link under Cmd wins; then the program's OSC 22 pointer.
-        cursorShape: _linkModifierDown && _hoverRow >= 0 ? Qt.PointingHandCursor : (view.session && view.session.pointerShape >= 0 ? view.session.pointerShape : Qt.IBeamCursor)
+        cursorShape: (_linkModifierDown || _cdModifierDown) && _hoverLinkStart >= 0 ? Qt.PointingHandCursor : (view.session && view.session.pointerShape >= 0 ? view.session.pointerShape : Qt.IBeamCursor)
 
         anchors.top: renderer.top
         anchors.left: renderer.left
@@ -359,7 +370,10 @@ Item {
         property bool _middlePaste: false
         property bool _pointerInside: false
         property bool _linkModifierDown: false
+        // Option alone: only folders Option+click would cd into are links.
+        property bool _cdModifierDown: false
         property int _hoverRow: -1
+        property int _hoverEndRow: -1
         property int _hoverLinkStart: -1
         property int _hoverLinkEnd: -1
         property real _pointerX: 0
@@ -374,6 +388,7 @@ Item {
 
         function updateLinkHover(modifiers) {
             _linkModifierDown = (modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
+            _cdModifierDown = !_linkModifierDown && (modifiers & Qt.AltModifier) !== 0;
             refreshLinkHover();
         }
 
@@ -382,14 +397,82 @@ Item {
             let link = ({});
             if (_linkModifierDown && view.session && cell[1] >= 0)
                 link = view.session.linkAt(cell[1], cell[0]);
+            else if (_cdModifierDown && view.session && cell[1] >= 0)
+                link = view.session.folderLinkAt(cell[1], cell[0]);
 
-            const start = link && link.start !== undefined ? link.start : -1;
-            const end = link && link.end !== undefined ? link.end : -1;
-            const row = start >= 0 ? cell[1] : -1;
-            if (_hoverRow !== row || _hoverLinkStart !== start || _hoverLinkEnd !== end) {
+            // A soft-wrapped link spans rows, possibly beyond the view.
+            const found = link && link.start !== undefined;
+            const start = found ? link.start : -1;
+            const end = found ? link.end : -1;
+            const row = found ? link.row : -1;
+            const endRow = found ? link.endRow : -1;
+            if (_hoverRow !== row || _hoverEndRow !== endRow || _hoverLinkStart !== start || _hoverLinkEnd !== end) {
                 _hoverRow = row;
+                _hoverEndRow = endRow;
                 _hoverLinkStart = start;
                 _hoverLinkEnd = end;
+            }
+            // Cmd resting on a file link: a preview once the pointer settles.
+            const target = found && _linkModifierDown ? link.target : "";
+            if (target !== _hoverTarget) {
+                _hoverTarget = target;
+                imagePreview.source = "";
+                if (target.startsWith("file:"))
+                    previewTimer.restart();
+                else
+                    previewTimer.stop();
+            }
+        }
+
+        function hidePreview() {
+            previewTimer.stop();
+            imagePreview.source = "";
+        }
+
+        property string _hoverTarget: ""
+
+        Timer {
+            id: previewTimer
+
+            interval: 350
+            onTriggered: {
+                if (selectionArea._linkModifierDown && view.session && selectionArea._hoverTarget !== "")
+                    imagePreview.source = view.session.previewSourceFor(selectionArea._hoverTarget);
+            }
+        }
+
+        // The Cmd+hover preview of an image, PDF or video file (ImagePreview.h):
+        // beside the pointer, kept inside the pane.
+        Rectangle {
+            id: imagePreview
+
+            property string source: ""
+            readonly property real edge: 280
+            readonly property real gap: 16
+
+            visible: source !== "" && previewImage.status === Image.Ready
+            z: 10
+            width: previewImage.width + 12
+            height: previewImage.height + 12
+            x: selectionArea._pointerX + gap + width <= selectionArea.width ? selectionArea._pointerX + gap : Math.max(0, selectionArea._pointerX - gap - width)
+            y: selectionArea._pointerY + gap + height <= selectionArea.height ? selectionArea._pointerY + gap : Math.max(0, selectionArea.height - height)
+            radius: 8
+            color: appPalette.window
+            border.color: Qt.rgba(appPalette.windowText.r, appPalette.windowText.g, appPalette.windowText.b, 0.2)
+            Accessible.ignored: true
+
+            Image {
+                id: previewImage
+
+                anchors.centerIn: parent
+                // The thumbnail's own size (QuickLook fits it in sourceSize):
+                // small images are not blown up.
+                width: implicitWidth / Screen.devicePixelRatio
+                height: implicitHeight / Screen.devicePixelRatio
+                source: imagePreview.source
+                asynchronous: true
+                fillMode: Image.PreserveAspectFit
+                sourceSize: Qt.size(imagePreview.edge * Screen.devicePixelRatio, imagePreview.edge * Screen.devicePixelRatio)
             }
         }
 
@@ -401,6 +484,7 @@ Item {
         onExited: {
             _pointerInside = false;
             refreshLinkHover();
+            hidePreview();
         }
 
         Timer {
@@ -421,6 +505,7 @@ Item {
         }
 
         onPressed: mouse => {
+            selectionArea.hidePreview();
             if (!view.session)
                 return;
             const wasActive = view.session === view.sessionManager.activeSession;
@@ -429,6 +514,14 @@ Item {
                 view.sessionManager.activateSession(view.session);
                 mouse.accepted = true;
                 return;
+            }
+            // Option+click (also with Cmd) on a folder: cd into it at the prompt.
+            if (mouse.button === Qt.LeftButton && (mouse.modifiers & Qt.AltModifier) !== 0) {
+                const cell = selectionArea.cellAt(mouse.x, mouse.y);
+                if (view.session.changeDirectoryToLinkAt(cell[1], cell[0])) {
+                    mouse.accepted = true;
+                    return;
+                }
             }
             if (mouse.button === Qt.LeftButton && (mouse.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);

@@ -26,6 +26,15 @@ function _konsoll_prompt --on-event fish_prompt
     printf '\e]133;B\a'
 end
 
+# A cd inside a command line ("cd src; and ls") reports the directory at
+# once, so that the output after it resolves its paths there. Only to the
+# terminal: never into a command substitution or a redirection.
+function _konsoll_cwd --on-variable PWD
+    status is-command-substitution; and return 0
+    isatty stdout; or return 0
+    printf '\e]7;file://localhost%s\a' (string escape --style=url -- "$PWD")
+end
+
 function _konsoll_preexec --on-event fish_preexec
     set -l command_words (string split ' ' -- $argv[1])
     if test "$command_words[1]" = ssh; and set -q command_words[2]

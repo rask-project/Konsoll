@@ -24,13 +24,25 @@ _konsoll_load_functions
 typeset -g _KONSOLL_PROMPT_MARKER=$'%{\e]133;B\a%}'
 typeset -g _KONSOLL_COMMAND_ACTIVE=0
 
+function _konsoll_report_directory() {
+    local encoded_path=${PWD//\%/%25}
+    encoded_path=${encoded_path// /%20}
+    encoded_path=${encoded_path//\#/%23}
+    encoded_path=${encoded_path//\?/%3F}
+    printf '\e]7;file://localhost%s\a' "$encoded_path"
+}
+
+# A cd inside a command line ("cd src && ls") reports the directory at once,
+# so that the output after it resolves its paths there. Only to the
+# terminal: never into "$(cd x && pwd)" or a redirection.
+function _konsoll_chpwd() {
+    [[ -z $KONSOLL_REMOTE && -t 1 ]] && (( _KONSOLL_COMMAND_ACTIVE )) && _konsoll_report_directory
+    return 0
+}
+
 function _konsoll_precmd() {
     local command_status=$?
     _konsoll_load_functions
-    local encoded_path=${PWD//\%/%25}
-    encoded_path=${encoded_path// /%20}
-    encoded_path=${encoded_path//#/%23}
-    encoded_path=${encoded_path//\?/%3F}
     if (( _KONSOLL_COMMAND_ACTIVE )); then
         printf '\e]133;D;%d\a' "$command_status"
     fi
@@ -38,7 +50,7 @@ function _konsoll_precmd() {
     # Mac, and the host is the one the Mac connected to.
     if [[ -z $KONSOLL_REMOTE ]]; then
         printf '\e]1337;RemoteHost=%s;\a' "$KONSOLL_REMOTE_HOST_TOKEN"
-        printf '\e]7;file://localhost%s\a' "$encoded_path"
+        _konsoll_report_directory
     fi
     printf '\e]133;A\a'
     if [[ "$PROMPT" != *"$_KONSOLL_PROMPT_MARKER" ]]; then
@@ -86,6 +98,7 @@ function _konsoll_preexec() {
 
 add-zsh-hook precmd _konsoll_precmd
 add-zsh-hook preexec _konsoll_preexec
+add-zsh-hook chpwd _konsoll_chpwd
 
 if [[ -n $KONSOLL_REMOTE ]]; then
     # A shell Konsoll set up over ssh: the agents started here report to it.
