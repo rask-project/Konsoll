@@ -40,6 +40,7 @@ void installOpenHandlers(bool editor)
     if (editor) {
         // The editor keeps its bundle's icon in the Dock (setWindowIcon
         // replaces it).
+        QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/assets/konsoll-nvim.png")));
         konsoll::EditorMode::shared().install();
         return;
     }

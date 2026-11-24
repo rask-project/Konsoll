@@ -96,6 +96,14 @@ Window {
         colorGroup: editorWindow.active ? SystemPalette.Active : SystemPalette.Inactive
     }
 
+    GlassEffect {
+        id: stripGlass
+
+        anchors.fill: parent
+        visible: supported
+        cornerRadius: 0
+    }
+
     // The title in the transparent title bar (WindowTranslucency hides
     // AppKit's), clear of the window buttons.
     Text {

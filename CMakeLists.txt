@@ -250,6 +250,8 @@ qt_add_resources(konsoll "/"
     FILES
         assets/konsoll.icns
         assets/konsoll.png
+        assets/konsoll-nvim.icns
+        assets/konsoll-nvim.png
         assets/qtlogo-64.png
 
         shell-integration/konsoll.zsh
