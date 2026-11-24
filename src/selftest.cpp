@@ -1218,6 +1218,10 @@ void checkChangeDirectoryLink(int &failures, TerminalManager &manager)
     const bool listed = waitFor("cd link: folder listed", [&]() { return folderRow() >= 0; }, 10000);
     check(failures, listed, "cd link: the listed folder is a link");
 
+    // Back at the prompt after ls (its folder links show) before typing:
+    // typed ahead, the text would be echoed before the prompt, which zsh
+    // then prints with the cursor still at its start until it redraws.
+    waitFor("cd link: prompt", [&]() { return !shell->folderLinkAt(folderRow(), 1).isEmpty(); }, 10000);
     shell->writeText(QStringLiteral("echo typed"));
     waitFor("cd link: typed", [shell]() { return shell->bufferText().contains(QStringLiteral("echo typed")); }, 5000);
     check(
