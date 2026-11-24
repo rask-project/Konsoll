@@ -6,6 +6,49 @@
     <description>Konsoll releases</description>
     <language>en</language>
     <item>
+      <title>Konsoll 3.7.1-beta.13</title>
+      <link>https://github.com/rask-project/Konsoll/releases/tag/v3.7.1-beta.13</link>
+      <sparkle:version>3.7.1.113</sparkle:version>
+      <sparkle:shortVersionString>3.7.1-beta.13</sparkle:shortVersionString>
+      <sparkle:channel>beta</sparkle:channel>
+      <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+      <pubDate>Tue, 24 Nov 2026 15:46:20 GMT</pubDate>
+      <description sparkle:format="markdown"><![CDATA[## What's new (beta)
+
+The stable release is still 3.7.0.
+
+### Fixed
+
+- **Neovim (Konsoll) opens where its last window was closed**, at the
+  same size. It used to open taller on every use, until it filled the
+  left of the main screen. A position on a screen that is no longer
+  connected is ignored.
+- Double-clicking a Neovim (Konsoll) window's title bar zooms it (or
+  does what System Settings ▸ Desktop & Dock sets for it), as in
+  Konsoll's windows.
+
+### Since 3.7.1-beta.1
+
+- New app icons, and Neovim (Konsoll) shows its own icon in the Dock —
+  see the 3.7.1-beta.12 notes.
+- Open a folder in Neovim (Konsoll) from the Finder — see the
+  3.7.1-beta.11 notes.
+- Konsoll's and Neovim (Konsoll)'s icons are drawn full size on macOS 26
+  and later — see the 3.7.1-beta.10 notes.
+- **Neovim (Konsoll)** and file transfers over SSH by dragging — see the
+  3.7.1-beta.9 notes.
+- File paths in the output are links, ⌥-click enters a folder, and ⌘ over
+  an image previews it — see the 3.7.1-beta.8 notes.
+- **New Tab** and **New Window** in the Dock icon's menu — see the
+  3.7.1-beta.7 notes.
+- **Shell ▸ New Agent in Worktree…** is listed only while the current pane
+  is in a git repository on this Mac — see the 3.7.1-beta.5 and
+  3.7.1-beta.6 notes.
+- Open Konsoll at a folder from the Finder — see the 3.7.1-beta.4 notes.
+]]></description>
+      <enclosure url="https://github.com/rask-project/Konsoll/releases/download/v3.7.1-beta.13/Konsoll-3.7.1-beta.13-arm64.zip" length="50354111" type="application/octet-stream" sparkle:edSignature="g8rAFizToLUnYW7rVNYYM8pdQq3ZKfQu0kwRs8ONuolkgl3J2rTa5KzRPK35naLi6n5+x8CyETOr03Lytv8oBQ=="/>
+    </item>
+    <item>
       <title>Konsoll 3.7.1-beta.12</title>
       <link>https://github.com/rask-project/Konsoll/releases/tag/v3.7.1-beta.12</link>
       <sparkle:version>3.7.1.112</sparkle:version>
