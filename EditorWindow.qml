@@ -106,26 +106,49 @@ Window {
 
     // The title in the transparent title bar (WindowTranslucency hides
     // AppKit's), clear of the window buttons.
-    Text {
-        id: titleText
+    Item {
+        id: titleBar
 
         visible: editorWindow.visibility !== Window.FullScreen
-        x: Math.max(editorWindow.SafeArea.margins.left, 84)
-        width: parent.width - 2 * x
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
         height: editorWindow.SafeArea.margins.top
 
-        text: editorWindow.title
-        color: titlePalette.windowText
-        opacity: editorWindow.active ? 0.85 : 0.5
-        font.weight: Font.DemiBold
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
-        elide: Text.ElideMiddle
+        // The bar covers AppKit's title bar, so its double-click never
+        // gets there: empty bar space does the system action (zoom by
+        // default). The window buttons sit above the content view and
+        // take their own presses, so they never reach this handler.
+        TapHandler {
+            acceptedButtons: Qt.LeftButton
+            onDoubleTapped: translucency.titleBarDoubleClicked()
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: "transparent"
+        }
+
+        Text {
+            id: titleText
+
+            x: Math.max(editorWindow.SafeArea.margins.left, 84)
+            width: parent.width - 2 * x
+            height: editorWindow.SafeArea.margins.top
+
+            text: editorWindow.title
+            color: titlePalette.windowText
+            opacity: editorWindow.active ? 0.85 : 0.5
+            font.weight: Font.DemiBold
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideMiddle
+        }
     }
 
     TerminalView {
         anchors.fill: parent
-        anchors.topMargin: titleText.visible ? titleText.height : 0
+        anchors.topMargin: titleBar.visible ? titleBar.height : 0
 
         sessionManager: sessionManager
         session: sessionManager.activeSession
