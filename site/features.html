@@ -21,9 +21,9 @@ permalink: /features/
         <li><a href="#windows"><img src="{{ icons }}background-sessions.svg" alt="">Windows</a></li>
         <li><a href="#keyboard"><img src="{{ icons }}keyboard.svg" alt="">Keyboard</a></li>
         <li><a href="#selection"><img src="{{ icons }}background-functions.svg" alt="">Selection &amp; Search</a></li>
-        <li><a href="#links"><img src="{{ icons }}kind-search.svg" alt="">File Links</a></li>
-        <li><a href="#ssh-files"><img src="{{ icons }}kind-remote.svg" alt="">Files over SSH</a></li>
-        <li><a href="#neovim"><img src="{{ icons }}kind-editor.svg" alt="">Neovim (Konsoll)</a></li>
+        <li><a href="#links"><img src="{{ icons }}file-links.svg" alt="">File Links</a></li>
+        <li><a href="#ssh-files"><img src="{{ icons }}ssh-files.svg" alt="">Files over SSH</a></li>
+        <li><a href="#neovim"><img src="{{ icons }}neovim.svg" alt="">Neovim (Konsoll)</a></li>
         <li><a href="#background"><img src="{{ icons }}background-running.svg" alt="">Background Commands</a></li>
         <li><a href="{{ '/agents/' | relative_url }}"><img src="{{ icons }}agents.svg" alt="">AI Agents</a></li>
         <li><a href="#emulation"><img src="{{ icons }}background-saved.svg" alt="">Emulation</a></li>
@@ -106,7 +106,7 @@ permalink: /features/
       </section>
 
       <section class="settings-section" id="links">
-        <header><img src="{{ icons }}kind-search.svg" alt=""><h2>File Links</h2></header>
+        <header><img src="{{ icons }}file-links.svg" alt=""><h2>File Links</h2></header>
         <p>Hold <kbd>⌘</kbd> over the output: URLs and the paths of files that exist are underlined, and a click opens them. Nothing is scanned as output arrives; the line under the pointer is read when you ask.</p>
         <div class="form-group">
           <div class="form-row"><span><kbd>⌘</kbd>-click a path</span><span>Open it: names from <code>ls</code>, <code>find</code>, <code>git status</code>, <code>git diff</code>, errors</span></div>
@@ -124,7 +124,7 @@ permalink: /features/
       </section>
 
       <section class="settings-section" id="ssh-files">
-        <header><img src="{{ icons }}kind-remote.svg" alt=""><h2>Files over SSH</h2></header>
+        <header><img src="{{ icons }}ssh-files.svg" alt=""><h2>Files over SSH</h2></header>
         <p>Copy files to and from the host you are logged into without leaving the terminal or retyping the connection.</p>
         <ul>
           <li><strong>Upload:</strong> drop files or folders from the Finder on an ssh session; they land in the remote shell's current folder. Pasting an image uploads it and types its remote path, for an agent running there.</li>
@@ -135,7 +135,7 @@ permalink: /features/
       </section>
 
       <section class="settings-section" id="neovim">
-        <header><img src="{{ icons }}kind-editor.svg" alt=""><h2>Neovim (Konsoll)</h2></header>
+        <header><img src="{{ icons }}neovim.svg" alt=""><h2>Neovim (Konsoll)</h2></header>
         <p><img class="inline-app-icon" src="{{ '/assets/screenshots/neovim-konsoll-icon.png' | relative_url }}" alt="The Neovim (Konsoll) icon" width="72" height="72">Konsoll carries a second app: <strong>Neovim (Konsoll)</strong>, with its own name and icon in the Dock. It opens each file or folder in a window of its own running <code>nvim</code> — no tabs, splits or shell, like Neovide or neovim-qt — with Konsoll's font, colors and glass. It comes inside Konsoll and updates with it.</p>
         <div class="form-group">
           <div class="form-row"><span>Open With</span><span>Right-click a file ▸ Open With ▸ Neovim (Konsoll), or drop it on the Dock icon</span></div>

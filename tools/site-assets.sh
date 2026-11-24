@@ -11,3 +11,5 @@ cp "$root"/docs/images/* "$assets/screenshots/"
 cp "$root"/resources/icons/konsoll/svg/*.svg "$assets/icons/"
 cp "$root/docs/images/app-icon.png" "$assets/konsoll.png"
 cp "$root/assets/qtlogo-64.png" "$assets/qtlogo.png"
+# Icons only the site uses (sections the app has no Settings pane for).
+cp "$root"/site/_icons/*.svg "$assets/icons/"
