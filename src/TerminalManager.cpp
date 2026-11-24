@@ -377,7 +377,13 @@ void TerminalManager::addWorkspaceRunning(const QString &title, const QString &d
     createWorkspace(title, directory)->writeText(command + QLatin1Char('\n'));
 }
 
-TerminalBackend *TerminalManager::createWorkspace(const QString &customTitle, const QString &directory)
+void TerminalManager::addCommandWorkspace(const QString &command, const QString &directory)
+{
+    createWorkspace(QString{}, directory, command);
+}
+
+TerminalBackend *
+TerminalManager::createWorkspace(const QString &customTitle, const QString &directory, const QString &command)
 {
     const QString workingDirectory = !directory.isEmpty()           ? directory
                                      : (m_activeSession != nullptr) ? m_activeSession->currentDirectory()
@@ -392,7 +398,11 @@ TerminalBackend *TerminalManager::createWorkspace(const QString &customTitle, co
     emit workspacesChanged();
     emit activeWorkspaceChanged();
     setActiveSession(session, true);
-    session->start(workingDirectory);
+    if (command.isEmpty()) {
+        session->start(workingDirectory);
+    } else {
+        session->startCommand(command, workingDirectory);
+    }
     return session;
 }
 

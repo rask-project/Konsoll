@@ -3,6 +3,7 @@
 #include "AppQuitGuard.h"
 #include "BackgroundJobs.h"
 #include "DockMenu.h"
+#include "EditorMode.h"
 #include "NativeDialogs.h"
 #include "WindowRegistry.h"
 #include "WindowStateStore.h"
@@ -32,6 +33,20 @@
     // A single idle tab in a single window quits without prompting.
     // Commands running in the background count as sessions too.
     const auto &registry = konsoll::WindowRegistry::instance();
+    // The editor asks each nvim to quit (it asks about unsaved buffers); the
+    // app ends with its last window. A second quit while one still runs
+    // stops waiting, after the usual confirmation.
+    if (konsoll::EditorMode::isActive() && registry.totalSessionCount() > 0) {
+        if (!konsoll::EditorMode::shared().requestQuit()) {
+            return NSTerminateCancel;
+        }
+        konsoll::NativeDialogs dialog;
+        if (!dialog.confirmQuit(registry.totalSessionCount())) {
+            return NSTerminateCancel;
+        }
+        konsoll::WindowStateStore::setTerminating(true);
+        return NSTerminateNow;
+    }
     const konsoll::BackgroundJobs *background = konsoll::BackgroundJobs::instance();
     const int backgroundRunning = background != nullptr ? background->runningCount() : 0;
     const int sessions = registry.totalSessionCount() + backgroundRunning;

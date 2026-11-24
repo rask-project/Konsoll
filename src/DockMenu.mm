@@ -1,6 +1,7 @@
 #import <AppKit/AppKit.h>
 
 #include "DockMenu.h"
+#include "EditorMode.h"
 
 // The Dock menu items' target: a Dock menu has no responder chain to send
 // their actions to.
@@ -55,8 +56,11 @@ NSMenu *DockMenu::menu()
         KonsollDockMenuTarget *const target = [[KonsollDockMenuTarget alloc] init];
         NSMenu *const built = [[NSMenu alloc] initWithTitle:@""];
         built.autoenablesItems = NO;
-        NSMenuItem *const tab = [built addItemWithTitle:@"New Tab" action:@selector(newTab:) keyEquivalent:@""];
-        tab.target = target;
+        // The editor has no tabs.
+        if (!EditorMode::isActive()) {
+            NSMenuItem *const tab = [built addItemWithTitle:@"New Tab" action:@selector(newTab:) keyEquivalent:@""];
+            tab.target = target;
+        }
         NSMenuItem *const window = [built addItemWithTitle:@"New Window"
                                                     action:@selector(newWindow:)
                                              keyEquivalent:@""];

@@ -26,6 +26,9 @@ Item {
 
     property var session: null
     property bool active: false
+    // The view is its window's only session (the editor): no splits, and a
+    // terminal editor for a Cmd+clicked file opens in a window of its own.
+    property bool singleSession: false
     property string transferError: ""
     // A finished transfer, shown for a moment; an error wins, then what is
     // being transferred now.
@@ -34,6 +37,9 @@ Item {
     property real scrollAccumulator: 0
     property real horizontalAccumulator: 0
     property bool _syncingScrollBar: false
+
+    // A Cmd+clicked file's terminal editor, when the view is a single session.
+    signal editorWindowRequested(string directory, string command)
 
     onSystemBackgroundChanged: applySystemColors()
     onSystemForegroundChanged: applySystemColors()
@@ -234,7 +240,10 @@ Item {
 
         // A Cmd+clicked file opens in the terminal editor of Settings > Terminal.
         function onEditorTabRequested(title, directory, command) {
-            view.sessionManager.addWorkspaceRunning(title, directory, command);
+            if (view.singleSession)
+                view.editorWindowRequested(directory, command);
+            else
+                view.sessionManager.addWorkspaceRunning(title, directory, command);
         }
     }
 
@@ -828,6 +837,8 @@ Item {
         }
 
         Controls.MenuItem {
+            visible: !view.singleSession
+            height: visible ? implicitHeight : 0
             text: qsTr("Split Side by Side")
             onTriggered: {
                 view.sessionManager.activateSession(view.session);
@@ -836,6 +847,8 @@ Item {
         }
 
         Controls.MenuItem {
+            visible: !view.singleSession
+            height: visible ? implicitHeight : 0
             text: qsTr("Split Top and Bottom")
             onTriggered: {
                 view.sessionManager.activateSession(view.session);
@@ -843,7 +856,10 @@ Item {
             }
         }
 
-        MenuSeparator {}
+        MenuSeparator {
+            visible: !view.singleSession
+            height: visible ? implicitHeight : 0
+        }
 
         Controls.MenuItem {
             text: qsTr("Save Buffer or Selection…")

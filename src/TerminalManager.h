@@ -184,6 +184,9 @@ public:
     // A new tab titled `title`, its shell in `directory`, running `command`
     // (New Agent in Worktree).
     Q_INVOKABLE void addWorkspaceRunning(const QString &title, const QString &directory, const QString &command);
+    // A new tab whose session is `command` run by the shell (`-i -c`, no
+    // prompt): it closes when the command ends (the editor's nvim).
+    Q_INVOKABLE void addCommandWorkspace(const QString &command, const QString &directory);
     Q_INVOKABLE void addNamedWorkspace(const QString &title);
     Q_INVOKABLE void renameWorkspace(QObject *workspace, const QString &title);
     Q_INVOKABLE void closeWorkspace(QObject *workspace);
@@ -290,7 +293,10 @@ private:
     void finishPaneMove(TerminalManager *target, TerminalBackend *session);
     // Drops a session that left this window from the activation history.
     void forgetSession(TerminalBackend *session);
-    TerminalBackend *createWorkspace(const QString &customTitle, const QString &directory = {});
+    // `command` empty starts the shell; otherwise the session runs it
+    // (TerminalBackend::startCommand).
+    TerminalBackend *
+    createWorkspace(const QString &customTitle, const QString &directory = {}, const QString &command = {});
     TerminalLayoutNode *findLeaf(TerminalLayoutNode *node, TerminalBackend *session) const;
     TerminalBackend *firstSession(TerminalLayoutNode *node) const;
     TerminalBackend *mostRecentlyActiveSession() const;

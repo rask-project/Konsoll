@@ -121,6 +121,8 @@ qt_add_qml_module(konsoll
     QML_FILES
         AppSettings.qml
         Main.qml
+        EditorMain.qml
+        EditorWindow.qml
         TerminalWindow.qml
         SaveTextDialog.qml
         SettingsWindow.qml
@@ -156,6 +158,8 @@ qt_add_qml_module(konsoll
         src/BackgroundJobs.h
         src/DockMenu.h
         src/DockMenu.mm
+        src/EditorMode.h
+        src/EditorMode.mm
         src/FileDrag.h
         src/FileDrag.mm
         src/FinderIntegration.h
@@ -273,8 +277,37 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     string(APPEND KONSOLL_BUNDLE_ID ".debug")
 endif()
 
+set(KONSOLL_APP_NAME "Konsoll")
+
+# What the bundles offer the Finder: Konsoll's Services ("New Konsoll Tab
+# Here") and folder type, the editor's document types (Open With). Launch
+# Services lists every copy of an app it has seen, so Debug builds leave them
+# out: a development build next to the installed app would duplicate them.
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(default_finder_integration OFF)
+else()
+    set(default_finder_integration ON)
+endif()
+set(KONSOLL_FINDER_INTEGRATION ${default_finder_integration} CACHE BOOL
+    "Declare Finder Services and document types (Open With) in the bundles")
+set(KONSOLL_FINDER_PLIST_KEYS "")
+set(KONSOLL_EDITOR_DOCUMENT_TYPES "")
+if(KONSOLL_FINDER_INTEGRATION)
+    file(READ cmake/FinderKeys.plist.in finder_keys)
+    string(CONFIGURE "${finder_keys}" KONSOLL_FINDER_PLIST_KEYS)
+    file(READ cmake/EditorDocumentTypes.plist.in KONSOLL_EDITOR_DOCUMENT_TYPES)
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    cmake/FinderKeys.plist.in cmake/EditorDocumentTypes.plist.in)
+
+# Neovim (Konsoll) (EditorMode): a helper bundle in Contents/Helpers with
+# its own id, name and document types, running a copy of the executable.
+set(KONSOLL_EDITOR_BUNDLE_NAME "Neovim (Konsoll)")
+set(KONSOLL_EDITOR_BUNDLE_ID "${KONSOLL_BUNDLE_ID}.nvim")
+configure_file(cmake/EditorInfo.plist.in "${CMAKE_CURRENT_BINARY_DIR}/EditorInfo.plist")
+
 set_target_properties(konsoll PROPERTIES
-    MACOSX_BUNDLE_BUNDLE_NAME "Konsoll"
+    MACOSX_BUNDLE_BUNDLE_NAME "${KONSOLL_APP_NAME}"
     MACOSX_BUNDLE_GUI_IDENTIFIER ${KONSOLL_BUNDLE_ID}
     MACOSX_BUNDLE_BUNDLE_VERSION ${KONSOLL_BUNDLE_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${KONSOLL_DISPLAY_VERSION}
@@ -290,6 +323,8 @@ target_compile_definitions(konsoll PRIVATE
     KONSOLL_VERSION="${KONSOLL_DISPLAY_VERSION}"
     KONSOLL_GIT_COMMIT="${KONSOLL_GIT_COMMIT}"
     KONSOLL_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    KONSOLL_EDITOR_BUNDLE_NAME="${KONSOLL_EDITOR_BUNDLE_NAME}"
+    KONSOLL_FINDER_INTEGRATION=$<BOOL:${KONSOLL_FINDER_INTEGRATION}>
 )
 
 target_link_libraries(konsoll
@@ -308,6 +343,10 @@ get_filename_component(sparkle_framework_dir "${SPARKLE_FRAMEWORK}" DIRECTORY)
 # -iframework: a system framework path, so its headers raise no warnings.
 target_compile_options(konsoll PRIVATE "-iframework${sparkle_framework_dir}")
 target_link_options(konsoll PRIVATE "-F${sparkle_framework_dir}")
+# The editor's copy of the executable, four levels down in
+# Contents/Helpers/<editor>.app/Contents/MacOS, finds Sparkle (and, deployed,
+# Qt: cmake/EditorHelper.cmake) in the outer bundle's Frameworks.
+target_link_options(konsoll PRIVATE "LINKER:-rpath,@executable_path/../../../../Frameworks")
 
 install(TARGETS konsoll
     BUNDLE DESTINATION .
@@ -326,6 +365,22 @@ if(APPLE)
         COMMAND ditto "${SPARKLE_FRAMEWORK}"
             "$<TARGET_BUNDLE_DIR:konsoll>/Contents/Frameworks/Sparkle.framework"
         COMMENT "Embedding Sparkle.framework"
+        VERBATIM
+    )
+    # The editor's helper bundle, signed before the outer one seals it.
+    set(editor_bundle "$<TARGET_BUNDLE_DIR:konsoll>/Contents/Helpers/${KONSOLL_EDITOR_BUNDLE_NAME}.app")
+    # Rebuilt from scratch each time: nothing left over from an older build.
+    add_custom_command(TARGET konsoll POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${editor_bundle}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${editor_bundle}/Contents/MacOS" "${editor_bundle}/Contents/Resources"
+        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:konsoll>" "${editor_bundle}/Contents/MacOS/konsoll"
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_BINARY_DIR}/EditorInfo.plist"
+            "${editor_bundle}/Contents/Info.plist"
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/assets/konsoll-nvim.icns"
+            "${editor_bundle}/Contents/Resources/konsoll-nvim.icns"
+        COMMAND codesign --force --sign - "${editor_bundle}"
+        COMMENT "Assembling ${KONSOLL_EDITOR_BUNDLE_NAME}.app"
         VERBATIM
     )
     add_custom_command(TARGET konsoll POST_BUILD
@@ -351,6 +406,8 @@ if(APPLE)
     install(CODE "
         set(APP_BUNDLE \"\${CMAKE_INSTALL_PREFIX}/konsoll.app\")
         set(CODESIGN_IDENTITY \"${KONSOLL_CODESIGN_IDENTITY}\")
+        set(EDITOR_BUNDLE_NAME \"${KONSOLL_EDITOR_BUNDLE_NAME}\")
+        include(\"${CMAKE_CURRENT_SOURCE_DIR}/cmake/EditorHelper.cmake\")
         include(\"${CMAKE_CURRENT_SOURCE_DIR}/cmake/PruneBundle.cmake\")
     ")
 

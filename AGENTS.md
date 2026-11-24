@@ -201,6 +201,29 @@ Guidance for AI agents working in this repository.
   (`addWorkspaceInDirectory`). A launch for a folder replaces the launch
   window's untouched tab. `AppQuitGuard`'s delegate replaces Qt's, so it
   forwards `application:openFiles:` to Qt.
+- **Neovim (Konsoll)** (`EditorMode`, QML singleton): a helper bundle in
+  `Contents/Helpers` (`cmake/EditorInfo.plist.in`: bundle id `….nvim`, its
+  own name and document types) runs a copy of the executable, which detects
+  the bundle id (or `--editor [PATH…]`) and loads `EditorMain.qml`: one
+  `EditorWindow.qml` per file or folder, a `TerminalManager` with one
+  session started with `addCommandWorkspace` (`$SHELL -i -c 'exec nvim'`),
+  no tabs, splits, Finder Services or updater. Settings are shared (QSettings
+  is keyed by the application name). Closing a window or quitting types
+  `:confirm qa` (`quitKeys`) and waits for nvim to exit; the quit guard
+  cancels the first terminate. Konsoll registers the helper with Launch
+  Services (`registerHelperApplication`). Its document types
+  (`cmake/EditorDocumentTypes.plist.in`: the text types macOS declares, less
+  those another app edits better, plus `UTImportedTypeDeclarations` for
+  extensions macOS has no type for) and Konsoll's Services and folder type
+  (`cmake/FinderKeys.plist.in`) enter the plists only with
+  `KONSOLL_FINDER_INTEGRATION` (off in Debug: Launch Services lists every
+  copy it has seen, so a development build would duplicate them).
+  `makeDefaultEditor` uses `LSSetDefaultRoleHandlerForContentType`: NSWorkspace's
+  replacement asks the user to confirm each type. The build tree's helper finds
+  Sparkle through the extra `@executable_path/../../../../Frameworks` rpath;
+  at install `cmake/EditorHelper.cmake` copies the deployed executable,
+  repoints its `@loader_path/../Frameworks` references to the outer bundle
+  and writes a `qt.conf` (plugins, QML imports) before PruneBundle signs.
 - **Dock menu** (`DockMenu`, QML singleton): "New Tab" / "New Window"
   above AppKit's window list. Qt's `applicationDockMenu:` is lost with its
   delegate, so `AppQuitGuard`'s answers it with `DockMenu::menu()`;

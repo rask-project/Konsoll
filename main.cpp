@@ -11,6 +11,7 @@
 #include "AgentStatus.h"
 #include "AppQuitGuard.h"
 #include "BackgroundJobs.h"
+#include "EditorMode.h"
 #include "FileDrag.h"
 #include "FinderIntegration.h"
 #include "ImagePreview.h"
@@ -27,6 +28,37 @@
 #include "renderdump.h"
 #include "screendump.h"
 #include "selftest.h"
+
+namespace
+{
+
+// Before the event loop, which delivers what the app was launched to open:
+// the editor watches for files and folders opened with it; Konsoll sets its
+// icon, installs its Finder Services and offers the editor in Open With.
+void installOpenHandlers(bool editor)
+{
+    if (editor) {
+        // The editor keeps its bundle's icon in the Dock (setWindowIcon
+        // replaces it).
+        konsoll::EditorMode::shared().install();
+        return;
+    }
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/assets/konsoll.png")));
+    konsoll::FinderIntegration::shared().install();
+    konsoll::EditorMode::registerHelperApplication();
+}
+
+// Once the windows are up: the quit guard and, for Konsoll, scheduled update
+// checks (Sparkle). The editor is updated with Konsoll, whose bundle holds it.
+void finishLaunching(bool editor)
+{
+    konsoll::installQuitGuard();
+    if (!editor) {
+        konsoll::Updater::shared().start();
+    }
+}
+
+} // namespace
 
 int main(int argc, char *argv[])
 {
@@ -66,6 +98,10 @@ int main(int argc, char *argv[])
     }
     const bool renderDump = argc > 1 && std::string_view(argv[1]) == "--render-dump";
 
+    // Neovim (Konsoll): the helper bundle, or --editor.
+    konsoll::EditorMode::detect(std::span(argv, static_cast<std::size_t>(argc)));
+    const bool editor = konsoll::EditorMode::isActive();
+
     QGuiApplication app(argc, argv);
     app.setQuitOnLastWindowClosed(true);
     if (selfTest) {
@@ -74,7 +110,6 @@ int main(int argc, char *argv[])
     if (renderDump) {
         return konsoll::runRenderDump(std::span(argv, static_cast<std::size_t>(argc)));
     }
-    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/assets/konsoll.png")));
 
     QIcon::setThemeSearchPaths({QStringLiteral(":/icons")});
     QIcon::setThemeName(QStringLiteral("konsoll"));
@@ -132,9 +167,7 @@ int main(int argc, char *argv[])
             agentCommands.handle(request, reply);
         }
     );
-    // "New Konsoll Tab/Window Here" (Services) and folders opened with the
-    // app; installed before the event loop, which delivers a launch's folder.
-    konsoll::FinderIntegration::shared().install();
+    installOpenHandlers(editor);
     QQmlApplicationEngine engine;
     // The engine owns its image providers.
     engine.addImageProvider(
@@ -149,12 +182,8 @@ int main(int argc, char *argv[])
         []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection
     );
-    engine.loadFromModule("konsoll", "Main");
-    QTimer::singleShot(0, [] {
-        konsoll::installQuitGuard();
-        // Scheduled update checks (Sparkle), once the windows are up.
-        konsoll::Updater::shared().start();
-    });
+    engine.loadFromModule("konsoll", editor ? "EditorMain" : "Main");
+    QTimer::singleShot(0, [editor] { finishLaunching(editor); });
 
     const int exitCode = QGuiApplication::exec();
     // The socket server outlives main()'s locals.

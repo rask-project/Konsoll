@@ -278,6 +278,32 @@ at launch.
    `/System/Library/CoreServices/pbs -update` (or log out and back in), then
    relaunch the Finder (⌥-right-click its Dock icon ▸ *Relaunch*).
 
+### Neovim (Konsoll): Neovim as a Mac app
+
+Konsoll carries a second app, **Neovim (Konsoll)**, with its own name and
+icon in the Dock: it opens each file or folder in a window of its own running
+`nvim`, with no tabs, splits or shell, like Neovide or neovim-qt. It uses
+Konsoll's settings (font, colors, transparency).
+
+- **Open files with it**: right-click a file or folder ▸ *Open With ▸ Neovim
+  (Konsoll)*, drop them on its Dock icon, or run
+  `open -a "Neovim (Konsoll)" file.txt`. Konsoll registers it the first time
+  it runs.
+- **Make it the default editor**: *File ▸ Use as Default Editor for Text
+  Files* sets it at once, without a confirmation per type, for about a
+  hundred text types: plain text, source code in most languages, scripts,
+  configuration, JSON, YAML, TOML, Markdown, CSV, logs… (the change takes a
+  few seconds). Or use a file's *Get Info ▸ Open with ▸ Change All…*.
+- **Closing** a window (or quitting) asks nvim to quit with `:confirm qa`, so
+  it asks about unsaved buffers; closing again within 3 seconds offers to
+  end it.
+- `nvim` is found through your login shell's `PATH` (Homebrew's included).
+- Its icon is Konsoll's with the "N" of the [Neovim](https://neovim.io) logo
+  in place of the prompt (`tools/make-editor-icon.swift` draws it).
+- Debug builds offer neither the editor in Open With nor Konsoll's Finder
+  Services (`-DKONSOLL_FINDER_INTEGRATION=ON` turns them on), so they don't
+  show up twice next to the installed app.
+
 ### Selecting, copying and searching
 
 - **Select** by dragging; double-click selects a word, triple-click a line,
