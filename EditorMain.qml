@@ -14,7 +14,7 @@ Item {
     property var windows: []
     property EditorWindow lastActiveWindow: null
 
-    // The size of the last window closed, for the next one opened.
+    // The geometry of the last window closed, for the next one opened.
     Settings {
         id: editorGeometry
 
@@ -22,6 +22,11 @@ Item {
 
         property int width: 900
         property int height: 700
+        property int x: 0
+        property int y: 0
+        // Set once a windowed window closed; until then x/y are meaningless
+        // and a new window opens centered.
+        property bool hasPosition: false
     }
 
     Component {
@@ -39,19 +44,28 @@ Item {
         return editor.openCommand(EditorMode.commandFor(path), EditorMode.directoryFor(path), EditorMode.titleFor(path));
     }
 
-    // A window running `command` in `directory`, cascaded from the last one.
+    // A window running `command` in `directory`: cascaded from the last open
+    // one, or back where the last closed window was (when that screen is
+    // still connected).
     function openCommand(command: string, directory: string, title: string): EditorWindow {
         const previous = editor.lastActiveWindow;
         const w = windowTemplate.createObject(editor, {
             command: command,
             directory: directory,
-            fallbackTitle: title,
-            width: editorGeometry.width,
-            height: editorGeometry.height
+            fallbackTitle: title
         }) as EditorWindow;
+        // Sized once created: the native window is made while the component
+        // completes, and the transparent title bar then grows a size given
+        // as an initial property by its height, so each close would save a
+        // taller window than the one opened.
+        w.width = editorGeometry.width;
+        w.height = editorGeometry.height;
         if (previous && previous.visibility === Window.Windowed) {
             w.x = previous.x + 24;
             w.y = previous.y + 24;
+        } else if (editorGeometry.hasPosition && editor.positionOnScreen(editorGeometry.x, editorGeometry.y, editorGeometry.width, editorGeometry.height)) {
+            w.x = editorGeometry.x;
+            w.y = editorGeometry.y;
         }
         editor.windows = editor.windows.concat([w]);
         editor.lastActiveWindow = w;
@@ -59,6 +73,13 @@ Item {
         w.raise();
         w.requestActivate();
         return w;
+    }
+
+    // Whether a saved window rectangle still reaches a connected screen:
+    // a position parked on a monitor that went away would open the window
+    // out of sight.
+    function positionOnScreen(x: int, y: int, width: int, height: int): bool {
+        return Qt.application.screens.some(screen => x < screen.virtualX + screen.width && x + width > screen.virtualX && y < screen.virtualY + screen.height && y + height > screen.virtualY);
     }
 
     // File ▸ Open…: a window for each file or folder chosen.
@@ -74,6 +95,9 @@ Item {
         if (w.visibility === Window.Windowed) {
             editorGeometry.width = w.width;
             editorGeometry.height = w.height;
+            editorGeometry.x = w.x;
+            editorGeometry.y = w.y;
+            editorGeometry.hasPosition = true;
         }
         editor.windows = editor.windows.filter(window => window !== w);
         if (editor.lastActiveWindow === w)
