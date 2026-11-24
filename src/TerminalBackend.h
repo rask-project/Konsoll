@@ -22,6 +22,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 class QImage;
@@ -166,6 +167,11 @@ public:
     // otherwise), and Cmd+click there to sign in (false: nothing to do).
     Q_INVOKABLE QString signInHintAt(int row) const;
     Q_INVOKABLE bool signInAt(int row);
+    // Why Cmd+click on the cell did nothing (empty: nothing to say -- a
+    // local line, or a link that opened): the host's shell does not report
+    // its directory, the file is missing or still checked, the connection
+    // closed, or the file only drags out to the Finder.
+    Q_INVOKABLE QString linkProblemAt(int row, int col) const;
 
     // Resize the terminal (cols x rows), driven by the QML view.
     Q_INVOKABLE void resize(int cols, int rows);
@@ -445,15 +451,21 @@ private:
         int column{0};
     };
     std::optional<TextLink> textLinkAt(int line, int col) const;
+    // The soft-wrapped line under absolute line `line` as link text: `text`,
+    // with `offsets[row - first]` where each row starts in it; false when
+    // the pointer is past the row's text.
+    bool wrappedLinkText(int line, int col, std::u32string &text, std::vector<int> &offsets, int &first) const;
     bool atEmptyPrompt() const;
     static std::optional<QUrl>
     resolveTextLink(const TextLinkCandidate &candidate, const std::optional<QString> &directory);
+    // The host's path a remote candidate names: relative to
+    // `remoteDirectory`, cleaned, "~" as written.
+    static QString remoteCandidatePath(const TextLinkCandidate &candidate, const QString &remoteDirectory);
     // A path in output of the ssh host's shell (printed in
     // `remoteDirectory`): a konsoll-remote: link once the host said it
     // exists; asks it in the background otherwise.
     std::optional<QUrl> resolveRemoteTextLink(const TextLinkCandidate &candidate, const QString &remoteDirectory) const;
-    // Row `row` of the view shows output of the ssh host's shell (its
-    // directory known).
+    // Row `row` of the view shows output of the ssh host's shell.
     bool remoteOutputAt(int row) const;
     // Route PTY I/O to the session worker via a queued call (never touch the
     // master descriptor from this thread).

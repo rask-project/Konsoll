@@ -19,7 +19,8 @@ namespace konsoll
 // KONSOLL_REMOTE_AGENT_TOKEN as the remote command of an interactive login;
 // the bootstrap it carries unpacks the integration into a private
 // temporary directory (removed when the shell exits) and starts the login
-// shell (zsh or bash; any other starts as usual) with it. The agents get
+// shell (zsh or bash; a POSIX sh -- sh, dash, ash -- only reports its
+// directory, through $ENV; any other starts as usual) with it. The agents get
 // Konsoll's hooks for that run only: Claude Code with --settings, Codex
 // with -c hooks=..., Qwen Code through its system defaults file.
 

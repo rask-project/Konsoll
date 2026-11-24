@@ -1101,7 +1101,8 @@ void checkTextLinks(int &failures)
         6,
         cd + "\x1b]1337;RemoteHost=" + token + ";me@host\a" + "docs/RELEASE.md https://example.com\r\n" +
             "\x1b]1337;RemoteHost=" + token + ";\a" + "docs/RELEASE.md\r\n" + "\x1b]7;file://elsewhere/tmp\a" +
-            "docs/RELEASE.md " + root.toUtf8() + "/docs/RELEASE.md\r\n"
+            "docs/RELEASE.md " + root.toUtf8() + "/docs/RELEASE.md\r\n" + "\x1b]1337;RemoteHost=" + token +
+            ";me@host2\a" + "closed.txt\r\n" + "\x1b]1337;RemoteHost=" + token + ";\a"
     );
     check(
         failures,
@@ -1113,6 +1114,39 @@ void checkTextLinks(int &failures)
         failures,
         remote.linkAt(2, 2).isEmpty() && remote.linkAt(2, 20).isEmpty(),
         "text links: no paths after an OSC 7 from another host"
+    );
+    // Cmd+click where nothing links over ssh: the reason is said; a local
+    // line stays quiet.
+    TerminalBackend remoteUnknown;
+    const QByteArray unknownToken = remoteUnknown.sessionToken().toUtf8();
+    remoteUnknown.startReplay(40, 2, "\x1b]1337;RemoteHost=" + unknownToken + ";me@host\a" + "notes.txt\r\n");
+    check(
+        failures,
+        remoteUnknown.linkProblemAt(0, 1) ==
+            QStringLiteral("The shell on me@host is not reporting its directory, so its files do not link."),
+        "link problems: a remote line without a directory says why"
+    );
+    // The bootstrap says which shell it could not integrate: the reason names it.
+    TerminalBackend remoteShell;
+    const QByteArray shellToken = remoteShell.sessionToken().toUtf8();
+    const QByteArray shellRemoteToken = konsoll::remoteAgentToken(QString::fromUtf8(shellToken)).toUtf8();
+    remoteShell.startReplay(
+        40,
+        2,
+        "\x1b]1337;RemoteHost=" + shellToken + ";me@host\a" + "\x1b]1337;KonsollRemoteShell=" + shellRemoteToken +
+            ";fish\a" + "notes.txt\r\n"
+    );
+    check(
+        failures,
+        remoteShell.linkProblemAt(0, 1) == QStringLiteral("The shell on me@host is fish; Konsoll links files over ssh "
+                                                          "only when the host's shell is zsh, bash or sh."),
+        "link problems: a remote shell Konsoll does not integrate is named"
+    );
+    check(
+        failures,
+        remote.linkProblemAt(3, 1) == QStringLiteral("The ssh connection closed, so its files no longer link.") &&
+            remote.linkProblemAt(1, 2).isEmpty(),
+        "link problems: after the connection closed its lines say so, local lines stay quiet"
     );
 
     // OSC 8 file links (rg --hyperlink-format=default, ls --hyperlink) carry
@@ -1331,6 +1365,31 @@ void checkRemoteDirectory(int &failures)
         "ssh transfers: the remote directory by line, checked by token"
     );
 
+    {
+        konsoll::Terminal shellTerminal(4, 40, QString::fromLatin1(token));
+        shellTerminal.setRemoteDirectoryToken(QString::fromLatin1(remoteToken));
+        shellTerminal.write("\x1b]1337;RemoteHost=" + token + ";me@box\a");
+        shellTerminal.write("\x1b]1337;KonsollRemoteShell=" + remoteToken + ";fish\a");
+        check(
+            failures,
+            shellTerminal.remoteShell() == QStringLiteral("fish"),
+            "ssh transfers: the host's shell the bootstrap could not integrate"
+        );
+        shellTerminal.write("\x1b]1337;KonsollRemoteShell=forged;bash\a");
+        shellTerminal.write("\x1b]1337;KonsollRemoteShell=" + remoteToken + ";bad name\a");
+        check(
+            failures,
+            shellTerminal.remoteShell() == QStringLiteral("fish"),
+            "ssh transfers: a forged or invalid host shell is ignored"
+        );
+        shellTerminal.write("\x1b]1337;RemoteHost=" + token + ";\a");
+        check(
+            failures,
+            shellTerminal.remoteShell().isEmpty(),
+            "ssh transfers: the host's shell clears when the host changes"
+        );
+    }
+
     const auto arguments = [](std::initializer_list<const char *> words) {
         QByteArray joined;
         std::ranges::for_each(words, [&joined](const char *word) { joined += QByteArray(word) + '\0'; });
@@ -1524,6 +1583,20 @@ void checkSshTransfers(int &failures)
         notesWritten && linked && QUrl(targetAt(0)).path() == remoteFolder && QUrl(targetAt(1)).path() == remoteNotes &&
             targetAt(2).isEmpty(),
         "ssh transfers: names in the remote shell's output link to the host's files"
+    );
+
+    // Cmd+click on those lines: a linked name says it drags out, the missing
+    // one says it is missing.
+    const bool goneSaid = waitFor(
+        "ssh transfers: gone said",
+        [&pane]() { return pane.linkProblemAt(2, 1).startsWith(QStringLiteral("No file ")); },
+        20000
+    );
+    check(
+        failures,
+        goneSaid && pane.linkProblemAt(0, 1).startsWith(QStringLiteral("Drag")) &&
+            pane.linkProblemAt(1, 1).startsWith(QStringLiteral("Drag")),
+        "ssh transfers: Cmd+click says what a remote name is (a drag, a missing file)"
     );
 }
 
@@ -1841,6 +1914,86 @@ void checkSshBootstrap(int &failures, TerminalManager &manager, const QString &s
             10000
         ),
         "ssh bootstrap: no remote directory once back"
+    );
+    manager.closeSession(shell);
+}
+
+// The bootstrap with a POSIX sh as the host's shell: it starts with the
+// user's $ENV still read, its prompt reports the directory (following cd)
+// without showing anything, and the temporary directory goes with it.
+void checkSshBootstrapPosix(int &failures, TerminalManager &manager, const QString &shellPath)
+{
+    const QTemporaryDir dir;
+    QFile command(dir.filePath(QStringLiteral("remote-command")));
+    QFile userEnv(dir.filePath(QStringLiteral("shrc")));
+    const bool written = command.open(QIODevice::WriteOnly) && command.write(konsoll::sshRemoteCommand()) > 0 &&
+                         userEnv.open(QIODevice::WriteOnly) && userEnv.write("KONSOLL_SELFTEST_ENV=READ\n") > 0;
+    command.close();
+    userEnv.close();
+
+    manager.addWorkspace();
+    auto *shell = activeSession(manager);
+    waitFor("ssh bootstrap sh: tab shell", [shell]() { return !shell->bufferText().isEmpty(); }, 15000);
+    shell->writeText(
+        QStringLiteral(
+            "(printf '\\033]1337;RemoteHost=%s;me@box\\007' \"$KONSOLL_REMOTE_HOST_TOKEN\"; export SHELL=%1 ENV=%3; "
+            "eval \"$(cat %2) $KONSOLL_REMOTE_AGENT_TOKEN\"); echo BACK_HOME\n"
+        )
+            .arg(shellPath, command.fileName(), userEnv.fileName())
+    );
+    shell->writeText(
+        QStringLiteral("echo \"REMOTE[$KONSOLL_REMOTE]DIR[$KONSOLL_REMOTE_DIR]ENV[$KONSOLL_SELFTEST_ENV]\"\n")
+    );
+    QString remoteDir;
+    const bool started = waitFor(
+        "ssh bootstrap sh: remote shell",
+        [shell, &remoteDir]() {
+            static const QRegularExpression kDir(QStringLiteral("REMOTE\\[1\\]DIR\\[(/[^\\]]+)\\]ENV\\[READ\\]"));
+            const QRegularExpressionMatch match = kDir.match(shell->bufferText());
+            remoteDir = match.captured(1);
+            return match.hasMatch();
+        },
+        20000
+    );
+    check(
+        failures,
+        written && started && QFileInfo(remoteDir).isDir(),
+        "ssh bootstrap sh: the shell set up, the user's $ENV read"
+    );
+    shell->writeText(QStringLiteral("cd /tmp\n"));
+    const bool moved = started && waitFor(
+                                      "ssh bootstrap sh: remote directory",
+                                      [shell]() { return shell->remoteDirectory() == QStringLiteral("/tmp"); },
+                                      10000
+                                  );
+    if (!moved) {
+        std::println(
+            "  ssh bootstrap ({}): directory [{}]\n{}",
+            shellPath.toStdString(),
+            shell->remoteDirectory().toStdString(),
+            shell->bufferText().right(800).toStdString()
+        );
+    }
+    check(failures, moved, "ssh bootstrap sh: the prompt reports the directory");
+    const QString text = shell->bufferText();
+    check(
+        failures,
+        moved && !text.contains(QStringLiteral("KonsollRemoteDir")) && !text.contains(QStringLiteral("\\[")) &&
+            !text.contains(QStringLiteral("{PWD}")),
+        "ssh bootstrap sh: the report shows nothing in the prompt"
+    );
+    shell->writeText(QStringLiteral("exit\n"));
+    check(
+        failures,
+        waitFor(
+            "ssh bootstrap sh: back",
+            [shell, &remoteDir]() {
+                return shell->bufferText().contains(QStringLiteral("BACK_HOME")) && !remoteDir.isEmpty() &&
+                       !QFileInfo::exists(remoteDir);
+            },
+            15000
+        ),
+        "ssh bootstrap sh: the temporary directory goes with the shell"
     );
     manager.closeSession(shell);
 }
@@ -2315,6 +2468,8 @@ int runSelfTest()
     checkSshLiveLinks(failures, manager, QStringLiteral("/bin/bash"));
     checkSshBootstrap(failures, manager, QStringLiteral("/bin/zsh"));
     checkSshBootstrap(failures, manager, QStringLiteral("/bin/bash"));
+    checkSshBootstrapPosix(failures, manager, QStringLiteral("/bin/dash"));
+    checkSshBootstrapPosix(failures, manager, QStringLiteral("/bin/sh"));
 
     // 6. App shutdown while a shell is running: no orphaned process group.
     manager.addWorkspace();

@@ -528,7 +528,9 @@ connected, it also reports what it is doing, and the tab shows it:
   runs them once you trust them with `/hooks`; opencode is only listed).
   Logins with a remote command, `-N`, `-W`, a `RemoteCommand` in
   `ssh_config` or a host excluded in Settings ▸ AI Agents run ssh as usual;
-  so does `command ssh`. The remote shell must be zsh or bash. The login
+  so does `command ssh`. The remote shell must be zsh or bash for the
+  agents and command blocks; with a POSIX `sh` (dash, BusyBox ash) only
+  the file links and transfers come along. The login
   still shows the host's message of the day and last login.
 
 <p align="center">

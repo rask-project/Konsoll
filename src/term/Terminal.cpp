@@ -1645,6 +1645,10 @@ void Terminal::handleOsc(const QByteArray &body)
         handleOscRemoteDirectory(body);
         return;
     }
+    if (body.startsWith("1337;KonsollRemoteShell=")) {
+        handleOscRemoteShell(body);
+        return;
+    }
     if (body.startsWith("1337;KonsollAgent=")) {
         // Checked by TerminalBackend, which knows the token.
         m_requests.push_back(TerminalRequest{
@@ -1834,8 +1838,10 @@ void Terminal::handleOscRemoteHost(const QByteArray &body)
     const QString host = QString::fromUtf8(payload.mid(separator + 1));
     if (host != m_remoteHost) {
         m_remoteHost = host;
-        // Another connection (or none): its shell reports its own directory.
+        // Another connection (or none): its bootstrap reports its own
+        // shell, and its shell reports its own directory.
         m_remoteDirectory.clear();
+        m_remoteShell.clear();
         m_extraFlags |= RemoteHostDirty;
         markDirectory();
     }
@@ -1861,6 +1867,31 @@ void Terminal::handleOscRemoteDirectory(const QByteArray &body)
     if (path != m_remoteDirectory) {
         m_remoteDirectory = path;
         markDirectory();
+    }
+}
+
+// OSC 1337 ; KonsollRemoteShell=<token>;<name>: the host's login shell,
+// reported by the ssh bootstrap when it is not zsh, bash or a POSIX sh
+// (the shells Konsoll integrates over ssh) and its files therefore do not
+// link. The token keeps printed text from faking it.
+void Terminal::handleOscRemoteShell(const QByteArray &body)
+{
+    constexpr qsizetype kMaxName = 64;
+    const QByteArray payload = body.mid(sizeof("1337;KonsollRemoteShell=") - 1);
+    const qsizetype separator = payload.indexOf(';');
+    if (m_remoteDirectoryToken.isEmpty() || separator < 0 ||
+        payload.first(separator) != m_remoteDirectoryToken.toUtf8()) {
+        return;
+    }
+    const QByteArray name = payload.mid(separator + 1);
+    if (name.isEmpty() || name.size() > kMaxName || !std::ranges::all_of(name, [](unsigned char c) {
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' ||
+                   c == '_';
+        })) {
+        return;
+    }
+    if (name != m_remoteShell.toUtf8()) {
+        m_remoteShell = QString::fromUtf8(name);
     }
 }
 

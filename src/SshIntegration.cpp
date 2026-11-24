@@ -52,9 +52,10 @@ std::expected<void, QString> writeFile(const QString &path, const QByteArray &co
 QByteArray sshBootstrapScript()
 {
     const auto zshFiles = zshStartupFiles();
-    std::array<std::pair<QString, QByteArray>, 11> files{{
+    std::array<std::pair<QString, QByteArray>, 12> files{{
         {QStringLiteral("konsoll.zsh"), resource(QStringLiteral(":/shell-integration/konsoll.zsh"))},
         {QStringLiteral("konsoll.bash"), resource(QStringLiteral(":/shell-integration/konsoll.bash"))},
+        {QStringLiteral("konsoll.sh"), resource(QStringLiteral(":/shell-integration/konsoll.sh"))},
         {QStringLiteral("konsoll-remote.sh"), resource(QStringLiteral(":/shell-integration/konsoll-remote.sh"))},
         {QStringLiteral("konsoll-agent-hook"), resource(QStringLiteral(":/shell-integration/konsoll-remote-hook"))},
         {QStringLiteral("claude-settings.json"),
@@ -93,10 +94,13 @@ QByteArray sshBootstrapScript()
                "_konsoll_login_messages\n"
                "_konsoll_bootstrap() {\n"
                "    [ -n \"$1\" ] || return 1\n"
-               "    _konsoll_shell=${SHELL:-}\n"
+               "    _konsoll_shell=${SHELL:-/bin/sh}\n"
                "    case ${_konsoll_shell##*/} in\n"
-               "    zsh | bash) ;;\n"
-               "    *) return 1 ;;\n"
+               "    zsh | bash | sh | dash | ash) ;;\n"
+               "    *)\n"
+               "        # Why its files will not link: Konsoll reads it from the tty.\n"
+               "        printf '\\033]1337;KonsollRemoteShell=%s;%s\\007' \"$1\" \"${_konsoll_shell##*/}\"\n"
+               "        return 1 ;;\n"
                "    esac\n"
                "    _konsoll_base=${XDG_RUNTIME_DIR:-}\n"
                "    if [ -z \"$_konsoll_base\" ] || [ ! -d \"$_konsoll_base\" ] || [ ! -w \"$_konsoll_base\" ]; then\n"
@@ -126,15 +130,22 @@ QByteArray sshBootstrapScript()
                "    export KONSOLL_TTY KONSOLL_REMOTE KONSOLL_REMOTE_DIR KONSOLL_REMOTE_AGENT_TOKEN KONSOLL_AGENT_HOOK "
                "KONSOLL_SHELL_INTEGRATION\n"
                "    unset KONSOLL_SESSION_TOKEN KONSOLL_AGENT_SOCKET KONSOLL_REMOTE_HOST_TOKEN\n"
-               "    if [ \"${_konsoll_shell##*/}\" = zsh ]; then\n"
+               "    case ${_konsoll_shell##*/} in\n"
+               "    zsh)\n"
                "        KONSOLL_USER_ZDOTDIR=${KONSOLL_USER_ZDOTDIR:-${ZDOTDIR:-$HOME}}\n"
                "        ZDOTDIR=$_konsoll_dir/zsh\n"
-               "        export KONSOLL_USER_ZDOTDIR ZDOTDIR\n"
-               "    else\n"
+               "        export KONSOLL_USER_ZDOTDIR ZDOTDIR ;;\n"
+               "    bash)\n"
                "        KONSOLL_ORIGINAL_HOME=$HOME\n"
                "        HOME=$_konsoll_dir/bash-home\n"
-               "        export KONSOLL_ORIGINAL_HOME HOME\n"
-               "    fi\n"
+               "        export KONSOLL_ORIGINAL_HOME HOME ;;\n"
+               "    *)\n"
+               "        # A POSIX sh reads $ENV once its profile ran, if interactive.\n"
+               "        KONSOLL_USER_ENV=${ENV-}\n"
+               "        ENV=$_konsoll_dir/konsoll.sh\n"
+               "        KONSOLL_SHELL_INTEGRATION=$ENV\n"
+               "        export KONSOLL_USER_ENV ENV KONSOLL_SHELL_INTEGRATION ;;\n"
+               "    esac\n"
                "    exec \"$_konsoll_shell\" -l\n"
                "}\n"
                "_konsoll_bootstrap \"$@\"\n"

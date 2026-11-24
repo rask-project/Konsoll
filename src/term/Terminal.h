@@ -89,6 +89,10 @@ public:
     QString remoteDirectoryAtLine(int index) const;
     // The remote shell's current directory (empty: unknown, or local).
     QString remoteDirectory() const { return directoryIsRemote() ? m_remoteDirectory : QString{}; }
+    // The host's login shell when the bootstrap could not integrate it
+    // (OSC 1337 ; KonsollRemoteShell: not zsh, bash or a POSIX sh), so its files do not
+    // link and a Cmd+click on its output says why. Empty otherwise.
+    QString remoteShell() const { return m_remoteShell; }
     // The token a remote shell's KonsollRemoteDir report must carry
     // (remoteAgentToken of the session's token; empty: none accepted).
     void setRemoteDirectoryToken(const QString &token) { m_remoteDirectoryToken = token; }
@@ -339,6 +343,7 @@ private:
     void handleOsc(const QByteArray &body);
     void handleOscRemoteHost(const QByteArray &body);
     void handleOscRemoteDirectory(const QByteArray &body);
+    void handleOscRemoteShell(const QByteArray &body);
     void handleOscClipboard(const QByteArray &body);
     void handleOscCurrentDirectory(const QByteArray &body);
     void setCurrentDirectory(const QString &path);
@@ -449,6 +454,9 @@ private:
     // KonsollRemoteDir: the token it must carry and the directory it gave.
     QString m_remoteDirectoryToken;
     QString m_remoteDirectory;
+    // KonsollRemoteShell: the host's login shell when the bootstrap could
+    // not integrate it (not zsh, bash or a POSIX sh); its files do not link.
+    QString m_remoteShell;
     QString m_clipboardText;
     // SGR style (and OSC 8 link) applied to subsequent characters; `ch` unused.
     Cell m_pen;

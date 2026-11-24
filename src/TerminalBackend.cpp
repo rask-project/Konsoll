@@ -810,14 +810,15 @@ char32_t linkChar(const Cell &cell)
 }
 } // namespace
 
-// A URL or an existing local file named in the text under absolute line
-// `line`, column `col`, on the soft-wrapped line it belongs to. Relative
-// paths resolve against the directory the line was printed in; output of a
-// remote shell links URLs only.
-std::optional<TerminalBackend::TextLink> TerminalBackend::textLinkAt(int line, int col) const
+// The soft-wrapped line under absolute line `line` as link text (see the
+// header): one code point per cell, `offsets` where each row starts in it.
+bool TerminalBackend::wrappedLinkText(int line, int col, std::u32string &text, std::vector<int> &offsets, int &first)
+    const
 {
     const Screen &screen = m_terminal->screen();
-    int first = line;
+    text.clear();
+    offsets.clear();
+    first = line;
     while (first > 0 && line - first < kMaxWrappedRows && screen.isWrappedContinuation(first)) {
         --first;
     }
@@ -825,8 +826,6 @@ std::optional<TerminalBackend::TextLink> TerminalBackend::textLinkAt(int line, i
     while (last + 1 < screen.totalLines() && last - line < kMaxWrappedRows && screen.isWrappedContinuation(last + 1)) {
         ++last;
     }
-    std::u32string text;
-    std::vector<int> offsets; // where each row starts in `text`
     Line cells;
     std::ranges::for_each(std::views::iota(first, last + 1), [&](int index) {
         screen.copyLine(index, cells);
@@ -836,9 +835,22 @@ std::optional<TerminalBackend::TextLink> TerminalBackend::textLinkAt(int line, i
     const int rowStart = offsets[static_cast<std::size_t>(line - first)];
     const int rowEnd =
         line < last ? offsets[static_cast<std::size_t>(line - first) + 1] : static_cast<int>(text.size());
-    if (rowStart + col >= rowEnd) {
+    return rowStart + col < rowEnd;
+}
+
+// A URL or an existing local file named in the text under absolute line
+// `line`, column `col`, on the soft-wrapped line it belongs to. Relative
+// paths resolve against the directory the line was printed in; output of a
+// remote shell links URLs only.
+std::optional<TerminalBackend::TextLink> TerminalBackend::textLinkAt(int line, int col) const
+{
+    std::u32string text;
+    std::vector<int> offsets; // where each row starts in `text`
+    int first = 0;
+    if (!wrappedLinkText(line, col, text, offsets, first)) {
         return std::nullopt;
     }
+    const int rowStart = offsets[static_cast<std::size_t>(line - first)];
 
     const std::optional<QString> directory = m_terminal->directoryAtLine(line);
     // Output of the ssh host's shell names the host's files.
@@ -917,17 +929,22 @@ const QString &remoteLinkScheme()
 }
 } // namespace
 
+QString TerminalBackend::remoteCandidatePath(const TextLinkCandidate &candidate, const QString &remoteDirectory)
+{
+    QString path = candidate.text;
+    if (path != u"~" && !path.startsWith(QStringLiteral("~/")) && !path.startsWith(u'/')) {
+        path = remoteDirectory + u'/' + path;
+    }
+    return QDir::cleanPath(path);
+}
+
 std::optional<QUrl>
 TerminalBackend::resolveRemoteTextLink(const TextLinkCandidate &candidate, const QString &remoteDirectory) const
 {
     if (!m_ssh) {
         return std::nullopt;
     }
-    QString path = candidate.text;
-    if (path != u"~" && !path.startsWith(QStringLiteral("~/")) && !path.startsWith(u'/')) {
-        path = remoteDirectory + u'/' + path;
-    }
-    path = QDir::cleanPath(path);
+    const QString path = remoteCandidatePath(candidate, remoteDirectory);
     // Checked again when the last answer is old (remoteLinksChanged
     // follows); that answer stands meanwhile.
     m_ssh->probe(path);
@@ -949,8 +966,7 @@ bool TerminalBackend::remoteOutputAt(int row) const
     if (!m_terminal || row < 0 || row >= m_rows) {
         return false;
     }
-    const int line = visibleStart() + row;
-    return !m_terminal->directoryAtLine(line) && !m_terminal->remoteDirectoryAtLine(line).isEmpty();
+    return !m_terminal->directoryAtLine(visibleStart() + row);
 }
 
 QString TerminalBackend::signInHintAt(int row) const
@@ -968,6 +984,70 @@ bool TerminalBackend::signInAt(int row)
     }
     m_ssh->signIn();
     return true;
+}
+
+QString TerminalBackend::linkProblemAt(int row, int col) const
+{
+    if (!m_terminal || row < 0 || row >= m_rows || col < 0 || col >= m_cols) {
+        return {};
+    }
+    const QVariantMap link = linkAt(row, col);
+    if (!link.isEmpty()) {
+        const QUrl url(link.value(QStringLiteral("target")).toString());
+        if (url.scheme() == remoteLinkScheme()) {
+            // It links, but a file on the host is not opened: it drags out.
+            return tr("Drag %1 to the Finder to download it from %2.")
+                .arg(QFileInfo(url.path()).fileName(), m_ssh ? m_ssh->target().destination : m_remoteHost);
+        }
+        if (url.isLocalFile()) {
+            return {}; // opened by the default app or the terminal editor
+        }
+        return tr("Could not open %1.").arg(url.toString());
+    }
+    const int line = visibleStart() + row;
+    if (m_terminal->directoryAtLine(line)) {
+        return {}; // a local line: plain text is not a link
+    }
+    if (!m_ssh) {
+        return m_remoteHost.isEmpty()
+                   ? tr("The ssh connection closed, so its files no longer link.")
+                   : tr("Konsoll cannot reuse this ssh command to check %1's files.").arg(m_remoteHost);
+    }
+    const QString destination = m_ssh->target().destination;
+    const QString remoteDirectory = m_terminal->remoteDirectoryAtLine(line);
+    if (remoteDirectory.isEmpty()) {
+        // Its files cannot be checked: the host's shell is not one Konsoll
+        // integrates over ssh (remoteShell is set only in that case), the
+        // shell did not report where it is, or the host wants a password.
+        if (const QString shell = m_terminal->remoteShell(); !shell.isEmpty()) {
+            return tr("The shell on %1 is %2; Konsoll links files over ssh only when the host's shell is zsh, bash or "
+                      "sh.")
+                .arg(destination, shell);
+        }
+        return m_ssh->needsSignIn()
+                   ? signInHintAt(row)
+                   : tr("The shell on %1 is not reporting its directory, so its files do not link.").arg(destination);
+    }
+    std::u32string text;
+    std::vector<int> offsets;
+    int first = 0;
+    if (!wrappedLinkText(line, col, text, offsets, first)) {
+        return {};
+    }
+    const int rowStart = offsets[static_cast<std::size_t>(line - first)];
+    const std::vector<TextLinkCandidate> candidates = textLinkCandidates(text, rowStart + col);
+    if (candidates.empty()) {
+        return tr("No file path or link under the pointer.");
+    }
+    const QString path = remoteCandidatePath(candidates.front(), remoteDirectory);
+    const std::optional<RemoteFileKind> kind = m_ssh->cachedKind(path);
+    if (!kind) {
+        return tr("Checking %1 on %2…").arg(path, destination);
+    }
+    if (*kind == RemoteFileKind::Missing) {
+        return tr("No file %1 on %2.").arg(path, destination);
+    }
+    return path == u"~" ? tr("The home folder of %1 does not link; name a file in it.").arg(destination) : QString{};
 }
 
 bool TerminalBackend::dragLinkAt(int row, int col, QQuickItem *item)

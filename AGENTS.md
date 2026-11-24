@@ -80,7 +80,10 @@ Guidance for AI agents working in this repository.
   `KONSOLL_REMOTE_AGENT_TOKEN` (`remoteAgentToken`, derived from the
   session's: the host never gets the socket's token). The bootstrap unpacks
   the integration into a private temporary directory (pid-owned, removed at
-  exit) and execs the login shell with `KONSOLL_REMOTE`; there
+  exit) and execs the login shell with `KONSOLL_REMOTE` (a POSIX sh -- sh,
+  dash, ash -- gets only `konsoll.sh` as `$ENV`: its PS1 carries the
+  KonsollRemoteDir report, `${PWD}` expanded at each prompt; other shells
+  report `KonsollRemoteShell` and start as usual); there
   `konsoll-remote.sh` wraps claude/codex/qwen/opencode to pass Konsoll's
   hooks for that run (Claude `--settings`, Codex `-c hooks=`
   `codexHooksToml()`, Qwen `QWEN_CODE_SYSTEM_DEFAULTS_PATH`) and the remote

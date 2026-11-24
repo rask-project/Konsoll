@@ -260,6 +260,7 @@ qt_add_resources(konsoll "/"
         shell-integration/konsoll-agent-hook
         shell-integration/konsoll-ssh.sh
         shell-integration/konsoll-remote.sh
+        shell-integration/konsoll.sh
         shell-integration/konsoll-remote-hook
         integrations/opencode/konsoll.js
 )

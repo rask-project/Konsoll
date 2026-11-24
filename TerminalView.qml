@@ -586,6 +586,12 @@ Item {
                     mouse.accepted = true;
                     return;
                 }
+                // Cmd+click where nothing links: say why (over ssh).
+                const problem = view.session.linkProblemAt(cell[1], cell[0]);
+                if (problem.length > 0) {
+                    view.transferNotice = problem;
+                    transferNoticeTimer.restart();
+                }
             }
             if (mouse.button === Qt.MiddleButton) {
                 selectionArea._middlePaste = true;
@@ -680,7 +686,15 @@ Item {
             }
             if (selectionArea._linkPress) {
                 selectionArea._linkPress = false;
-                view.session.openLinkAt(selectionArea._pressRow, selectionArea._pressCol);
+                // A file on the ssh host is not opened (it drags out): say
+                // so, with the reason for any other no-op.
+                if (!view.session.openLinkAt(selectionArea._pressRow, selectionArea._pressCol)) {
+                    const problem = view.session.linkProblemAt(selectionArea._pressRow, selectionArea._pressCol);
+                    if (problem.length > 0) {
+                        view.transferNotice = problem;
+                        transferNoticeTimer.restart();
+                    }
+                }
                 mouse.accepted = true;
                 return;
             }
