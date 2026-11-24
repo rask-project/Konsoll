@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Features
-description: Tabs, split panes, windows, macOS keys, command blocks, Background Commands, a modern VT emulator and see-through glass.
+description: Tabs, split panes, windows, clickable file paths, files over SSH, Neovim as a Mac app, command blocks, Background Commands, a modern VT emulator and see-through glass.
 permalink: /features/
 ---
 {%- assign icons = '/assets/icons/' | relative_url -%}
@@ -21,6 +21,9 @@ permalink: /features/
         <li><a href="#windows"><img src="{{ icons }}background-sessions.svg" alt="">Windows</a></li>
         <li><a href="#keyboard"><img src="{{ icons }}keyboard.svg" alt="">Keyboard</a></li>
         <li><a href="#selection"><img src="{{ icons }}background-functions.svg" alt="">Selection &amp; Search</a></li>
+        <li><a href="#links"><img src="{{ icons }}kind-search.svg" alt="">File Links</a></li>
+        <li><a href="#ssh-files"><img src="{{ icons }}kind-remote.svg" alt="">Files over SSH</a></li>
+        <li><a href="#neovim"><img src="{{ icons }}kind-editor.svg" alt="">Neovim (Konsoll)</a></li>
         <li><a href="#background"><img src="{{ icons }}background-running.svg" alt="">Background Commands</a></li>
         <li><a href="{{ '/agents/' | relative_url }}"><img src="{{ icons }}agents.svg" alt="">AI Agents</a></li>
         <li><a href="#emulation"><img src="{{ icons }}background-saved.svg" alt="">Emulation</a></li>
@@ -58,6 +61,10 @@ permalink: /features/
         <header><img src="{{ icons }}background-sessions.svg" alt=""><h2>Windows</h2></header>
         <p>Open as many windows as you need with <kbd>⌘N</kbd>; each is listed in the Window menu. Press and hold a tab and drag it out of the strip: drop it on another window to join its tabs, or anywhere else to give it a window of its own.</p>
         <p>The last active window's size and position come back on the next launch.</p>
+        <ul>
+          <li><strong>Open Konsoll at a folder from the Finder:</strong> right-click a folder ▸ <strong>New Konsoll Tab Here</strong> or <strong>New Konsoll Window Here</strong>, drop a folder on the Dock icon, or run <code>open -a Konsoll ~/some/folder</code>.</li>
+          <li><strong>New Tab</strong> and <strong>New Window</strong> are in the Dock icon's menu too.</li>
+        </ul>
         {% include shot.html name="tab-to-window.gif" w=1000 h=481 alt="Dragging a tab out of the strip into a new window, then into another window" %}
       </section>
 
@@ -81,7 +88,8 @@ permalink: /features/
           <div class="form-row"><span><kbd>⇧⌘B</kbd></span><span>Background Commands</span></div>
           <div class="form-row"><span><kbd>⇧⌘A</kbd></span><span>AI Agents in every window</span></div>
           <div class="form-row"><span><kbd>⌃L</kbd> / <kbd>⌃K</kbd></span><span>Clear the screen / the scrollback</span></div>
-          <div class="form-row"><span><kbd>⌘</kbd>-click</span><span>Open a link</span></div>
+          <div class="form-row"><span><kbd>⌘</kbd>-click</span><span>Open a link or a file path</span></div>
+          <div class="form-row"><span><kbd>⌥</kbd>-click</span><span><code>cd</code> into a folder in the output</span></div>
           <div class="form-row"><span><kbd>⌘,</kbd></span><span>Settings</span></div>
         </div>
       </section>
@@ -92,10 +100,51 @@ permalink: /features/
           <li><strong>Command blocks.</strong> Shell integration loads by itself for zsh, bash and fish — it never edits your startup files. Click a command or a line of its output to highlight the whole block; <kbd>⌘C</kbd> copies it.</li>
           <li><strong>Find</strong> with <kbd>⌘F</kbd> across the whole scrollback, literal or with regular expressions.</li>
           <li><strong>Save</strong> the selection or the whole buffer as a UTF-8 text file.</li>
-          <li><strong>Paste an image or drop files</strong> into an ssh session to upload them and insert their remote path.</li>
         </ul>
         {% include shot.html name="command-block.png" w=1600 h=1019 alt="A command and its output highlighted as one block after a click" %}
         {% include shot.html name="search.png" w=1600 h=1019 alt="The find bar searching the scrollback for zip, on match 4 of 20" %}
+      </section>
+
+      <section class="settings-section" id="links">
+        <header><img src="{{ icons }}kind-search.svg" alt=""><h2>File Links</h2></header>
+        <p>Hold <kbd>⌘</kbd> over the output: URLs and the paths of files that exist are underlined, and a click opens them. Nothing is scanned as output arrives; the line under the pointer is read when you ask.</p>
+        <div class="form-group">
+          <div class="form-row"><span><kbd>⌘</kbd>-click a path</span><span>Open it: names from <code>ls</code>, <code>find</code>, <code>git status</code>, <code>git diff</code>, errors</span></div>
+          <div class="form-row"><span><code>file:42:7</code></span><span>Your editor at that line and column</span></div>
+          <div class="form-row"><span><kbd>⌘</kbd> on an image</span><span>A QuickLook preview of an image, PDF or video</span></div>
+          <div class="form-row"><span><kbd>⌥</kbd>-click a folder</span><span><code>cd</code> into it, at an empty prompt</span></div>
+          <div class="form-row"><span><kbd>⌘</kbd>-drag a path</span><span>Drag the file to the Finder or another app</span></div>
+        </div>
+        <ul>
+          <li><strong>Relative paths</strong> open from the folder the command ran in, even after you <code>cd</code> elsewhere.</li>
+          <li><strong>Your editor:</strong> Settings ▸ Terminal ▸ <strong>Open text files with</strong> takes a command such as <code>code -g {file}:{line}:{column}</code>, or a terminal editor like <code>nvim +{line} {file}</code>, which opens in a new tab.</li>
+          <li><strong>Safe by design:</strong> a link never runs anything. Apps and installers are revealed in the Finder, scripts open as text, and network volumes are never touched.</li>
+        </ul>
+        {% include shot.html name="file-links.gif" w=900 h=458 alt="Holding Command over paths in git status and find output underlines them, an image path shows a preview, and Option underlines a folder to cd into" %}
+      </section>
+
+      <section class="settings-section" id="ssh-files">
+        <header><img src="{{ icons }}kind-remote.svg" alt=""><h2>Files over SSH</h2></header>
+        <p>Copy files to and from the host you are logged into without leaving the terminal or retyping the connection.</p>
+        <ul>
+          <li><strong>Upload:</strong> drop files or folders from the Finder on an ssh session; they land in the remote shell's current folder. Pasting an image uploads it and types its remote path, for an agent running there.</li>
+          <li><strong>Download:</strong> <kbd>⌘</kbd>-drag a file or folder named in the remote output to the Finder.</li>
+          <li><strong>One sign-in:</strong> transfers use a connection of Konsoll's own per session, opened the way you typed <code>ssh</code> (aliases, <code>-J</code>, <code>-i</code>, <code>-o</code>). A password, passphrase or new host key is asked in a native dialog and never stored.</li>
+          <li><strong>Nothing to install:</strong> zsh, bash or a plain <code>sh</code> (dash, BusyBox ash) on the host is enough. When a <kbd>⌘</kbd>-click opens nothing, Konsoll tells you why.</li>
+        </ul>
+      </section>
+
+      <section class="settings-section" id="neovim">
+        <header><img src="{{ icons }}kind-editor.svg" alt=""><h2>Neovim (Konsoll)</h2></header>
+        <p><img class="inline-app-icon" src="{{ '/assets/screenshots/neovim-konsoll-icon.png' | relative_url }}" alt="The Neovim (Konsoll) icon" width="72" height="72">Konsoll carries a second app: <strong>Neovim (Konsoll)</strong>, with its own name and icon in the Dock. It opens each file or folder in a window of its own running <code>nvim</code> — no tabs, splits or shell, like Neovide or neovim-qt — with Konsoll's font, colors and glass. It comes inside Konsoll and updates with it.</p>
+        <div class="form-group">
+          <div class="form-row"><span>Open With</span><span>Right-click a file ▸ Open With ▸ Neovim (Konsoll), or drop it on the Dock icon</span></div>
+          <div class="form-row"><span>Folders</span><span>Right-click a folder ▸ Open in Neovim (Konsoll)</span></div>
+          <div class="form-row"><span>Terminal</span><span><code>open -a "Neovim (Konsoll)" file.txt</code></span></div>
+          <div class="form-row"><span>Default editor</span><span>File ▸ Use as Default Editor for Text Files: about a hundred types at once, no prompt per type</span></div>
+        </div>
+        <p>Closing a window asks nvim to quit with <code>:confirm qa</code>, so unsaved buffers are never lost. Windows open where the last one closed, and <code>nvim</code> is found through your login shell's <code>PATH</code>, Homebrew included.</p>
+        {% include shot.html name="neovim-konsoll.png" w=1600 h=1031 alt="A Neovim (Konsoll) window editing src/math.js, with its own title bar and no tabs" %}
       </section>
 
       <section class="settings-section" id="background">
@@ -134,6 +183,7 @@ permalink: /features/
           <div class="form-row"><span>Cursor</span><span>Block, underline, bar or hollow block; blinking</span></div>
           <div class="form-row"><span>Window</span><span>Background opacity and blur</span></div>
           <div class="form-row"><span>Scrollback</span><span>Unlimited, or a line limit</span></div>
+          <div class="form-row"><span>Open text files with</span><span>Your editor for <kbd>⌘</kbd>-clicked files</span></div>
         </div>
         {% include shot.html name="overview.png" w=1600 h=1019 alt="A Konsoll window with three tabs and a workspace split into panes over the desktop" %}
       </section>

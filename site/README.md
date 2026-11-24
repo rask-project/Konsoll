@@ -13,7 +13,8 @@ on every push to `main` that touches it.
   `.dmg` through the GitHub API; Copy buttons; the Features sidebar).
 - Screenshots, icons and the app icon are **not** kept here:
   `tools/site-assets.sh` copies `docs/images`, `resources/icons/konsoll/svg`
-  and `assets/konsoll.png` into `assets/` (ignored by git) before a build.
+  and the app icon (`docs/images/app-icon.png`) into `assets/` (ignored by git)
+  before a build.
 
 ## Preview
 

@@ -7,7 +7,7 @@ body_class: home
   <img class="hero-icon" src="{{ '/assets/konsoll.png' | relative_url }}" alt="" width="128" height="128">
   <a class="badge" href="#qml"><img src="{{ '/assets/qtlogo.png' | relative_url }}" alt="" width="18" height="18">Built with QML · Qt Quick</a>
   <h1><span class="gradient-text">The terminal that feels like a Mac.</span></h1>
-  <p class="lead">Konsoll is a fast, native macOS terminal built in QML: glass tabs that tell you what runs in them, split panes you drag anywhere, commands that run without a tab, and AI agents that ask for you in a notification.</p>
+  <p class="lead">Konsoll is a fast, native macOS terminal built in QML: glass tabs that tell you what runs in them, split panes you drag anywhere, file paths you can click, commands that run without a tab, and AI agents that ask for you in a notification. Neovim comes along as a Mac app.</p>
   <div class="hero-actions">
     <a class="button" href="{{ site.releases_url }}" data-download>Download for Mac</a>
     <a class="button button-secondary" href="{{ '/features/' | relative_url }}">See the features</a>
@@ -84,6 +84,21 @@ body_class: home
       <img class="app-icon" src="{{ icons }}agents.svg" alt="">
       <h3>AI agents in your tabs</h3>
       <p>Claude Code, Codex, Qwen Code and opencode report their state to the tab and ask for permission in a notification you answer in place.</p>
+    </a>
+    <a class="feature-card glass-card" href="{{ '/features/#links' | relative_url }}">
+      <img class="app-icon" src="{{ icons }}kind-search.svg" alt="">
+      <h3>Click the output</h3>
+      <p>Hold <kbd>⌘</kbd> and the paths a command printed become links to your editor, with previews of images. <kbd>⌥</kbd>-click a folder to <code>cd</code> into it.</p>
+    </a>
+    <a class="feature-card glass-card" href="{{ '/features/#neovim' | relative_url }}">
+      <img class="app-icon" src="{{ icons }}kind-editor.svg" alt="">
+      <h3>Neovim as a Mac app</h3>
+      <p>Neovim (Konsoll) opens files from the Finder in windows of their own, with its own Dock icon. Make it your default text editor in one click.</p>
+    </a>
+    <a class="feature-card glass-card" href="{{ '/features/#ssh-files' | relative_url }}">
+      <img class="app-icon" src="{{ icons }}kind-remote.svg" alt="">
+      <h3>Files over SSH</h3>
+      <p>Drop files on an ssh session to upload them, <kbd>⌘</kbd>-drag a name from the remote output to download it. One sign-in, nothing installed on the host.</p>
     </a>
     <a class="feature-card glass-card" href="{{ '/features/#background' | relative_url }}">
       <img class="app-icon" src="{{ icons }}background-running.svg" alt="">
@@ -193,6 +208,34 @@ body_class: home
       </ul>
     </div>
     {% include shot.html name="drag-pane.gif" w=900 h=573 alt="Dragging a pane by its title bar to re-split it, then onto the tab strip to make it a tab" %}
+  </div>
+
+  <div class="showcase is-flipped">
+    <div class="showcase-text">
+      <p class="eyebrow">File links</p>
+      <h2>The output is clickable.</h2>
+      <p>Hold <kbd>⌘</kbd> over what a command printed: the paths of files that exist are underlined, and a click opens them in your editor, at the line a compiler named.</p>
+      <ul>
+        <li><strong>Relative paths</strong> open from the folder the command ran in, even after you <code>cd</code> away.</li>
+        <li><strong>Previews</strong> of images, PDFs and videos appear beside the pointer.</li>
+        <li><strong><kbd>⌥</kbd>-click a folder</strong> to <code>cd</code> into it. Links never run anything.</li>
+      </ul>
+    </div>
+    {% include shot.html name="file-links.gif" w=900 h=458 alt="Holding Command over paths in git status and find output underlines them, an image path shows a preview, and Option underlines a folder to cd into" %}
+  </div>
+
+  <div class="showcase">
+    <div class="showcase-text">
+      <p class="eyebrow">Neovim (Konsoll)</p>
+      <h2>Neovim, at home in the Dock.</h2>
+      <p>Konsoll brings a second app: Neovim (Konsoll) opens each file or folder in a window of its own running <code>nvim</code>, with Konsoll's font and glass and no tabs in the way.</p>
+      <ul>
+        <li><strong>Open With</strong>, a Finder Service for folders, or <code>open -a "Neovim (Konsoll)"</code>.</li>
+        <li><strong>The default text editor</strong> for about a hundred file types, in one click.</li>
+        <li><strong>Never loses work:</strong> closing a window asks nvim about unsaved buffers.</li>
+      </ul>
+    </div>
+    {% include shot.html name="neovim-konsoll.png" w=1600 h=1031 alt="A Neovim (Konsoll) window editing src/math.js, with its own title bar and no tabs" %}
   </div>
 
   <div class="showcase is-flipped">

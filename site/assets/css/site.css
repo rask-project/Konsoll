@@ -1198,6 +1198,12 @@ tr:last-child td {
     margin: 20px 0;
 }
 
+/* An app's icon floated beside the paragraph that introduces it. */
+.inline-app-icon {
+    float: right;
+    margin: 0 0 8px 16px;
+}
+
 /* A grouped form like the app's FormGroup. */
 .form-group {
     margin: 18px 0;

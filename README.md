@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/konsoll.png" alt="Konsoll icon" width="128">
+  <img src="docs/images/app-icon.png" alt="Konsoll icon" width="128">
 </p>
 
 # Konsoll
@@ -44,7 +44,7 @@ above.
 Settings ▸ Updates turns the automatic checks and downloads off and sets the
 channel: **Stable only** (the
 default) or **Stable and beta**, which also offers pre-releases
-(`3.7.0-beta.1`) for testing.
+(`3.8.1-beta.1`) for testing.
 
 ## Requirements
 
@@ -106,7 +106,11 @@ starts it in a PTY.
 - [Tabs (workspaces)](#tabs-workspaces)
 - [Split panes](#split-panes)
 - [Windows](#windows)
+- [Opening Konsoll from the Finder](#opening-konsoll-from-the-finder)
+- [Neovim (Konsoll): Neovim as a Mac app](#neovim-konsoll-neovim-as-a-mac-app)
 - [Selecting, copying and searching](#selecting-copying-and-searching)
+- [File links, folders and previews](#file-links-folders-and-previews)
+- [Files over SSH](#files-over-ssh)
 - [Saving the buffer or a selection](#saving-the-buffer-or-a-selection)
 - [Background Commands](#background-commands)
 - [Settings](#settings)
@@ -242,6 +246,9 @@ programs and its scrollback move with it.
   or anywhere else to tear it off into a window of its own.
 - **Open Konsoll at a folder from the Finder**: see
   [Opening Konsoll from the Finder](#opening-konsoll-from-the-finder).
+- **New Tab** and **New Window** are also in the Dock icon's menu
+  (right-click or hold the icon): New Tab opens a tab in the last window
+  you used, or a window when none is open.
 - The last active window's size and position are restored on the next launch.
 - The window is **see-through**: the terminal background, the title bar and
   the tab strip are tinted and blurred (native Liquid Glass on macOS 26).
@@ -280,10 +287,17 @@ at launch.
 
 ### Neovim (Konsoll): Neovim as a Mac app
 
+<img src="docs/images/neovim-konsoll-icon.png" alt="The Neovim (Konsoll) icon" width="96" align="right">
+
 Konsoll carries a second app, **Neovim (Konsoll)**, with its own name and
 icon in the Dock: it opens each file or folder in a window of its own running
 `nvim`, with no tabs, splits or shell, like Neovide or neovim-qt. It uses
-Konsoll's settings (font, colors, transparency).
+Konsoll's settings (font, colors, transparency). It is inside Konsoll's
+bundle, so it is installed and updated with it.
+
+<p align="center">
+  <img src="docs/images/neovim-konsoll.png" alt="A Neovim (Konsoll) window editing src/math.js, with its own title bar and no tabs" width="900">
+</p>
 
 - **Open files with it**: right-click a file or folder ▸ *Open With ▸ Neovim
   (Konsoll)*, drop them on its Dock icon, or run
@@ -303,7 +317,11 @@ Konsoll's settings (font, colors, transparency).
 - **Closing** a window (or quitting) asks nvim to quit with `:confirm qa`, so
   it asks about unsaved buffers; closing again within 3 seconds offers to
   end it.
-- `nvim` is found through your login shell's `PATH` (Homebrew's included).
+- **Windows** open where the last one was closed, at the same size; a
+  double-click on the title bar zooms (or does what System Settings ▸
+  Desktop & Dock sets).
+- `nvim` is found through your login shell's `PATH` (Homebrew's included);
+  without it, the window says how to install it.
 - Its icon is Konsoll's with the "N" of the [Neovim](https://neovim.io) logo
   in place of the prompt (`assets/konsoll-nvim.icon`).
 - Debug builds offer neither the editor in Open With nor the Finder
@@ -328,26 +346,66 @@ Konsoll's settings (font, colors, transparency).
   the current match and the total, ↩ / ⇧↩ jump to the next / previous one
   (the view scrolls to it), `.*` switches to regular expressions and Esc
   closes the bar.
-- **Files over SSH.** Dropping files or folders from the Finder on an SSH
-  session uploads them into the remote shell's current directory, replacing
-  files of the same name like `scp`. For an AI agent running there (or when
-  the shell's directory is unknown) they go to `/tmp` and their remote path
-  is typed instead, like a pasted image. **⌘-drag** a file or folder named
-  in the output (`ls`, `find`, a path) to the Finder to download it; local
-  files drag out the same way, and ⌘-click still opens them. Transfers use
-  `sftp` over a connection of Konsoll's own, opened the way your `ssh` was
-  typed (aliases, `-J`, `-i`, `-o`): one sign-in per connection, with a
-  password, passphrase or new host key asked in a dialog and never stored.
-  Names in the output are checked without asking for a password: on a host
-  that wants one, ⌘-click its output (or drop a file) to sign in first.
-  In full-screen programs (Neovim) names resolve against the shell's
-  directory, so absolute paths and names from it work.
 - The right-click menu inside a pane has Split, Save Buffer or Selection…,
   Copy, Paste, Select All and Clear Buffer.
 
 <p align="center">
   <img src="docs/images/search.png" alt="The find bar searching the scrollback for zip, on match 4 of 20" width="900">
 </p>
+
+### File links, folders and previews
+
+Hold **⌘** over the output: URLs and the paths of files that exist are
+underlined, and **⌘-click** opens them.
+
+<p align="center">
+  <img src="docs/images/file-links.gif" alt="Holding Command over paths in git status and find output underlines them, an image path shows a preview, and Option underlines a folder to cd into" width="900">
+</p>
+
+- **Paths a command printed** — a name from `ls`, a result from `find`,
+  `git status` or `git diff` (`a/` and `b/` are dropped), a path in an
+  error — open in their default app, or in the editor set in **Settings ▸
+  Terminal ▸ Open text files with**: a command such as
+  `code -g {file}:{line}:{column}`, or a terminal editor
+  (`nvim +{line} {file}`), which opens in a new tab.
+  `src/main.cpp:42:7` (compilers) opens the editor at that line.
+- **Relative paths** resolve in the folder the command ran in (from the
+  shell integration), even after you `cd` elsewhere. Names with spaces from
+  `ls` work.
+- **⌥-click a folder** to `cd` into it when the shell waits at an empty
+  prompt; holding **⌥** underlines only the folders you can enter.
+- **Previews:** ⌘ resting on an image, PDF or video file shows a QuickLook
+  preview beside the pointer. Nothing shows without ⌘.
+- **Safe by design:** a link never runs anything. Apps, installers and
+  bundles are revealed in the Finder, scripts and executables open as text,
+  and network volumes are never touched. `OSC 8` hyperlinks
+  (`ls --hyperlink`, `rg --hyperlink-format=default`) work too.
+
+### Files over SSH
+
+Dropping files or folders from the Finder on an SSH session uploads them
+into the remote shell's current directory, replacing files of the same name
+like `scp`. For an AI agent running there (or when
+the shell's directory is unknown) they go to `/tmp` and their remote path
+is typed instead, like a pasted image. **⌘-drag** a file or folder named
+in the output (`ls`, `find`, a path) to the Finder to download it; local
+files drag out the same way, and ⌘-click still opens them. Transfers use
+`sftp` over a connection of Konsoll's own, opened the way your `ssh` was
+typed (aliases, `-J`, `-i`, `-o`): one sign-in per connection, with a
+password, passphrase or new host key asked in a dialog and never stored.
+Names in the output are checked without asking for a password: on a host
+that wants one, ⌘-click its output (or drop a file) to sign in first.
+In full-screen programs (Neovim) names resolve against the shell's
+directory, so absolute paths and names from it work.
+
+- **The host's shell** can be zsh, bash or a plain `sh` (dash, BusyBox ash,
+  a bash started as `sh`): Konsoll sets it up for the session, with nothing
+  installed on the host. With `sh`, only the files come along: agents and
+  command blocks need zsh or bash there.
+- **When ⌘-click opens nothing**, a note in the pane says why: the host's
+  shell is not one Konsoll sets up, it is not reporting its folder, the
+  host wants a password, the file does not exist or is still being checked,
+  the connection has closed, or the file can only be dragged to the Finder.
 
 ### Saving the buffer or a selection
 
@@ -678,6 +736,10 @@ An in-house VT500-style state machine (no `libvterm`), validated against
   ⌥ underlines the folders you can enter)
 - ⌘ + hover over an image, PDF or video file in the output shows a QuickLook
   preview beside the pointer
+- Files over SSH: drop files on an ssh session to upload them, ⌘-drag a
+  name from the remote output to the Finder to download it (`sftp` over a
+  connection of Konsoll's own; zsh, bash or a POSIX `sh` on the host,
+  nothing installed there)
 - `OSC 52` clipboard (reads ask first by default)
 - `OSC 9` / `OSC 777` desktop notifications, `OSC 9;4` progress in the tab
 - AI agent state in the tab (working, waiting for you, done, failed) from the
@@ -718,6 +780,12 @@ An in-house VT500-style state machine (no `libvterm`), validated against
   and a vertical split). Drop it on a tab strip to make it a workspace of
   its own — in this window or another one — or anywhere outside the windows
   to tear it off into a new window. The shell keeps running.
+- **Open at a folder from the Finder** (New Konsoll Tab / Window Here, a
+  folder dropped on the Dock icon, `open -a Konsoll DIR`) and **New Tab /
+  New Window** in the Dock menu
+- **Neovim (Konsoll)** — a second app in the bundle that opens files and
+  folders in windows running `nvim`, with its own Dock icon, Open With and
+  Finder Service entries, and a one-click "default editor for text files"
 - **iTerm2-style see-through window** — the whole window (content + title
   bar) is translucent, tinted with the terminal's background color, with an
   optional blur; the tab strip uses native Liquid Glass on macOS 26
