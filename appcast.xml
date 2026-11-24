@@ -6,6 +6,105 @@
     <description>Konsoll releases</description>
     <language>en</language>
     <item>
+      <title>Konsoll 3.8.0</title>
+      <link>https://github.com/rask-project/Konsoll/releases/tag/v3.8.0</link>
+      <sparkle:version>3.8.0.1000</sparkle:version>
+      <sparkle:shortVersionString>3.8.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+      <pubDate>Tue, 24 Nov 2026 23:16:02 GMT</pubDate>
+      <description sparkle:format="markdown"><![CDATA[## What's new
+
+3.8.0 turns the output into something you can click, brings Neovim to the
+Dock as a Mac app of its own, and moves files over SSH by dragging.
+Everything below is new since 3.7.0 (it was tried in the 3.7.1 betas).
+
+### File paths in the output are links
+
+- **⌘-click a path that a command printed** to open it: a name from `ls`,
+  a result from `find`, `git status` or `git diff`, a path in an error.
+  Relative paths open from the folder the command ran in, even after you
+  `cd` elsewhere. `src/main.cpp:42:7` (compilers) opens your editor at that
+  line.
+- **Settings ▸ Terminal ▸ Open text files with** picks the editor:
+  a command such as `code -g {file}:{line}:{column}`, or a terminal editor
+  (`nvim +{line} {file}`) that opens in a new tab. Left empty, each file
+  opens in its default app.
+- **⌥-click a folder** in the output to `cd` into it, when the shell waits
+  at an empty prompt. Holding ⌥ underlines the folders you can enter.
+- **Previews:** hold ⌘ over an image, PDF or video file in the output and
+  a QuickLook preview appears beside the pointer.
+- Opening a link never runs anything: apps and installers are only shown in
+  the Finder, and scripts open as text. Network volumes are never touched.
+- `OSC 8` file links that carry this Mac's name (`rg
+  --hyperlink-format=default`, `ls --hyperlink`) open too.
+
+### Neovim (Konsoll): Neovim as a Mac app
+
+Konsoll now carries a second app, **Neovim (Konsoll)**, with its own name
+and icon in the Dock. It opens each file or folder in a window of its own
+running `nvim` — no tabs, splits or shell, like Neovide or neovim-qt — with
+Konsoll's font, colors and glass.
+
+- Right-click a file ▸ **Open With ▸ Neovim (Konsoll)**, drop files on its
+  Dock icon, or run `open -a "Neovim (Konsoll)" file.txt`.
+- Right-click a folder ▸ **Open in Neovim (Konsoll)** (under *Services* or
+  *Quick Actions* when the menu is long).
+- **File ▸ Use as Default Editor for Text Files** makes it the default for
+  about a hundred text types at once — plain text, source code, scripts,
+  configuration, JSON, YAML, TOML, Markdown, CSV, logs… — without a
+  confirmation per type.
+- Closing a window, or quitting, asks nvim to quit (`:confirm qa`), so it
+  asks about unsaved buffers; closing again within 3 seconds offers to end
+  it. Windows open where the last one was closed, and a double-click on the
+  title bar zooms.
+- `nvim` is found through your login shell's `PATH`, Homebrew's included;
+  without it, the window says how to install it.
+
+### Files over SSH by dragging
+
+- **Drop files or folders from the Finder on an SSH session** to upload them
+  into the remote shell's current folder.
+- **⌘-drag a file or folder named in the output** (`ls`, `find`, a path) to
+  the Finder to download it (holding ⌘ underlines the names the host has
+  confirmed). Local files drag out the same way.
+- Transfers use one connection of Konsoll's own per session, opened the way
+  you typed `ssh` (aliases, `-J`, `-i`, `-o`): you sign in once, and it
+  closes with the session or after ten idle minutes. A password, passphrase
+  or new host key is asked in a native dialog and never stored. On a host
+  that wants a password, holding ⌘ over its output hints at signing in and
+  ⌘-click signs in.
+- Works when the host's shell is zsh, bash, or a plain `sh` (dash, BusyBox
+  ash). Nothing is installed on the host.
+- When a ⌘-click on remote output opens nothing, Konsoll says why: the
+  shell is not one it sets up, the host wants a password, the file does not
+  exist, the connection has closed…
+
+### Konsoll and the Finder
+
+- **Open Konsoll at a folder:** right-click a folder ▸ **New Konsoll Tab
+  Here** or **New Konsoll Window Here**, drop a folder on the Dock icon, or
+  run `open -a Konsoll ~/some/folder`. When Konsoll wasn't running, the
+  folder takes the place of the tab it opens at launch. If the items don't
+  show up, turn them on in **System Settings ▸ Keyboard ▸ Keyboard
+  Shortcuts… ▸ Services ▸ Files and Folders**, where they can also get a
+  shortcut.
+- **New Tab** and **New Window** in the Dock icon's menu.
+
+### Also
+
+- **New app icons** for Konsoll and Neovim (Konsoll), drawn by macOS 26 at
+  full size with the system's glass (older versions get the same design).
+  If the old icon lingers, relaunch the Dock (`killall Dock`).
+- **Shell ▸ New Agent in Worktree…** is listed only while the current pane
+  is in a git repository on this Mac, and follows the pane as you `cd` and
+  switch tabs.
+- zsh and bash no longer report the working directory with a stray `%23`.
+- Images (kitty graphics, sixel, iTerm2) are kept in one place only, and an
+  agent whose pane closes while `read_pane` waits gets its answer at once.
+]]></description>
+      <enclosure url="https://github.com/rask-project/Konsoll/releases/download/v3.8.0/Konsoll-3.8.0-arm64.zip" length="50377390" type="application/octet-stream" sparkle:edSignature="PXCMFU5irg+esRve4vKCCZs0Cat9EH4fmwUvedeyY1urcU2c6apx/n8RVAmCFqZYGO04IjEPxMS7e7DWQAy/CQ=="/>
+    </item>
+    <item>
       <title>Konsoll 3.7.1-beta.14</title>
       <link>https://github.com/rask-project/Konsoll/releases/tag/v3.7.1-beta.14</link>
       <sparkle:version>3.7.1.114</sparkle:version>
