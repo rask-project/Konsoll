@@ -5,6 +5,7 @@
 
 #include <QCoreApplication>
 #include <QCursor>
+#include <QDebug>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QMouseEvent>
@@ -146,14 +147,28 @@ NSView *viewOf(QWindow *window)
     return cocoa && window != nullptr ? reinterpret_cast<NSView *>(window->winId()) : nil;
 }
 
+// The last left-button press or drag AppKit delivered: Qt hands mouse
+// events to QML after AppKit's dispatch, when [NSApp currentEvent] may be
+// another event already (Qt's own drags keep the last mouse event too).
+struct LastMouseEvent {
+    void remember(NSEvent *event) const
+    {
+        [event retain];
+        [current release];
+        current = event;
+    }
+    mutable NSEvent *current{nil};
+};
+const LastMouseEvent s_lastMouseEvent{};
+
 // Starts the drag of `writer` with `icon` under the pointer, from the
-// mouse event AppKit is delivering.
+// mouse event being handled.
 bool startDrag(QWindow *window, id<NSPasteboardWriting> writer, NSImage *icon)
 {
     NSView *const view = viewOf(window);
-    NSEvent *const event = [NSApp currentEvent];
-    if (view == nil || event == nil || [event window] != [view window] ||
-        ([event type] != NSEventTypeLeftMouseDragged && [event type] != NSEventTypeLeftMouseDown)) {
+    NSEvent *const event = s_lastMouseEvent.current;
+    if (view == nil || event == nil || [event window] != [view window] || ([NSEvent pressedMouseButtons] & 1u) == 0) {
+        qWarning() << "Konsoll: no mouse drag to start the file drag from";
         return false;
     }
     const NSPoint point = [view convertPoint:[event locationInWindow] fromView:nil];
@@ -174,6 +189,22 @@ bool startDrag(QWindow *window, id<NSPasteboardWriting> writer, NSImage *icon)
 }
 
 } // namespace
+
+void trackMouseForFileDrags()
+{
+    static const bool cocoa = QGuiApplication::platformName() == QLatin1String("cocoa");
+    static bool installed = false;
+    if (!cocoa || installed) {
+        return;
+    }
+    installed = true;
+    // Never removed: it lives as long as the application.
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown | NSEventMaskLeftMouseDragged
+                                          handler:^NSEvent *(NSEvent *event) {
+                                            s_lastMouseEvent.remember(event);
+                                            return event;
+                                          }];
+}
 
 bool startFileDrag(QWindow *window, const QString &localPath)
 {

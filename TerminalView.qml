@@ -390,6 +390,8 @@ Item {
         property bool _middlePaste: false
         // Cmd pressed on a link: a click opens it, a drag drags its file.
         property bool _linkPress: false
+        // The Cmd+click sign-in hint was shown (signInHintAt).
+        property bool _signInHinted: false
         property bool _pointerInside: false
         property bool _linkModifierDown: false
         // Option alone: only folders Option+click would cd into are links.
@@ -433,6 +435,16 @@ Item {
                 _hoverEndRow = endRow;
                 _hoverLinkStart = start;
                 _hoverLinkEnd = end;
+            }
+            // Cmd on the output of a host that wants a password: say how to
+            // sign in, once per pane.
+            if (_linkModifierDown && !found && !_signInHinted && view.session && cell[1] >= 0) {
+                const hint = view.session.signInHintAt(cell[1]);
+                if (hint.length > 0) {
+                    _signInHinted = true;
+                    view.transferNotice = hint;
+                    transferNoticeTimer.restart();
+                }
             }
             // Cmd resting on a file link: a preview once the pointer settles.
             const target = found && _linkModifierDown ? link.target : "";
@@ -555,6 +567,13 @@ Item {
                     selectionArea._pressCol = cell[0];
                     selectionArea._pressX = mouse.x;
                     selectionArea._pressY = mouse.y;
+                    mouse.accepted = true;
+                    return;
+                }
+                // Over ssh, a host that wants a password: sign in, so that
+                // its files link (the rest of the click is swallowed).
+                if (view.session.signInAt(cell[1])) {
+                    selectionArea._activationClick = true;
                     mouse.accepted = true;
                     return;
                 }

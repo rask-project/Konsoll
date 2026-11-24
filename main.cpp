@@ -11,6 +11,7 @@
 #include "AgentStatus.h"
 #include "AppQuitGuard.h"
 #include "BackgroundJobs.h"
+#include "FileDrag.h"
 #include "FinderIntegration.h"
 #include "ImagePreview.h"
 #include "McpServer.h"
@@ -81,6 +82,8 @@ int main(int argc, char *argv[])
     // Native key codes for the kitty protocol's base layout key.
     konsoll::NativeKeyTracker keyTracker;
     QGuiApplication::instance()->installEventFilter(&keyTracker);
+    // Cmd+drag of a file link starts a native drag from the mouse event.
+    konsoll::trackMouseForFileDrags();
 
     // The functions defined in Konsoll, for the shells about to start.
     if (const auto installed = konsoll::ShellFunctions::installScripts(); !installed) {

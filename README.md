@@ -306,6 +306,8 @@ at launch.
   `sftp` over a connection of Konsoll's own, opened the way your `ssh` was
   typed (aliases, `-J`, `-i`, `-o`): one sign-in per connection, with a
   password, passphrase or new host key asked in a dialog and never stored.
+  Names in the output are checked without asking for a password: on a host
+  that wants one, ⌘-click its output (or drop a file) to sign in first.
   In full-screen programs (Neovim) names resolve against the shell's
   directory, so absolute paths and names from it work.
 - The right-click menu inside a pane has Split, Save Buffer or Selection…,

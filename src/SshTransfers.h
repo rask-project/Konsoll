@@ -79,14 +79,26 @@ public:
     // exist), replacing nothing else.
     void download(const QString &remotePath, const QString &localPath, Done done);
 
-    // What `remotePath` named when last checked (a few seconds ago at most);
-    // nullopt when unknown. probe() checks it in the background, without
-    // asking for a password: kindsChanged() follows.
+    // What `remotePath` named when last checked; nullopt when never.
+    // probe() checks it again in the background unless that was a few
+    // seconds ago, without asking for a password: kindsChanged() follows.
+    // Until then the last answer stands, so a link does not blink out.
     std::optional<RemoteFileKind> cachedKind(const QString &remotePath) const;
     void probe(const QString &remotePath);
 
+    // A connection without a password was refused (and none made since):
+    // links to the host's files wait for signIn(), which may ask for one.
+    bool needsSignIn() const;
+    // Connected, or connecting now.
+    bool connectedOrConnecting() const;
+    void signIn();
+
 signals:
+    // Files were checked, or the connection came up or failed: links may
+    // have changed.
     void kindsChanged();
+    // signIn() failed (cancelled, wrong password): `message` says why.
+    void signInFailed(const QString &message);
 
 private:
     // A process to run once the master is up: sftp with a batch of
@@ -166,7 +178,8 @@ private:
 };
 
 // `konsoll PROMPT` run by ssh as its SSH_ASKPASS (KONSOLL_ASKPASS_TOKEN is
-// set): asks the app, prints the answer. Exit status 1 when cancelled.
+// set): asks the app at KONSOLL_AGENT_SOCKET (the socket's name has the
+// app's pid), prints the answer. Exit status 1 when cancelled.
 int runSshAskpass(const QString &prompt);
 
 } // namespace konsoll

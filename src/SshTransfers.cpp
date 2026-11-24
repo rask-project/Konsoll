@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QLocalSocket>
+#include <QLoggingCategory>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
@@ -27,7 +28,12 @@ namespace konsoll
 namespace
 {
 
+// QT_LOGGING_RULES="konsoll.remotefiles.debug=true" shows connections and
+// existence checks.
+Q_LOGGING_CATEGORY(lcRemoteFiles, "konsoll.remotefiles", QtWarningMsg)
+
 constexpr int kMasterIdleSeconds = 600;
+constexpr int kProbeTimeoutMs = 8000;
 constexpr qint64 kKindLifetimeMs = 10'000;
 constexpr qint64 kQuietRetrySeconds = 60;
 constexpr qsizetype kMaxCachedKinds = 1024;
@@ -297,6 +303,10 @@ void SshConnection::startMaster(bool interactive)
         environment.insert(QStringLiteral("SSH_ASKPASS"), QCoreApplication::applicationFilePath());
         environment.insert(QStringLiteral("SSH_ASKPASS_REQUIRE"), QStringLiteral("force"));
         environment.insert(QStringLiteral("KONSOLL_ASKPASS_TOKEN"), m_askpassToken);
+        // The socket is this process's (its pid is in the name), not one
+        // the askpass process would compute, nor one inherited from the
+        // Konsoll this one was started in.
+        environment.insert(QStringLiteral("KONSOLL_AGENT_SOCKET"), agentStatusSocketPath());
     } else {
         arguments << QStringLiteral("-o") << QStringLiteral("BatchMode=yes");
     }
@@ -327,12 +337,14 @@ void SshConnection::masterFinished(qint64 exitCode)
         SshAskpass::shared().close(std::exchange(m_askpassToken, {}));
     }
     const QString error = m_master ? errorLine(m_master->readAllStandardError()) : QString{};
+    qCDebug(lcRemoteFiles) << "master for" << m_target.destination << "exit" << exitCode << error;
     if (exitCode == 0) {
         // -f: ssh went to the background once authenticated.
         m_masterState = MasterState::Ready;
         m_quietFailedAt = -1;
         startNextOperation();
         startProbe();
+        emit kindsChanged();
         return;
     }
     const bool quiet = m_interactiveConnect == 0;
@@ -346,10 +358,33 @@ void SshConnection::masterFinished(qint64 exitCode)
         m_quietFailedAt = static_cast<std::int32_t>(m_clock.elapsed() / 1000);
     }
     m_probeQueue.clear();
-    failPending(
-        error.isEmpty() ? tr("Could not connect to %1.").arg(m_target.destination)
-                        : tr("Could not connect to %1: %2").arg(m_target.destination, error)
-    );
+    const QString message = error.isEmpty() ? tr("Could not connect to %1.").arg(m_target.destination)
+                                            : tr("Could not connect to %1: %2").arg(m_target.destination, error);
+    // Only a sign-in has nobody else to tell.
+    const bool signingIn = !quiet && m_operations.empty() && !m_active.done;
+    failPending(message);
+    if (signingIn) {
+        emit signInFailed(message);
+    }
+    emit kindsChanged();
+}
+
+bool SshConnection::needsSignIn() const
+{
+    return m_masterState == MasterState::Failed && m_quietFailedAt >= 0;
+}
+
+bool SshConnection::connectedOrConnecting() const
+{
+    return m_masterState == MasterState::Connecting ||
+           (m_masterState == MasterState::Ready && QFileInfo::exists(m_controlPath));
+}
+
+void SshConnection::signIn()
+{
+    if (!connectedOrConnecting()) {
+        startMaster(true);
+    }
 }
 
 void SshConnection::startNextOperation()
@@ -418,7 +453,7 @@ void SshConnection::operationFinished(qint64 exitCode)
 std::optional<RemoteFileKind> SshConnection::cachedKind(const QString &remotePath) const
 {
     const auto found = m_kinds.constFind(remotePath);
-    if (found == m_kinds.constEnd() || m_clock.elapsed() - (*found >> 2) > kKindLifetimeMs) {
+    if (found == m_kinds.constEnd()) {
         return std::nullopt;
     }
     return static_cast<RemoteFileKind>(*found & 3);
@@ -426,7 +461,9 @@ std::optional<RemoteFileKind> SshConnection::cachedKind(const QString &remotePat
 
 void SshConnection::probe(const QString &remotePath)
 {
-    if (std::ranges::contains(m_probeQueue, remotePath) || std::ranges::contains(m_probing, remotePath)) {
+    const auto found = m_kinds.constFind(remotePath);
+    const bool fresh = found != m_kinds.constEnd() && m_clock.elapsed() - (*found >> 2) <= kKindLifetimeMs;
+    if (fresh || std::ranges::contains(m_probeQueue, remotePath) || std::ranges::contains(m_probing, remotePath)) {
         return;
     }
     // Never a password for a pointer move: a connection that needs one
@@ -475,9 +512,16 @@ void SshConnection::startProbe()
             QTimer::singleShot(0, this, [this] { probeFinished(-1); });
         }
     });
+    qCDebug(lcRemoteFiles) << "probing" << m_probing.size() << "paths on" << m_target.destination;
     m_probe->start(sshProgram(), arguments);
     m_probe->write(script);
     m_probe->closeWriteChannel();
+    // A check that hangs (a connection gone quiet) would hold every later
+    // one: it is given up instead.
+    QTimer::singleShot(kProbeTimeoutMs, m_probe.get(), [probe = m_probe.get()] {
+        qCDebug(lcRemoteFiles) << "probe timed out";
+        probe->kill();
+    });
 }
 
 void SshConnection::probeFinished(qint64 exitCode)
@@ -494,6 +538,7 @@ void SshConnection::probeFinished(qint64 exitCode)
             return line.startsWith("KONSOLL:");
         });
     }
+    qCDebug(lcRemoteFiles) << "probe exit" << exitCode << "answers" << answers.size() << "of" << paths.size();
     if (answers.size() == static_cast<qsizetype>(paths.size())) {
         if (m_kinds.size() > kMaxCachedKinds) {
             m_kinds.clear();
@@ -568,8 +613,12 @@ void SshAskpass::handle(const QJsonObject &request, const Reply &reply) const
 
 int runSshAskpass(const QString &prompt)
 {
+    const QString socketPath = qEnvironmentVariable("KONSOLL_AGENT_SOCKET");
+    if (socketPath.isEmpty()) {
+        return 1;
+    }
     QLocalSocket socket;
-    socket.connectToServer(agentStatusSocketPath());
+    socket.connectToServer(socketPath);
     if (!socket.waitForConnected(kConnectTimeoutMs)) {
         return 1;
     }

@@ -13,6 +13,9 @@ namespace konsoll
 // started from the mouse drag being handled in `window`. Each returns false
 // when no drag could start (not the Cocoa platform, no mouse event).
 
+// Remembers the mouse events a drag starts from: called once, at startup.
+void trackMouseForFileDrags();
+
 // A local file or folder, as itself.
 bool startFileDrag(QWindow *window, const QString &localPath);
 

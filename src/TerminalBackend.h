@@ -161,6 +161,11 @@ public:
     // where it is dropped. `item` is the view the mouse drags in. False
     // when there is no file link there.
     Q_INVOKABLE bool dragLinkAt(int row, int col, QQuickItem *item);
+    // Over ssh, when the host wants a password before its files can be
+    // checked: a hint for Cmd held on its output at `row` (empty
+    // otherwise), and Cmd+click there to sign in (false: nothing to do).
+    Q_INVOKABLE QString signInHintAt(int row) const;
+    Q_INVOKABLE bool signInAt(int row);
 
     // Resize the terminal (cols x rows), driven by the QML view.
     Q_INVOKABLE void resize(int cols, int rows);
@@ -447,6 +452,9 @@ private:
     // `remoteDirectory`): a konsoll-remote: link once the host said it
     // exists; asks it in the background otherwise.
     std::optional<QUrl> resolveRemoteTextLink(const TextLinkCandidate &candidate, const QString &remoteDirectory) const;
+    // Row `row` of the view shows output of the ssh host's shell (its
+    // directory known).
+    bool remoteOutputAt(int row) const;
     // Route PTY I/O to the session worker via a queued call (never touch the
     // master descriptor from this thread).
     void writeToPty(const QByteArray &data);

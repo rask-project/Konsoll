@@ -928,9 +928,11 @@ TerminalBackend::resolveRemoteTextLink(const TextLinkCandidate &candidate, const
         path = remoteDirectory + u'/' + path;
     }
     path = QDir::cleanPath(path);
+    // Checked again when the last answer is old (remoteLinksChanged
+    // follows); that answer stands meanwhile.
+    m_ssh->probe(path);
     const std::optional<RemoteFileKind> kind = m_ssh->cachedKind(path);
     if (!kind) {
-        m_ssh->probe(path); // remoteLinksChanged follows
         return std::nullopt;
     }
     if (*kind == RemoteFileKind::Missing || path == u"~") {
@@ -940,6 +942,32 @@ TerminalBackend::resolveRemoteTextLink(const TextLinkCandidate &candidate, const
     url.setScheme(remoteLinkScheme());
     url.setPath(path);
     return url;
+}
+
+bool TerminalBackend::remoteOutputAt(int row) const
+{
+    if (!m_terminal || row < 0 || row >= m_rows) {
+        return false;
+    }
+    const int line = visibleStart() + row;
+    return !m_terminal->directoryAtLine(line) && !m_terminal->remoteDirectoryAtLine(line).isEmpty();
+}
+
+QString TerminalBackend::signInHintAt(int row) const
+{
+    if (!m_ssh || !m_ssh->needsSignIn() || !remoteOutputAt(row)) {
+        return {};
+    }
+    return tr("⌘-click to sign in to %1 and link its files").arg(m_ssh->target().destination);
+}
+
+bool TerminalBackend::signInAt(int row)
+{
+    if (!m_ssh || m_ssh->connectedOrConnecting() || !remoteOutputAt(row)) {
+        return false;
+    }
+    m_ssh->signIn();
+    return true;
 }
 
 bool TerminalBackend::dragLinkAt(int row, int col, QQuickItem *item)
@@ -2037,6 +2065,7 @@ void TerminalBackend::updateSshConnection()
     }
     m_ssh = std::make_unique<SshConnection>(*target);
     connect(m_ssh.get(), &SshConnection::kindsChanged, this, &TerminalBackend::remoteLinksChanged);
+    connect(m_ssh.get(), &SshConnection::signInFailed, this, &TerminalBackend::transferFailed);
 }
 
 void TerminalBackend::pasteSelectionOrClipboard()

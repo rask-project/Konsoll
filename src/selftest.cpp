@@ -23,6 +23,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QSysInfo>
@@ -1355,6 +1356,42 @@ void checkRemoteDirectory(int &failures)
     );
 }
 
+// ssh's SSH_ASKPASS is this executable: it reaches the app's socket (its
+// name has the app's pid, not the helper's), and its answer is what ssh
+// reads; an unknown token is refused.
+void checkSshAskpass(int &failures)
+{
+    konsoll::AgentStatusServer::instance().setRequestHandler([](const QJsonObject &request,
+                                                                const konsoll::AgentStatusServer::Reply &reply) {
+        const bool known = konsoll::SshAskpass::isRequest(request) &&
+                           request.value(QLatin1String("askpass")).toString() == QStringLiteral("known") &&
+                           request.value(QLatin1String("prompt")).toString() == QStringLiteral("me@box's password: ");
+        reply(
+            known ? QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("answer"), QStringLiteral("s3cret")}}
+                  : QJsonObject{{QStringLiteral("ok"), false}}
+        );
+    });
+    const auto ask = [](const QString &token) {
+        QProcess helper;
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert(QStringLiteral("KONSOLL_ASKPASS_TOKEN"), token);
+        environment.insert(QStringLiteral("KONSOLL_AGENT_SOCKET"), konsoll::agentStatusSocketPath());
+        helper.setProcessEnvironment(environment);
+        helper.start(QCoreApplication::applicationFilePath(), {QStringLiteral("me@box's password: ")});
+        // The app answers from this event loop.
+        waitFor("ssh askpass: helper", [&helper]() { return helper.state() == QProcess::NotRunning; }, 15000);
+        return std::pair{helper.exitCode(), helper.readAllStandardOutput()};
+    };
+    const auto [knownCode, knownAnswer] = ask(QStringLiteral("known"));
+    const auto [unknownCode, unknownAnswer] = ask(QStringLiteral("unknown"));
+    konsoll::AgentStatusServer::instance().setRequestHandler({});
+    check(
+        failures,
+        knownCode == 0 && knownAnswer == "s3cret\n" && unknownCode == 1 && unknownAnswer.isEmpty(),
+        "ssh transfers: the askpass helper asks the app it was started by"
+    );
+}
+
 // File transfers over a real connection, when the environment names one
 // (KONSOLL_SELFTEST_SSH_HOST, with KONSOLL_SELFTEST_SSH_CONFIG for its ssh
 // config file) that logs in with a key, on this machine: its paths are
@@ -1453,6 +1490,171 @@ void checkSshTransfers(int &failures)
             !QFileInfo::exists(dir.filePath(QStringLiteral("dl/nope"))),
         "ssh transfers: files and folders fetched, a missing one fails"
     );
+
+    // ls output of the remote shell: its names become links once the host
+    // said they exist (what Cmd+drag drags out).
+    const QString remoteNotes = remote + QStringLiteral("/notes.txt");
+    const bool notesWritten = write(remoteNotes, "notes");
+    TerminalBackend pane;
+    const QByteArray token = pane.sessionToken().toUtf8();
+    QByteArray typed;
+    std::ranges::for_each(options + QStringList{host}, [&typed](const QString &word) {
+        typed += word.toUtf8() + '\0';
+    });
+    const QByteArray remoteShell =
+        "\x1b]1337;RemoteHost=" + token + ";" + host.toUtf8() + ";args=" + typed.toBase64() + "\a" +
+        "\x1b]1337;KonsollRemoteDir=" + konsoll::remoteAgentToken(QString::fromUtf8(token)).toUtf8() + ";" +
+        QUrl::toPercentEncoding(remote, "/") + "\a";
+    pane.startReplay(60, 6, remoteShell + "my dir [x]\r\nnotes.txt\r\ngone.txt\r\n");
+    const auto targetAt = [&pane](int row) { return pane.linkAt(row, 1).value(QStringLiteral("target")).toString(); };
+    const bool linked = waitFor(
+        "ssh transfers: remote links",
+        [&]() { return !targetAt(0).isEmpty() && !targetAt(1).isEmpty(); },
+        20000
+    );
+    if (!linked) {
+        std::println("  ssh transfers: links [{}] [{}]", targetAt(0).toStdString(), targetAt(1).toStdString());
+    }
+    check(
+        failures,
+        notesWritten && linked && QUrl(targetAt(0)).path() == remoteFolder && QUrl(targetAt(1)).path() == remoteNotes &&
+            targetAt(2).isEmpty(),
+        "ssh transfers: names in the remote shell's output link to the host's files"
+    );
+}
+
+// A host that refuses a connection without a password (here: a user the
+// test host does not have): Cmd on its output hints at signing in, and
+// Cmd+click signs in, its failure reported.
+void checkSshSignIn(int &failures)
+{
+    const QString host = qEnvironmentVariable("KONSOLL_SELFTEST_SSH_HOST");
+    if (host.isEmpty()) {
+        return;
+    }
+    QStringList options;
+    if (const QString config = qEnvironmentVariable("KONSOLL_SELFTEST_SSH_CONFIG"); !config.isEmpty()) {
+        options = {QStringLiteral("-F"), config};
+    }
+    options << QStringLiteral("-o") << QStringLiteral("User=konsoll-nobody");
+    QByteArray typed;
+    std::ranges::for_each(options + QStringList{host}, [&typed](const QString &word) {
+        typed += word.toUtf8() + '\0';
+    });
+    TerminalBackend pane;
+    QString failure;
+    QObject::connect(&pane, &TerminalBackend::transferFailed, [&failure](const QString &message) {
+        failure = message;
+    });
+    const QByteArray token = pane.sessionToken().toUtf8();
+    pane.startReplay(
+        60,
+        6,
+        "\x1b]1337;RemoteHost=" + token + ";" + host.toUtf8() + ";args=" + typed.toBase64() + "\a" +
+            "\x1b]1337;KonsollRemoteDir=" + konsoll::remoteAgentToken(QString::fromUtf8(token)).toUtf8() + ";" +
+            QUrl::toPercentEncoding(QDir::tempPath(), "/") + "\a" + "notes.txt\r\n"
+    );
+    const bool hinted = waitFor(
+        "ssh sign-in: hint",
+        [&pane]() {
+            static_cast<void>(pane.linkAt(0, 1)); // Cmd over it: a check without a password
+            return !pane.signInHintAt(0).isEmpty();
+        },
+        20000
+    );
+    const bool started = hinted && pane.signInAt(0);
+    const bool reported =
+        started && waitFor("ssh sign-in: failure", [&failure]() { return !failure.isEmpty(); }, 20000);
+    const bool denied = failure.contains(QStringLiteral("Permission denied"));
+    if (!reported || !denied) {
+        std::println("  ssh sign-in: hinted {} started {} [{}]", hinted, started, failure.toStdString());
+    }
+    check(failures, reported && denied, "ssh transfers: Cmd+click signs in to a host that wants a password");
+}
+
+// Over the test connection (see checkSshTransfers), the real remote shell
+// integration in zsh or bash: every name of an ls -l it runs links to the
+// host's file.
+void checkSshLiveLinks(int &failures, TerminalManager &manager, const QString &shellPath)
+{
+    const QString host = qEnvironmentVariable("KONSOLL_SELFTEST_SSH_HOST");
+    const QString config = qEnvironmentVariable("KONSOLL_SELFTEST_SSH_CONFIG");
+    if (host.isEmpty()) {
+        return;
+    }
+    const QTemporaryDir dir;
+    const QStringList names{
+        QStringLiteral("Desktop"),
+        QStringLiteral("Public"),
+        QStringLiteral("Videos"),
+        QStringLiteral("backup.tar.gz"),
+        QStringLiteral("script.sh"),
+        QStringLiteral("tmp-konsoll-moved"),
+    };
+    const bool created = std::ranges::all_of(names, [&dir](const QString &name) {
+        if (name.contains(u'.')) {
+            QFile file(dir.filePath(name));
+            return file.open(QIODevice::WriteOnly);
+        }
+        return QDir().mkpath(dir.filePath(name));
+    });
+    QFile command(dir.filePath(QStringLiteral(".remote-command")));
+    const bool written = command.open(QIODevice::WriteOnly) && command.write(konsoll::sshRemoteCommand()) > 0;
+    command.close();
+    QByteArray typed;
+    std::ranges::for_each(QStringList{QStringLiteral("-F"), config, host}, [&typed](const QString &w) {
+        typed += w.toUtf8() + '\0';
+    });
+    manager.addWorkspace();
+    auto *shell = activeSession(manager);
+    waitFor("ssh transfers: live shell", [shell]() { return !shell->bufferText().isEmpty(); }, 15000);
+    shell->writeText(
+        QStringLiteral(
+            "(printf '\\033]1337;RemoteHost=%s;%1;args=%2\\007' \"$KONSOLL_REMOTE_HOST_TOKEN\"; export SHELL=%3; "
+            "eval \"$(cat %4) $KONSOLL_REMOTE_AGENT_TOKEN\")\n"
+        )
+            .arg(host, QString::fromLatin1(typed.toBase64()), shellPath, command.fileName())
+    );
+    shell->writeText(QStringLiteral("cd %1 && clear && LC_ALL=C ls -l\n").arg(dir.path()));
+    waitFor(
+        "ssh transfers: live ls",
+        [shell]() { return shell->bufferText().contains(QStringLiteral("tmp-konsoll-moved")); },
+        15000
+    );
+    const QStringList lines = shell->bufferText().split(u'\n');
+    const auto rowOf = [&lines](const QString &name) {
+        const auto found = std::ranges::find_if(lines, [&name](const QString &l) { return l.endsWith(u' ' + name); });
+        return found == lines.end()
+                   ? std::pair{-1, -1}
+                   : std::pair{static_cast<int>(found - lines.begin()), static_cast<int>(found->lastIndexOf(name))};
+    };
+    const auto first = rowOf(QStringLiteral("Desktop")).first - 1; // "total" line is row 0
+    QStringList linked;
+    waitFor(
+        "ssh transfers: live links",
+        [&]() {
+            linked.clear();
+            std::ranges::for_each(names, [&](const QString &name) {
+                const auto [line, col] = rowOf(name);
+                const QString target = shell->linkAt(line - first, col + 1).value(QStringLiteral("target")).toString();
+                if (target.endsWith(u'/' + name)) {
+                    linked << name;
+                }
+            });
+            return linked.size() == names.size();
+        },
+        15000
+    );
+    if (linked.size() != names.size()) {
+        std::println("  ssh transfers ({}): linked {}", shellPath.toStdString(), linked.join(u',').toStdString());
+    }
+    check(
+        failures,
+        created && written && linked.size() == names.size(),
+        "ssh transfers: ls -l in a real remote shell links its names"
+    );
+    shell->writeText(QStringLiteral("exit\n"));
+    manager.closeSession(shell);
 }
 
 // Which ssh command lines konsoll-ssh.sh brings the integration to, in zsh
@@ -1789,7 +1991,9 @@ int runSelfTest()
     checkTextLinks(failures);
     checkRemoteAgentReports(failures);
     checkRemoteDirectory(failures);
+    checkSshAskpass(failures);
     checkSshTransfers(failures);
+    checkSshSignIn(failures);
     checkSshCommandLines(failures);
 
     // 1. Concurrent output: three sessions produce output at the same time.
@@ -2103,6 +2307,8 @@ int runSelfTest()
     checkBackgroundJobs(failures, manager);
     checkShellFunctions(failures, manager);
     checkChangeDirectoryLink(failures, manager);
+    checkSshLiveLinks(failures, manager, QStringLiteral("/bin/zsh"));
+    checkSshLiveLinks(failures, manager, QStringLiteral("/bin/bash"));
     checkSshBootstrap(failures, manager, QStringLiteral("/bin/zsh"));
     checkSshBootstrap(failures, manager, QStringLiteral("/bin/bash"));
 

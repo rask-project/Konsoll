@@ -109,15 +109,22 @@ Guidance for AI agents working in this repository.
   for a transfer: `SSH_ASKPASS` is Konsoll itself (`KONSOLL_ASKPASS_TOKEN`
   set: `runSshAskpass`), asking the app over the agent socket
   (`SshAskpass`, a token per connecting master) and
-  `NativeDialogs::answerSshPrompt`. Pointer moves probe quietly
-  (BatchMode) and never prompt. Drops go into `remoteDirectory()`, or to
+  `NativeDialogs::answerSshPrompt` (the answer is passed on, never kept).
+  Pointer moves probe quietly (BatchMode) and never prompt; when the host
+  refuses that, Cmd on its output hints at Cmd+click, which signs in
+  (`signInHintAt`, `signInAt`). A probe is killed after 8 s (one stuck
+  check would hold the rest), and an expired answer stands while it is
+  checked again. `QT_LOGGING_RULES="konsoll.remotefiles.debug=true"` logs
+  connections and checks. Drops go into `remoteDirectory()`, or to
   `/tmp` with the path typed for an agent or an unknown directory.
   Cmd+click opens on release so that Cmd+drag can drag a link
   (`dragLinkAt`, `FileDrag.mm`): a local file as its URL, a remote one
   (`konsoll-remote:` links, shown once the host said it exists) as an
   `NSFilePromiseProvider` fetched with `sftp get -R` where it is dropped.
-  `--selftest` runs real transfers when `KONSOLL_SELFTEST_SSH_HOST` (and
-  `KONSOLL_SELFTEST_SSH_CONFIG`) name a key-only host on this machine.
+  `--selftest` runs real transfers, links in a real remote zsh/bash and
+  the sign-in when `KONSOLL_SELFTEST_SSH_HOST` (and
+  `KONSOLL_SELFTEST_SSH_CONFIG`) name a key-only host on this machine (a
+  user-run `sshd -f` on a high port will do).
 - **Agent integrations** (`AgentIntegrations`, QML singleton, Settings ▸ AI
   Agents): merges Konsoll's hooks into Claude Code / Codex / Qwen Code JSON
   settings (all use `{"hooks": {Event: [{matcher, hooks: [command]}]}}`;
