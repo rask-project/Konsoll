@@ -43,5 +43,5 @@
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 
-${KONSOLL_EDITOR_DOCUMENT_TYPES}</dict>
+${KONSOLL_EDITOR_SERVICES}${KONSOLL_EDITOR_DOCUMENT_TYPES}</dict>
 </plist>

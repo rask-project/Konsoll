@@ -40,10 +40,14 @@ public:
     static bool isActive();
     bool active() const { return isActive(); }
 
-    // Watches for files and folders opened with the app and for the end of
-    // the launch. Called in main() before the event loop starts: a launch for
-    // a file delivers it as the app finishes launching.
+    // Registers the "Open in Neovim (Konsoll)" Service and watches for files
+    // and folders opened with the app and for the end of the launch. Called in main() before the event loop starts: a
+    // launch for a file delivers it as the app finishes launching.
     void install();
+
+    // Opens a window for `path` (a file or a folder): the Service, files
+    // opened with the app and `--editor` paths.
+    void open(const QString &path);
 
     // The command an editor window runs for `path` (a file, a folder, or
     // empty for an empty buffer): nvim in the user's login shell (its PATH),
@@ -75,7 +79,8 @@ public:
     static void registerHelperApplication();
 
 signals:
-    // A file or folder opened with the app (Finder, `open -a`, the Dock).
+    // A file or folder opened with the app (Finder, `open -a`, the Dock, the
+    // Service).
     void openRequested(const QString &path);
     // The app finished launching; `openWindow` is false when it was launched
     // to open files, which bring their own windows.

@@ -303,6 +303,12 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
 # its own id, name and document types, running a copy of the executable.
 set(KONSOLL_EDITOR_BUNDLE_NAME "Neovim (Konsoll)")
 set(KONSOLL_EDITOR_BUNDLE_ID "${KONSOLL_BUNDLE_ID}.nvim")
+set(KONSOLL_EDITOR_SERVICES "")
+if(KONSOLL_FINDER_INTEGRATION)
+    file(READ cmake/EditorServices.plist.in editor_services)
+    string(CONFIGURE "${editor_services}" KONSOLL_EDITOR_SERVICES)
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS cmake/EditorServices.plist.in)
 configure_file(cmake/EditorInfo.plist.in "${CMAKE_CURRENT_BINARY_DIR}/EditorInfo.plist")
 
 set_target_properties(konsoll PROPERTIES

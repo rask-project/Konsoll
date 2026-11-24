@@ -20,6 +20,9 @@ namespace EditorFlag
 {
 // Running as the editor (the helper bundle, or --editor).
 inline constexpr std::uint64_t Active = 1u << 0u;
+// A file or folder was asked for (a Service request can come before the
+// launch ends): the launch opens no empty buffer.
+inline constexpr std::uint64_t OpenRequested = 1u << 1u;
 } // namespace EditorFlag
 
 // A second quit within this long of the first, with nvim still running,
@@ -56,7 +59,56 @@ bool setDefaultApplication(NSString *bundleIdentifier, NSString *identifier)
     return status == noErr;
 }
 
+// A path sent to the Service as text: it may start with ~ or be a file://
+// URL. Empty when nothing exists there.
+QString existingPath(NSString *text)
+{
+    QString candidate = QString::fromNSString(text).trimmed();
+    if (candidate.startsWith(QStringLiteral("file://"))) {
+        candidate = QUrl(candidate).toLocalFile();
+    } else if (candidate == QStringLiteral("~") || candidate.startsWith(QStringLiteral("~/"))) {
+        candidate = QDir::homePath() + candidate.mid(1);
+    }
+    const QFileInfo info(candidate);
+    return !candidate.isEmpty() && info.exists() ? info.absoluteFilePath() : QString{};
+}
+
 } // namespace
+
+// The "Open in Neovim (Konsoll)" Service: NSMessage "openInEditor" in the
+// editor's Info.plist (cmake/EditorServices.plist.in).
+@interface KonsollEditorServicesProvider : NSObject
+- (void)openInEditor:(NSPasteboard *)pasteboard userData:(NSString *)userData error:(NSString **)error;
+@end
+
+@implementation KonsollEditorServicesProvider
+
+- (void)openInEditor:(NSPasteboard *)pasteboard userData:(NSString *)userData error:(NSString **)error
+{
+    Q_UNUSED(userData);
+    Q_UNUSED(error);
+    // A Service runs without making the editor the active app.
+    [NSApp activate];
+    NSArray<NSURL *> *const urls = [pasteboard readObjectsForClasses:@[ [NSURL class] ]
+                                                             options:@{NSPasteboardURLReadingFileURLsOnlyKey : @YES}];
+    if (urls.count > 0) {
+        [urls enumerateObjectsUsingBlock:^(NSURL *url, NSUInteger index, BOOL *stop) {
+          Q_UNUSED(index);
+          Q_UNUSED(stop);
+          konsoll::EditorMode::shared().open(QString::fromNSString(url.path));
+        }];
+        return;
+    }
+    // A path selected as text (NSRequiredContext FilePath).
+    if (NSString *const text = [pasteboard stringForType:NSPasteboardTypeString]) {
+        const QString path = existingPath(text);
+        if (!path.isEmpty()) {
+            konsoll::EditorMode::shared().open(path);
+        }
+    }
+}
+
+@end
 
 namespace konsoll
 {
@@ -109,6 +161,12 @@ bool EditorMode::isActive()
 
 void EditorMode::install()
 {
+    // NSApp keeps the provider (a strong property).
+    KonsollEditorServicesProvider *const provider = [[KonsollEditorServicesProvider alloc] init];
+    [NSApp setServicesProvider:provider];
+    [provider release];
+    NSUpdateDynamicServices();
+
     // The notification center keeps the observer for the app's lifetime.
     [[NSNotificationCenter defaultCenter]
         addObserverForName:NSApplicationDidFinishLaunchingNotification
@@ -121,11 +179,17 @@ void EditorMode::install()
     QGuiApplication::instance()->installEventFilter(this);
 }
 
+void EditorMode::open(const QString &path)
+{
+    m_flags |= EditorFlag::OpenRequested;
+    emit openRequested(path);
+}
+
 void EditorMode::finishedLaunching(bool defaultLaunch)
 {
-    emit launched(defaultLaunch && m_launchPaths.isEmpty());
+    emit launched(defaultLaunch && m_launchPaths.isEmpty() && (m_flags & EditorFlag::OpenRequested) == 0u);
     const QStringList paths = std::exchange(m_launchPaths, {});
-    std::ranges::for_each(paths, [this](const QString &path) { emit openRequested(path); });
+    std::ranges::for_each(paths, [this](const QString &path) { open(path); });
 }
 
 bool EditorMode::eventFilter(QObject *watched, QEvent *event)
@@ -137,7 +201,7 @@ bool EditorMode::eventFilter(QObject *watched, QEvent *event)
     if (!url.isLocalFile()) {
         return QObject::eventFilter(watched, event);
     }
-    emit openRequested(url.toLocalFile());
+    open(url.toLocalFile());
     return true;
 }
 

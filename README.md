@@ -289,6 +289,12 @@ Konsoll's settings (font, colors, transparency).
   (Konsoll)*, drop them on its Dock icon, or run
   `open -a "Neovim (Konsoll)" file.txt`. Konsoll registers it the first time
   it runs.
+- **Open a folder in it from the Finder**: right-click a folder ▸ **Open in
+  Neovim (Konsoll)** (under *Services ▸* or *Quick Actions ▸* when the menu
+  is long), or select a path as text in any app ▸ *App name ▸ Services*. If
+  it doesn't show up, tick it under *Files and Folders* as described in
+  [Opening Konsoll from the Finder](#opening-konsoll-from-the-finder), where
+  you can also give it a keyboard shortcut.
 - **Make it the default editor**: *File ▸ Use as Default Editor for Text
   Files* sets it at once, without a confirmation per type, for about a
   hundred text types: plain text, source code in most languages, scripts,
@@ -299,8 +305,8 @@ Konsoll's settings (font, colors, transparency).
   end it.
 - `nvim` is found through your login shell's `PATH` (Homebrew's included).
 - Its icon is Konsoll's with the "N" of the [Neovim](https://neovim.io) logo
-  in place of the prompt (`tools/make-editor-icon.swift` draws it).
-- Debug builds offer neither the editor in Open With nor Konsoll's Finder
+  in place of the prompt (`assets/konsoll-nvim.icon`).
+- Debug builds offer neither the editor in Open With nor the Finder
   Services (`-DKONSOLL_FINDER_INTEGRATION=ON` turns them on), so they don't
   show up twice next to the installed app.
 

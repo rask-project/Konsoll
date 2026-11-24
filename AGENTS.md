@@ -207,15 +207,19 @@ Guidance for AI agents working in this repository.
   the bundle id (or `--editor [PATH…]`) and loads `EditorMain.qml`: one
   `EditorWindow.qml` per file or folder, a `TerminalManager` with one
   session started with `addCommandWorkspace` (`$SHELL -i -c 'exec nvim'`),
-  no tabs, splits, Finder Services or updater. Settings are shared (QSettings
+  no tabs, splits or updater. Its one Service, "Open in Neovim (Konsoll)"
+  (`cmake/EditorServices.plist.in`, a provider in `EditorMode.mm`), is
+  answered by the helper's own process; a request that comes before the
+  launch ends (`EditorMode::open`) keeps it from opening an empty buffer.
+  Settings are shared (QSettings
   is keyed by the application name). Closing a window or quitting types
   `:confirm qa` (`quitKeys`) and waits for nvim to exit; the quit guard
   cancels the first terminate. Konsoll registers the helper with Launch
   Services (`registerHelperApplication`). Its document types
   (`cmake/EditorDocumentTypes.plist.in`: the text types macOS declares, less
   those another app edits better, plus `UTImportedTypeDeclarations` for
-  extensions macOS has no type for) and Konsoll's Services and folder type
-  (`cmake/FinderKeys.plist.in`) enter the plists only with
+  extensions macOS has no type for), its Service, and Konsoll's Services
+  and folder type (`cmake/FinderKeys.plist.in`) enter the plists only with
   `KONSOLL_FINDER_INTEGRATION` (off in Debug: Launch Services lists every
   copy it has seen, so a development build would duplicate them).
   `makeDefaultEditor` uses `LSSetDefaultRoleHandlerForContentType`: NSWorkspace's
