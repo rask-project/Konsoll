@@ -6,6 +6,44 @@
     <description>Konsoll releases</description>
     <language>en</language>
     <item>
+      <title>Konsoll 3.7.1-beta.11</title>
+      <link>https://github.com/rask-project/Konsoll/releases/tag/v3.7.1-beta.11</link>
+      <sparkle:version>3.7.1.111</sparkle:version>
+      <sparkle:shortVersionString>3.7.1-beta.11</sparkle:shortVersionString>
+      <sparkle:channel>beta</sparkle:channel>
+      <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+      <pubDate>Tue, 24 Nov 2026 14:08:02 GMT</pubDate>
+      <description sparkle:format="markdown"><![CDATA[## What's new (beta)
+
+The stable release is still 3.7.0.
+
+### Added
+
+- **Open a folder in Neovim (Konsoll) from the Finder.** Right-click a
+  folder ▸ **Open in Neovim (Konsoll)** (under *Services ▸* or *Quick
+  Actions ▸* when the menu is long), or select a path as text in any app ▸
+  *App name ▸ Services*. If it doesn't show up, tick it in **System
+  Settings ▸ Keyboard ▸ Keyboard Shortcuts… ▸ Services ▸ Files and
+  Folders**, where it can also get a keyboard shortcut.
+
+### Since 3.7.1-beta.1
+
+- Konsoll's and Neovim (Konsoll)'s icons are drawn full size on macOS 26
+  and later — see the 3.7.1-beta.10 notes.
+- **Neovim (Konsoll)** and file transfers over SSH by dragging — see the
+  3.7.1-beta.9 notes.
+- File paths in the output are links, ⌥-click enters a folder, and ⌘ over
+  an image previews it — see the 3.7.1-beta.8 notes.
+- **New Tab** and **New Window** in the Dock icon's menu — see the
+  3.7.1-beta.7 notes.
+- **Shell ▸ New Agent in Worktree…** is listed only while the current pane
+  is in a git repository on this Mac — see the 3.7.1-beta.5 and
+  3.7.1-beta.6 notes.
+- Open Konsoll at a folder from the Finder — see the 3.7.1-beta.4 notes.
+]]></description>
+      <enclosure url="https://github.com/rask-project/Konsoll/releases/download/v3.7.1-beta.11/Konsoll-3.7.1-beta.11-arm64.zip" length="46801550" type="application/octet-stream" sparkle:edSignature="LvvdCD8kyvpP5LxfhdNX0DQRxOSTYNTk70R1oQjpox/ji9/gama427GwBfk5LWvZvvg0Oc6emHFDqjaISkyUBQ=="/>
+    </item>
+    <item>
       <title>Konsoll 3.7.1-beta.10</title>
       <link>https://github.com/rask-project/Konsoll/releases/tag/v3.7.1-beta.10</link>
       <sparkle:version>3.7.1.110</sparkle:version>
