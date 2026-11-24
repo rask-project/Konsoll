@@ -66,9 +66,7 @@ qt_standard_project_setup(REQUIRES 6.12)
 # AGENTS.md). Generator expression scopes it to Debug configs only.
 add_compile_options($<$<CONFIG:Debug>:-Wpadded>)
 
-set(MACOSX_BUNDLE_ICON_FILE konsoll.icns)
-set(app_icon_macos "${CMAKE_CURRENT_SOURCE_DIR}/assets/konsoll.icns")
-set_source_files_properties(${app_icon_macos} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+include(cmake/AppIcons.cmake)
 
 set(KONSOLL_CODESIGN_IDENTITY "" CACHE STRING
     "Developer ID Application identity used to sign the macOS app bundle")
@@ -111,8 +109,9 @@ endif()
 
 qt_add_executable(konsoll
     main.cpp
-    ${app_icon_macos}
+    ${KONSOLL_APP_ICON_FILES}
 )
+add_dependencies(konsoll konsoll-icons)
 
 qt_add_qml_module(konsoll
     URI konsoll
@@ -377,8 +376,8 @@ if(APPLE)
         COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:konsoll>" "${editor_bundle}/Contents/MacOS/konsoll"
         COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_BINARY_DIR}/EditorInfo.plist"
             "${editor_bundle}/Contents/Info.plist"
-        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/assets/konsoll-nvim.icns"
-            "${editor_bundle}/Contents/Resources/konsoll-nvim.icns"
+        COMMAND ${CMAKE_COMMAND} -E copy ${KONSOLL_EDITOR_ICON_FILES}
+            "${editor_bundle}/Contents/Resources/"
         COMMAND codesign --force --sign - "${editor_bundle}"
         COMMENT "Assembling ${KONSOLL_EDITOR_BUNDLE_NAME}.app"
         VERBATIM

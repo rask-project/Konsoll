@@ -27,9 +27,10 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
 
-	<!-- Konsoll's icon with the Neovim "N" (tools/make-editor-icon.swift). -->
+	<!-- assets/konsoll-nvim.icon (cmake/AppIcons.cmake). -->
 	<key>CFBundleIconFile</key>
-	<string>konsoll-nvim.icns</string>
+	<string>${KONSOLL_EDITOR_ICON_FILE}</string>
+	${KONSOLL_EDITOR_ICON_NAME_KEY}
 
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>

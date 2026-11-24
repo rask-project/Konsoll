@@ -1,6 +1,7 @@
 // Draws the Neovim (Konsoll) icon: Konsoll's icon with its ">_" prompt
-// replaced by the Neovim "N" (assets/neovim-mark.svg), then the .icns the
-// editor bundle uses (CMakeLists.txt).
+// replaced by the Neovim "N" (assets/neovim-mark.svg), then the legacy .icns
+// the editor bundle uses when actool is missing (cmake/AppIcons.cmake); with
+// Xcode the bundle's icon is assets/konsoll-nvim.icon.
 //
 //   swift tools/make-editor-icon.swift [CENTER_X CENTER_Y HEIGHT]
 //

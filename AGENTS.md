@@ -224,6 +224,12 @@ Guidance for AI agents working in this repository.
   at install `cmake/EditorHelper.cmake` copies the deployed executable,
   repoints its `@loader_path/../Frameworks` references to the outer bundle
   and writes a `qt.conf` (plugins, QML imports) before PruneBundle signs.
+- **App icons** (`cmake/AppIcons.cmake`): `assets/konsoll.icon` and
+  `assets/konsoll-nvim.icon` (Icon Composer documents: `icon.json` + SVG
+  layers) are compiled by `actool` into `Assets.car` (`CFBundleIconName`,
+  what macOS 26+ draws) plus a `.icns` for older systems. A plain `.icns`
+  whose shape is not the system's rounded square is shrunk onto a gray tile
+  there. Without Xcode the legacy `assets/*.icns` are used.
 - **Dock menu** (`DockMenu`, QML singleton): "New Tab" / "New Window"
   above AppKit's window list. Qt's `applicationDockMenu:` is lost with its
   delegate, so `AppQuitGuard`'s answers it with `DockMenu::menu()`;

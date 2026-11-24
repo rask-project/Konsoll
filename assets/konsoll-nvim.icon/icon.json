@@ -1,0 +1,26 @@
+{
+  "fill" : {
+    "automatic-gradient" : "extended-srgb:0.16000,0.17000,0.19000,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "image-name" : "neovim.svg",
+          "name" : "neovim"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : "shared"
+  }
+}

@@ -27,6 +27,7 @@
 
 	<key>CFBundleIconFile</key>
 	<string>${MACOSX_BUNDLE_ICON_FILE}</string>
+	${KONSOLL_ICON_NAME_KEY}
 
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
