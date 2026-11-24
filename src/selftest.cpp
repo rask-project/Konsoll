@@ -7,6 +7,7 @@
 #include "ImagePreview.h"
 #include "ShellFunctions.h"
 #include "SshIntegration.h"
+#include "SshTransfers.h"
 #include "TerminalManager.h"
 #include "TextLinks.h"
 #include "WindowRegistry.h"
@@ -1297,6 +1298,163 @@ void checkRemoteAgentReports(int &failures)
     );
 }
 
+// The directory a shell Konsoll set up over ssh reports (OSC 1337 ;
+// KonsollRemoteDir, with the connection's token) applies to the lines
+// printed after it, while the pane is remote; and the connection file
+// transfers open is the one the RemoteHost report names.
+void checkRemoteDirectory(int &failures)
+{
+    const QByteArray token = "session-token";
+    const QByteArray remoteToken = konsoll::remoteAgentToken(QString::fromLatin1(token)).toLatin1();
+    konsoll::Terminal terminal(6, 40, QString::fromLatin1(token));
+    terminal.setRemoteDirectoryToken(QString::fromLatin1(remoteToken));
+    terminal.write(
+        "\x1b]7;file://localhost/Users/me\alocal\r\n" + ("\x1b]1337;RemoteHost=" + token + ";me@box\a") +
+        ("\x1b]1337;KonsollRemoteDir=" + remoteToken + ";/srv/my%20app\a") + "app.txt\r\n" +
+        ("\x1b]1337;KonsollRemoteDir=forged;/etc\a") + "still\r\n" +
+        ("\x1b]1337;KonsollRemoteDir=" + remoteToken + ";\a") + "onward\r\n" +
+        ("\x1b]1337;RemoteHost=" + token + ";\a") + "\x1b]7;file://localhost/Users/me\aback\r\n"
+    );
+    check(
+        failures,
+        terminal.remoteDirectoryAtLine(0).isEmpty() &&
+            terminal.remoteDirectoryAtLine(1) == QStringLiteral("/srv/my app") &&
+            terminal.remoteDirectoryAtLine(2) == QStringLiteral("/srv/my app") &&
+            terminal.remoteDirectoryAtLine(3).isEmpty() && !terminal.directoryAtLine(3) &&
+            terminal.remoteDirectoryAtLine(4).isEmpty() && terminal.directoryAtLine(4) == QStringLiteral("/Users/me") &&
+            terminal.remoteDirectory().isEmpty(),
+        "ssh transfers: the remote directory by line, checked by token"
+    );
+
+    const auto arguments = [](std::initializer_list<const char *> words) {
+        QByteArray joined;
+        std::ranges::for_each(words, [&joined](const char *word) { joined += QByteArray(word) + '\0'; });
+        return QString::fromLatin1(joined.toBase64());
+    };
+    const auto typed =
+        konsoll::parseRemoteHost(QStringLiteral("box;args=") + arguments({"-J", "jump", "-o", "User=me", "--", "box"}));
+    const auto plain = konsoll::parseRemoteHost(QStringLiteral("me@box;port=2222"));
+    check(
+        failures,
+        typed && typed->destination == QStringLiteral("box") &&
+            typed->options ==
+                QStringList{
+                    QStringLiteral("-J"),
+                    QStringLiteral("jump"),
+                    QStringLiteral("-o"),
+                    QStringLiteral("User=me")
+                } &&
+            plain && plain->destination == QStringLiteral("me@box") &&
+            plain->options == QStringList{QStringLiteral("-p"), QStringLiteral("2222")} &&
+            !konsoll::parseRemoteHost({}) && !konsoll::parseRemoteHost(QStringLiteral("localhost")) &&
+            !konsoll::parseRemoteHost(QStringLiteral("box;port=99999")) &&
+            !konsoll::parseRemoteHost(QStringLiteral("-oProxyCommand=x")) &&
+            !konsoll::parseRemoteHost(QStringLiteral("box;args=") + arguments({"-v", "-oProxyCommand=x"})) &&
+            konsoll::remoteShellPath(QStringLiteral("~/it's")) == QStringLiteral("~/'it'\\''s'"),
+        "ssh transfers: the connection as typed"
+    );
+}
+
+// File transfers over a real connection, when the environment names one
+// (KONSOLL_SELFTEST_SSH_HOST, with KONSOLL_SELFTEST_SSH_CONFIG for its ssh
+// config file) that logs in with a key, on this machine: its paths are
+// this machine's. Names with spaces, quotes and glob characters, folders
+// both ways, a folder sent again merges into the first.
+void checkSshTransfers(int &failures)
+{
+    const QString host = qEnvironmentVariable("KONSOLL_SELFTEST_SSH_HOST");
+    if (host.isEmpty()) {
+        std::println("SKIP  ssh transfers: set KONSOLL_SELFTEST_SSH_HOST for a real connection");
+        return;
+    }
+    const QTemporaryDir dir;
+    const QString folder = dir.filePath(QStringLiteral("local/my dir [x]"));
+    const QString file = dir.filePath(QStringLiteral("local/weird *name's.txt"));
+    const QString remote = dir.filePath(QStringLiteral("remote"));
+    QDir().mkpath(folder + QStringLiteral("/sub"));
+    QDir().mkpath(remote);
+    QDir().mkpath(dir.filePath(QStringLiteral("dl")));
+    const auto write = [](const QString &path, const QByteArray &text) {
+        QFile out(path);
+        return out.open(QIODevice::WriteOnly) && out.write(text) == text.size();
+    };
+    const auto read = [](const QString &path) {
+        QFile in(path);
+        return in.open(QIODevice::ReadOnly) ? in.readAll() : QByteArray{};
+    };
+    const bool written = write(folder + QStringLiteral("/sub/a.txt"), "first") && write(file, "it's *");
+
+    QStringList options;
+    if (const QString config = qEnvironmentVariable("KONSOLL_SELFTEST_SSH_CONFIG"); !config.isEmpty()) {
+        options = {QStringLiteral("-F"), config};
+    }
+    konsoll::SshConnection connection(konsoll::SshTarget{.options = options, .destination = host});
+    int pending = 0;
+    QStringList errors;
+    const auto done = [&pending, &errors](const std::expected<void, QString> &result) {
+        --pending;
+        if (!result) {
+            errors << result.error();
+        }
+    };
+    const auto settle = [&pending](const char *what) {
+        return waitFor(what, [&pending]() { return pending == 0; }, 20000);
+    };
+    pending = 2;
+    connection.upload(file, remote, done);
+    connection.upload(folder, remote, done);
+    const bool sent = settle("ssh transfers: upload") && write(folder + QStringLiteral("/sub/a.txt"), "second");
+    pending = 1;
+    connection.upload(folder, remote, done);
+    const bool sentAgain = settle("ssh transfers: upload again");
+    check(
+        failures,
+        written && sent && sentAgain && errors.isEmpty() &&
+            read(remote + QStringLiteral("/weird *name's.txt")) == "it's *" &&
+            read(remote + QStringLiteral("/my dir [x]/sub/a.txt")) == "second" &&
+            !QFileInfo::exists(remote + QStringLiteral("/my dir [x]/my dir [x]")),
+        "ssh transfers: files and folders sent, a folder sent again merged"
+    );
+
+    const QString remoteFolder = remote + QStringLiteral("/my dir [x]");
+    const QString remoteFile = remote + QStringLiteral("/weird *name's.txt");
+    const QString missing = remote + QStringLiteral("/nope");
+    std::ranges::for_each(std::array{remoteFolder, remoteFile, missing}, [&connection](const QString &path) {
+        connection.probe(path);
+    });
+    const bool probed = waitFor(
+        "ssh transfers: probe",
+        [&]() {
+            return connection.cachedKind(remoteFolder) && connection.cachedKind(remoteFile) &&
+                   connection.cachedKind(missing);
+        },
+        20000
+    );
+    check(
+        failures,
+        probed && connection.cachedKind(remoteFolder) == konsoll::RemoteFileKind::Directory &&
+            connection.cachedKind(remoteFile) == konsoll::RemoteFileKind::File &&
+            connection.cachedKind(missing) == konsoll::RemoteFileKind::Missing,
+        "ssh transfers: what remote paths name"
+    );
+
+    pending = 3;
+    connection.download(remoteFolder, dir.filePath(QStringLiteral("dl/Copied Folder")), done);
+    connection.download(remoteFile, dir.filePath(QStringLiteral("dl/w.txt")), done);
+    connection.download(missing, dir.filePath(QStringLiteral("dl/nope")), done);
+    const bool fetched = settle("ssh transfers: download");
+    if (errors.size() != 1) {
+        std::println("  ssh transfers: {}", errors.join(QStringLiteral(" | ")).toStdString());
+    }
+    check(
+        failures,
+        fetched && errors.size() == 1 && read(dir.filePath(QStringLiteral("dl/Copied Folder/sub/a.txt"))) == "second" &&
+            read(dir.filePath(QStringLiteral("dl/w.txt"))) == "it's *" &&
+            !QFileInfo::exists(dir.filePath(QStringLiteral("dl/nope"))),
+        "ssh transfers: files and folders fetched, a missing one fails"
+    );
+}
+
 // Which ssh command lines konsoll-ssh.sh brings the integration to, in zsh
 // and bash, and the hosts Settings excludes.
 void checkSshCommandLines(int &failures)
@@ -1370,7 +1528,10 @@ void checkSshBootstrap(int &failures, TerminalManager &manager, const QString &s
     auto *shell = activeSession(manager);
     waitFor("ssh bootstrap: tab shell", [shell]() { return !shell->bufferText().isEmpty(); }, 15000);
     shell->writeText(
-        QStringLiteral("(export SHELL=%1 %3; eval \"$(cat %2) $KONSOLL_REMOTE_AGENT_TOKEN\"); echo BACK_HOME\n")
+        QStringLiteral(
+            "(printf '\\033]1337;RemoteHost=%s;me@box\\007' \"$KONSOLL_REMOTE_HOST_TOKEN\"; export SHELL=%1 %3; "
+            "eval \"$(cat %2) $KONSOLL_REMOTE_AGENT_TOKEN\"); echo BACK_HOME\n"
+        )
             .arg(
                 shellPath,
                 command.fileName(),
@@ -1403,6 +1564,19 @@ void checkSshBootstrap(int &failures, TerminalManager &manager, const QString &s
             "ssh bootstrap: `local` in the user's .zshrc keeps its value"
         );
     }
+
+    // The remote shell reports its directory (for transfers and links to
+    // the host's files), at once when a command line changes it.
+    shell->writeText(QStringLiteral("cd /tmp && echo MOVED\n"));
+    check(
+        failures,
+        started && waitFor(
+                       "ssh bootstrap: remote directory",
+                       [shell]() { return shell->remoteDirectory() == QStringLiteral("/tmp"); },
+                       10000
+                   ),
+        "ssh bootstrap: the remote shell reports its directory"
+    );
 
     // The user's startup files may put their own directories first.
     shell->writeText(QStringLiteral("PATH=%1:$PATH; claude\n").arg(dir.filePath(QStringLiteral("bin"))));
@@ -1452,6 +1626,15 @@ void checkSshBootstrap(int &failures, TerminalManager &manager, const QString &s
             15000
         ),
         "ssh bootstrap: the temporary directory goes with the shell"
+    );
+    check(
+        failures,
+        waitFor(
+            "ssh bootstrap: local again",
+            [shell]() { return shell->remoteDirectory().isEmpty(); },
+            10000
+        ),
+        "ssh bootstrap: no remote directory once back"
     );
     manager.closeSession(shell);
 }
@@ -1605,6 +1788,8 @@ int runSelfTest()
     checkWrappedLineText(failures);
     checkTextLinks(failures);
     checkRemoteAgentReports(failures);
+    checkRemoteDirectory(failures);
+    checkSshTransfers(failures);
     checkSshCommandLines(failures);
 
     // 1. Concurrent output: three sessions produce output at the same time.

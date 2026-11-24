@@ -156,6 +156,8 @@ qt_add_qml_module(konsoll
         src/BackgroundJobs.h
         src/DockMenu.h
         src/DockMenu.mm
+        src/FileDrag.h
+        src/FileDrag.mm
         src/FinderIntegration.h
         src/FinderIntegration.mm
         src/ImagePreview.h
@@ -178,6 +180,8 @@ qt_add_qml_module(konsoll
         src/ShellStartup.h
         src/SshIntegration.cpp
         src/SshIntegration.h
+        src/SshTransfers.cpp
+        src/SshTransfers.h
         src/ScrollbackSettings.cpp
         src/ScrollbackSettings.h
         src/Notifications.h
@@ -292,6 +296,7 @@ target_link_libraries(konsoll
     PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::QuickDialogs2 Qt6::Svg Qt6::Network
     "-framework QuartzCore"
     "-framework QuickLookThumbnailing"
+    "-framework UniformTypeIdentifiers"
     "-framework UserNotifications"
     "-framework Sparkle"
     z

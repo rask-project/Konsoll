@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 
+#include "FileDrag.h"
 #include "ImagePreview.h"
 #include "KeyEncoder.h"
 #include "NativeDialogs.h"
@@ -24,7 +25,10 @@
 #include <QImage>
 #include <QJsonObject>
 #include <QMetaObject>
+#include <QPointer>
 #include <QProcess>
+#include <QQuickItem>
+#include <QQuickWindow>
 #include <QSettings>
 #include <QUrl>
 #include <QUuid>
@@ -152,38 +156,6 @@ TerminalBackend::TerminalBackend(QObject *parent) : QObject(parent)
             scheduleFrame();
         }
     });
-    connect(&m_transferProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
-        const TransferJob completed = std::exchange(m_activeTransfer, TransferJob{});
-        if (completed.removeLocal()) {
-            QFile::remove(completed.localPath);
-        }
-        const bool succeeded = exitStatus == QProcess::NormalExit && exitCode == 0;
-        if (succeeded && m_state == SessionState::Running && completed.targetHost == m_remoteHost) {
-            QByteArray pastedPath = completed.remotePath.toUtf8();
-            if (m_terminal && m_terminal->bracketedPasteEnabled()) {
-                pastedPath.prepend("\x1b[200~");
-                pastedPath.append("\x1b[201~");
-            }
-            writeToPty(pastedPath);
-        } else if (!succeeded) {
-            qWarning().noquote() << "Konsoll: remote file transfer failed:" << m_transferProcess.errorString();
-            emit transferFailed(tr("Remote upload failed. Check SSH access and key-based authentication."));
-        }
-        startNextTransfer();
-    });
-    connect(&m_transferProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
-        if (error != QProcess::FailedToStart) {
-            return;
-        }
-        const TransferJob failed = std::exchange(m_activeTransfer, TransferJob{});
-        if (failed.removeLocal()) {
-            QFile::remove(failed.localPath);
-        }
-        qWarning().noquote() << "Konsoll: could not start scp:" << m_transferProcess.errorString();
-        emit transferFailed(tr("Could not start scp for the remote upload."));
-        startNextTransfer();
-    });
-
     const QPalette palette = QGuiApplication::palette();
     setSystemColors(palette.color(QPalette::Window), palette.color(QPalette::WindowText));
 }
@@ -324,6 +296,7 @@ void TerminalBackend::startWorker(const QString &workingDirectory, const QString
     }
 
     m_terminal = std::make_unique<Terminal>(m_rows, m_cols, m_remoteHostToken);
+    m_terminal->setRemoteDirectoryToken(remoteAgentToken(m_remoteHostToken));
     m_terminal->screen().setMaxScrollback(ScrollbackSettings::shared().maxLines());
     m_terminal->setDefaultColors(m_defaultFg, m_defaultBg);
     m_terminal->setCellPixelSize(m_cellPixelWidth, m_cellPixelHeight);
@@ -358,6 +331,7 @@ void TerminalBackend::startReplay(int cols, int rows, const QByteArray &bytes)
     m_cols = cols;
     m_rows = rows;
     m_terminal = std::make_unique<Terminal>(m_rows, m_cols, m_remoteHostToken);
+    m_terminal->setRemoteDirectoryToken(remoteAgentToken(m_remoteHostToken));
     m_terminal->screen().setMaxScrollback(ScrollbackSettings::shared().maxLines());
     m_terminal->setDefaultColors(m_defaultFg, m_defaultBg);
     m_terminal->setCellPixelSize(m_cellPixelWidth, m_cellPixelHeight);
@@ -489,6 +463,7 @@ void TerminalBackend::emitTerminalEvents()
         emit remoteHostChanged();
         m_terminal->clearRemoteHostDirty();
         updateProcessKind();
+        updateSshConnection();
     }
     if (m_terminal->pointerShapeDirty()) {
         m_terminal->clearPointerShapeDirty();
@@ -866,10 +841,13 @@ std::optional<TerminalBackend::TextLink> TerminalBackend::textLinkAt(int line, i
     }
 
     const std::optional<QString> directory = m_terminal->directoryAtLine(line);
+    // Output of the ssh host's shell names the host's files.
+    const QString remoteDirectory = directory ? QString{} : m_terminal->remoteDirectoryAtLine(line);
     const std::vector<TextLinkCandidate> candidates = textLinkCandidates(text, rowStart + col);
     std::optional<QUrl> target;
     const auto found = std::ranges::find_if(candidates, [&](const TextLinkCandidate &candidate) {
-        target = resolveTextLink(candidate, directory);
+        target = remoteDirectory.isEmpty() || candidate.isUrl() ? resolveTextLink(candidate, directory)
+                                                                : resolveRemoteTextLink(candidate, remoteDirectory);
         return target.has_value();
     });
     if (found == candidates.end() || !target) {
@@ -927,6 +905,85 @@ TerminalBackend::resolveTextLink(const TextLinkCandidate &candidate, const std::
         return std::nullopt;
     }
     return QUrl::fromLocalFile(QDir::cleanPath(path));
+}
+
+namespace
+{
+// Links to files on the ssh host (never opened, only dragged out).
+const QString &remoteLinkScheme()
+{
+    static const QString scheme = QStringLiteral("konsoll-remote");
+    return scheme;
+}
+} // namespace
+
+std::optional<QUrl>
+TerminalBackend::resolveRemoteTextLink(const TextLinkCandidate &candidate, const QString &remoteDirectory) const
+{
+    if (!m_ssh) {
+        return std::nullopt;
+    }
+    QString path = candidate.text;
+    if (path != u"~" && !path.startsWith(QStringLiteral("~/")) && !path.startsWith(u'/')) {
+        path = remoteDirectory + u'/' + path;
+    }
+    path = QDir::cleanPath(path);
+    const std::optional<RemoteFileKind> kind = m_ssh->cachedKind(path);
+    if (!kind) {
+        m_ssh->probe(path); // remoteLinksChanged follows
+        return std::nullopt;
+    }
+    if (*kind == RemoteFileKind::Missing || path == u"~") {
+        return std::nullopt;
+    }
+    QUrl url;
+    url.setScheme(remoteLinkScheme());
+    url.setPath(path);
+    return url;
+}
+
+bool TerminalBackend::dragLinkAt(int row, int col, QQuickItem *item)
+{
+    QWindow *const window = item != nullptr ? item->window() : nullptr;
+    const QUrl url(linkAt(row, col).value(QStringLiteral("target")).toString());
+    if (window == nullptr || !url.isValid()) {
+        return false;
+    }
+    if (url.isLocalFile()) {
+        return startFileDrag(window, url.toLocalFile());
+    }
+    if (url.scheme() != remoteLinkScheme() || !m_ssh) {
+        return false;
+    }
+    const QString remotePath = url.path();
+    const bool directory = m_ssh->cachedKind(remotePath) == RemoteFileKind::Directory;
+    const QString name = QFileInfo(remotePath).fileName();
+    const QString destination = m_ssh->target().destination;
+    const QPointer<TerminalBackend> self(this);
+    return startFilePromiseDrag(
+        window,
+        name,
+        directory,
+        [self, remotePath, name, destination](const QString &localPath, const FilePromiseDone &done) {
+            if (!self || !self->m_ssh || self->m_ssh->target().destination != destination) {
+                done(tr("The connection to %1 closed.").arg(destination));
+                return;
+            }
+            self->setTransferActivity(1, tr("Downloading %1 from %2…").arg(name, destination));
+            self->m_ssh
+                ->download(remotePath, localPath, [self, done, name](const std::expected<void, QString> &result) {
+                    if (self) {
+                        self->setTransferActivity(-1, {});
+                        if (result) {
+                            emit self->transferSucceeded(tr("Downloaded %1").arg(name));
+                        } else {
+                            emit self->transferFailed(tr("Download failed: %1").arg(result.error()));
+                        }
+                    }
+                    done(result ? QString{} : result.error());
+                });
+        }
+    );
 }
 
 // An OSC 8 hyperlink under the cell: the run of cells sharing its id on the
@@ -995,6 +1052,9 @@ bool TerminalBackend::openLinkAt(int row, int col)
         return false;
     }
     const QUrl url(link.value(QStringLiteral("target")).toString());
+    if (url.scheme() == remoteLinkScheme()) {
+        return false; // a file on the ssh host: only dragged out
+    }
     if (!url.isLocalFile()) {
         return QDesktopServices::openUrl(url);
     }
@@ -1865,108 +1925,118 @@ void TerminalBackend::transferImage(const QImage &image)
 
 void TerminalBackend::transferLocalFile(const QString &path, bool removeAfterTransfer)
 {
-    if (!m_worker) {
-        if (removeAfterTransfer) {
-            QFile::remove(path);
+    // A temporary file (a pasted image) is removed once sent.
+    const QString temporary = removeAfterTransfer ? path : QString{};
+    const auto removeTemporary = [&temporary] {
+        if (!temporary.isEmpty()) {
+            QFile::remove(temporary);
         }
-        return;
-    }
+    };
     const QFileInfo fileInfo(path);
-    if (!fileInfo.exists()) {
-        if (removeAfterTransfer) {
-            QFile::remove(path);
-        }
+    if (!m_worker || !fileInfo.exists()) {
+        removeTemporary();
         return;
     }
     if (m_remoteHost.isEmpty() || m_remoteHost == QStringLiteral("localhost")) {
         writeToPty(path.toUtf8());
-        if (removeAfterTransfer) {
-            QFile::remove(path);
-        }
+        removeTemporary();
         return;
     }
-
-    static const QRegularExpression remoteSpec(
-        QStringLiteral("^(?:(?<user>[A-Za-z0-9_.-]+)@)?(?<host>[A-Za-z0-9._-]+)(?:;port=(?<port>[0-9]{1,5}))?$")
-    );
-    const QRegularExpressionMatch remoteMatch = remoteSpec.match(m_remoteHost);
-    if (!remoteMatch.hasMatch()) {
+    if (!m_ssh) {
         qWarning() << "Konsoll: ignoring unsupported remote host in terminal metadata";
         emit transferFailed(tr("Could not identify the SSH host for this transfer."));
-        if (removeAfterTransfer) {
-            QFile::remove(path);
+        removeTemporary();
+        return;
+    }
+    // An agent (or a shell whose directory is unknown) reads the file where
+    // its path says: a fresh name in /tmp, typed once it is there. A shell
+    // gets it in its directory, like scp to ".".
+    const QString remoteDirectory = m_terminal->remoteDirectory();
+    const bool typePath = removeAfterTransfer || m_agentState != AgentState::None || remoteDirectory.isEmpty();
+    QString remotePath = remoteDirectory;
+    if (typePath) {
+        const QString suffix = fileInfo.isDir() ? QString{} : fileInfo.completeSuffix();
+        remotePath = QStringLiteral("/tmp/konsoll-%1%2")
+                         .arg(
+                             QUuid::createUuid().toString(QUuid::WithoutBraces),
+                             suffix.isEmpty() ? QString{} : QStringLiteral(".") + suffix
+                         );
+    }
+    const QString name = fileInfo.fileName();
+    const QString destination = m_ssh->target().destination;
+    setTransferActivity(1, tr("Uploading %1 to %2…").arg(name, destination));
+    // Answered from the event loop when the pane goes first.
+    const QPointer<TerminalBackend> self(this);
+    m_ssh->upload(
+        fileInfo.absoluteFilePath(),
+        remotePath,
+        [self,
+         temporary,
+         typedPath = typePath ? remotePath : QString{},
+         host = m_remoteHost,
+         done =
+             tr("Uploaded %1 to %2:%3").arg(name, destination, remotePath)](const std::expected<void, QString> &result
+        ) {
+            if (!temporary.isEmpty()) {
+                QFile::remove(temporary);
+            }
+            if (self) {
+                self->uploadFinished(result, typedPath, host, done);
+            }
         }
-        return;
-    }
-    const QString suffix = fileInfo.isDir() ? QString{} : fileInfo.completeSuffix();
-    const QString remoteName = QStringLiteral("konsoll-%1%2")
-                                   .arg(
-                                       QUuid::createUuid().toString(QUuid::WithoutBraces),
-                                       suffix.isEmpty() ? QString{} : QStringLiteral(".") + suffix
-                                   );
-    const QString remotePath = QStringLiteral("/tmp/") + remoteName;
-    const QString port = remoteMatch.captured(QStringLiteral("port"));
-    if (!port.isEmpty() && (port.toUInt() == 0 || port.toUInt() > 65535)) {
-        qWarning() << "Konsoll: ignoring invalid SSH port in terminal metadata";
-        emit transferFailed(tr("The SSH port reported by the shell is invalid."));
-        if (removeAfterTransfer) {
-            QFile::remove(path);
-        }
-        return;
-    }
-    const QString user = remoteMatch.captured(QStringLiteral("user"));
-    const QString host = remoteMatch.captured(QStringLiteral("host"));
-    const QString destination = (user.isEmpty() ? QString{} : user + QLatin1Char('@')) + host;
-    const TransferJob job{
-        .localPath = fileInfo.absoluteFilePath(),
-        .remotePath = remotePath,
-        .destination = destination,
-        .port = port,
-        .targetHost = m_remoteHost,
-        .flags = removeAfterTransfer ? 1u : 0u,
-    };
-    if (m_transferProcess.state() != QProcess::NotRunning || !m_transferQueue.isEmpty()) {
-        m_transferQueue.enqueue(job);
-        return;
-    }
-    m_transferQueue.enqueue(job);
-    startNextTransfer();
+    );
 }
 
-void TerminalBackend::startNextTransfer()
+// An upload ended: the path typed for an agent, or a notice.
+void TerminalBackend::uploadFinished(
+    const std::expected<void, QString> &result,
+    const QString &typedPath,
+    const QString &host,
+    const QString &notice
+)
 {
-    if (m_transferProcess.state() != QProcess::NotRunning || m_transferQueue.isEmpty()) {
+    setTransferActivity(-1, {});
+    if (!result) {
+        qWarning().noquote() << "Konsoll: remote file transfer failed:" << result.error();
+        emit transferFailed(tr("Upload failed: %1").arg(result.error()));
         return;
     }
-    while (!m_transferQueue.isEmpty()) {
-        m_activeTransfer = m_transferQueue.dequeue();
-        if (m_activeTransfer.targetHost == m_remoteHost) {
-            break;
-        }
-        if (m_activeTransfer.removeLocal()) {
-            QFile::remove(m_activeTransfer.localPath);
-        }
-        m_activeTransfer = {};
-    }
-    if (m_activeTransfer.localPath.isEmpty()) {
+    if (typedPath.isEmpty()) {
+        emit transferSucceeded(notice);
         return;
     }
-    QStringList arguments{QStringLiteral("-q")};
-    if (!m_activeTransfer.port.isEmpty()) {
-        arguments.append(QStringLiteral("-P"));
-        arguments.append(m_activeTransfer.port);
+    if (m_state == SessionState::Running && host == m_remoteHost) {
+        QByteArray pastedPath = typedPath.toUtf8();
+        if (m_terminal && m_terminal->bracketedPasteEnabled()) {
+            pastedPath.prepend("\x1b[200~");
+            pastedPath.append("\x1b[201~");
+        }
+        writeToPty(pastedPath);
     }
-    if (QFileInfo(m_activeTransfer.localPath).isDir()) {
-        arguments.append(QStringLiteral("-r"));
+}
+
+void TerminalBackend::setTransferActivity(int delta, const QString &status)
+{
+    m_activeTransfers = std::max<qint64>(0, m_activeTransfers + delta);
+    const QString shown = m_activeTransfers == 0 ? QString{} : (status.isEmpty() ? m_transferStatus : status);
+    if (shown != m_transferStatus) {
+        m_transferStatus = shown;
+        emit transferStatusChanged();
     }
-    arguments.append(QStringLiteral("-o"));
-    arguments.append(QStringLiteral("BatchMode=yes"));
-    arguments.append(QStringLiteral("-o"));
-    arguments.append(QStringLiteral("ConnectTimeout=10"));
-    arguments.append(QStringLiteral("--"));
-    arguments.append(m_activeTransfer.localPath);
-    arguments.append(m_activeTransfer.destination + QLatin1Char(':') + m_activeTransfer.remotePath);
-    m_transferProcess.start(QStringLiteral("scp"), arguments);
+}
+
+void TerminalBackend::updateSshConnection()
+{
+    const std::optional<SshTarget> target = parseRemoteHost(m_remoteHost);
+    if (!target) {
+        m_ssh.reset();
+        return;
+    }
+    if (m_ssh && m_ssh->target().destination == target->destination && m_ssh->target().options == target->options) {
+        return;
+    }
+    m_ssh = std::make_unique<SshConnection>(*target);
+    connect(m_ssh.get(), &SshConnection::kindsChanged, this, &TerminalBackend::remoteLinksChanged);
 }
 
 void TerminalBackend::pasteSelectionOrClipboard()

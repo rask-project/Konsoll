@@ -18,6 +18,7 @@
 #include "Notifications.h"
 #include "ShellFunctions.h"
 #include "SshIntegration.h"
+#include "SshTransfers.h"
 #include "TerminalBackend.h"
 #include "TerminalManager.h"
 #include "Updater.h"
@@ -39,6 +40,13 @@ int main(int argc, char *argv[])
     // Headless parser harness (tools/vtdrive.py): no Qt application needed.
     if (argc > 1 && std::string_view(argv[1]) == "--screen-dump") {
         return konsoll::runScreenDump(std::span(argv, static_cast<std::size_t>(argc)));
+    }
+
+    // ssh's SSH_ASKPASS for a file transfer's connection (SshTransfers.h):
+    // the question is answered in the running app.
+    if (argc == 2 && qEnvironmentVariableIsSet("KONSOLL_ASKPASS_TOKEN")) {
+        const QCoreApplication askpass(argc, argv);
+        return konsoll::runSshAskpass(QString::fromLocal8Bit(argv[1]));
     }
 
     // MCP server an agent starts (konsoll --mcp): stdio, no GUI.
@@ -114,6 +122,10 @@ int main(int argc, char *argv[])
     konsoll::AgentCommands agentCommands(backgroundJobs.get());
     konsoll::AgentStatusServer::instance().setRequestHandler(
         [&agentCommands](const QJsonObject &request, const konsoll::AgentStatusServer::Reply &reply) {
+            if (konsoll::SshAskpass::isRequest(request)) {
+                konsoll::SshAskpass::shared().handle(request, reply);
+                return;
+            }
             agentCommands.handle(request, reply);
         }
     );

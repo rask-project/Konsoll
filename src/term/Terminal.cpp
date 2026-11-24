@@ -1641,6 +1641,10 @@ void Terminal::handleOsc(const QByteArray &body)
         handleOscRemoteHost(body);
         return;
     }
+    if (body.startsWith("1337;KonsollRemoteDir=")) {
+        handleOscRemoteDirectory(body);
+        return;
+    }
     if (body.startsWith("1337;KonsollAgent=")) {
         // Checked by TerminalBackend, which knows the token.
         m_requests.push_back(TerminalRequest{
@@ -1830,7 +1834,32 @@ void Terminal::handleOscRemoteHost(const QByteArray &body)
     const QString host = QString::fromUtf8(payload.mid(separator + 1));
     if (host != m_remoteHost) {
         m_remoteHost = host;
+        // Another connection (or none): its shell reports its own directory.
+        m_remoteDirectory.clear();
         m_extraFlags |= RemoteHostDirty;
+        markDirectory();
+    }
+}
+
+// OSC 1337 ; KonsollRemoteDir=<token>;<path, percent-encoded>: the
+// directory of a shell Konsoll set up over ssh (empty: unknown, as while
+// that shell runs another ssh). The token keeps printed text (cat of a
+// file) from faking it.
+void Terminal::handleOscRemoteDirectory(const QByteArray &body)
+{
+    constexpr qsizetype kMaxPath = 4096;
+    const QByteArray payload = body.mid(sizeof("1337;KonsollRemoteDir=") - 1);
+    const qsizetype separator = payload.indexOf(';');
+    if (m_remoteDirectoryToken.isEmpty() || separator < 0 ||
+        payload.first(separator) != m_remoteDirectoryToken.toUtf8()) {
+        return;
+    }
+    const QString path = QUrl::fromPercentEncoding(payload.mid(separator + 1));
+    if ((!path.isEmpty() && !path.startsWith(QLatin1Char('/'))) || path.size() > kMaxPath) {
+        return;
+    }
+    if (path != m_remoteDirectory) {
+        m_remoteDirectory = path;
         markDirectory();
     }
 }
@@ -2061,6 +2090,7 @@ void Terminal::markDirectory()
         return;
     }
     const QString directory = remote ? QString{} : m_currentDirectory;
+    const QString remoteDirectory = remote ? m_remoteDirectory : QString{};
     const long long anchor = m_screen.rowAnchor(m_screen.cursorRow());
     // Marks at or below the cursor row belong to lines being written over
     // (several reports at one prompt, a cleared screen): this one replaces
@@ -2069,8 +2099,9 @@ void Terminal::markDirectory()
         std::ranges::lower_bound(m_directoryMarks, anchor, {}, &DirectoryMark::anchor),
         m_directoryMarks.end()
     );
-    if (m_directoryMarks.empty() || m_directoryMarks.back().directory != directory) {
-        m_directoryMarks.push_back({.anchor = anchor, .directory = directory});
+    if (m_directoryMarks.empty() || m_directoryMarks.back().directory != directory ||
+        m_directoryMarks.back().remoteDirectory != remoteDirectory) {
+        m_directoryMarks.push_back({.anchor = anchor, .directory = directory, .remoteDirectory = remoteDirectory});
     }
     // Marks above the history are useless, except the last one of them,
     // which still covers the oldest lines.
@@ -2095,6 +2126,17 @@ std::optional<QString> Terminal::directoryAtLine(int index) const
     // directory the shell reported.
     const DirectoryMark &mark = after == m_directoryMarks.begin() ? m_directoryMarks.front() : *std::prev(after);
     return mark.directory.isEmpty() ? std::nullopt : std::optional<QString>(mark.directory);
+}
+
+QString Terminal::remoteDirectoryAtLine(int index) const
+{
+    if (m_screen.inAltScreen() || m_directoryMarks.empty()) {
+        return remoteDirectory();
+    }
+    const auto after =
+        std::ranges::upper_bound(m_directoryMarks, m_screen.lineAnchor(index), {}, &DirectoryMark::anchor);
+    const DirectoryMark &mark = after == m_directoryMarks.begin() ? m_directoryMarks.front() : *std::prev(after);
+    return mark.directory.isEmpty() ? mark.remoteDirectory : QString{};
 }
 
 void Terminal::followReflow()

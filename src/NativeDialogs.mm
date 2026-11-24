@@ -89,6 +89,39 @@ bool NativeDialogs::confirmClipboardRead(const QString &title)
     return allowed;
 }
 
+std::optional<QString> NativeDialogs::answerSshPrompt(const QString &host, const QString &prompt)
+{
+    // A new host key: ssh asks "Are you sure you want to continue
+    // connecting (yes/no/[fingerprint])?" after showing the fingerprint.
+    const bool confirmation = prompt.contains(QStringLiteral("(yes/no"));
+    NSAlert *const alert = [[NSAlert alloc] init];
+    [alert setAlertStyle:confirmation ? NSAlertStyleWarning : NSAlertStyleInformational];
+    [alert setMessageText:confirmation
+                              ? [NSString stringWithFormat:@"Connect to “%@” for file transfers?", host.toNSString()]
+                              : [NSString stringWithFormat:@"Sign in to “%@” for file transfers", host.toNSString()]];
+    [alert setInformativeText:confirmation ? prompt.trimmed().toNSString()
+                                           : [NSString stringWithFormat:@"%@\n\nKonsoll passes it to ssh and keeps it "
+                                                                        @"nowhere.",
+                                                                        prompt.trimmed().toNSString()]];
+    [alert addButtonWithTitle:confirmation ? @"Connect" : @"OK"];
+    [alert addButtonWithTitle:@"Cancel"];
+    NSSecureTextField *const field =
+        confirmation ? nil : [[NSSecureTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
+    if (field != nil) {
+        [alert setAccessoryView:field];
+        [[alert window] setInitialFirstResponder:field];
+    }
+    [NSApp activateIgnoringOtherApps:YES];
+    const bool accepted = [alert runModal] == NSAlertFirstButtonReturn;
+    std::optional<QString> answer;
+    if (accepted) {
+        answer = field != nil ? toQString([field stringValue]) : QStringLiteral("yes");
+    }
+    [field release];
+    [alert release];
+    return answer;
+}
+
 bool NativeDialogs::confirmQuit(int sessionCount)
 {
     NSAlert *const alert = [[NSAlert alloc] init];

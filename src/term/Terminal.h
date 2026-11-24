@@ -83,6 +83,15 @@ public:
     // reflow. Empty when no directory is known yet; nullopt for output of a
     // remote shell (ssh, a foreign OSC 7 host), whose paths are not local.
     std::optional<QString> directoryAtLine(int index) const;
+    // The remote shell's directory on line `index` when that line is output
+    // of a shell Konsoll set up over ssh (OSC 1337 ; KonsollRemoteDir, which
+    // carries the connection's token); empty when unknown or local.
+    QString remoteDirectoryAtLine(int index) const;
+    // The remote shell's current directory (empty: unknown, or local).
+    QString remoteDirectory() const { return directoryIsRemote() ? m_remoteDirectory : QString{}; }
+    // The token a remote shell's KonsollRemoteDir report must carry
+    // (remoteAgentToken of the session's token; empty: none accepted).
+    void setRemoteDirectoryToken(const QString &token) { m_remoteDirectoryToken = token; }
     // The foreground job is a remote client (ssh, mosh, ...): what it prints
     // names the remote host's files. Set by the session from its process
     // poll, which also catches ssh started without the shell integration.
@@ -252,10 +261,12 @@ private:
     static constexpr std::uint64_t ForeignDirectoryHost = std::uint64_t{1} << 42; // OSC 7 from another host
 
     // From `anchor` (Screen::lineAnchor) on, output was printed in
-    // `directory`; empty for a remote shell. Sorted by anchor.
+    // `directory`; empty for a remote shell, whose own directory (when it
+    // reports one) is `remoteDirectory`. Sorted by anchor.
     struct DirectoryMark {
         long long anchor{0};
         QString directory;
+        QString remoteDirectory;
     };
 
     // DECSC state beyond the cursor position (which Screen saves): the pen
@@ -327,6 +338,7 @@ private:
     void handleSgr(const ParamGroups &groups);
     void handleOsc(const QByteArray &body);
     void handleOscRemoteHost(const QByteArray &body);
+    void handleOscRemoteDirectory(const QByteArray &body);
     void handleOscClipboard(const QByteArray &body);
     void handleOscCurrentDirectory(const QByteArray &body);
     void setCurrentDirectory(const QString &path);
@@ -434,6 +446,9 @@ private:
     // OSC 22 pointer shape stack (CSS / X cursor names); the top is shown.
     QList<QByteArray> m_pointerShapes;
     QString m_remoteHostToken;
+    // KonsollRemoteDir: the token it must carry and the directory it gave.
+    QString m_remoteDirectoryToken;
+    QString m_remoteDirectory;
     QString m_clipboardText;
     // SGR style (and OSC 8 link) applied to subsequent characters; `ch` unused.
     Cell m_pen;

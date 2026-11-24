@@ -96,6 +96,28 @@ Guidance for AI agents working in this repository.
   repository (`isInGitRepository`, stats only; not a `remote` pane): native
   menus ignore `MenuItem.visible`.
   The script is zsh (`zsocket`): `nc` can linger after the write.
+- **SSH file transfers** (`SshTransfers`): `_konsoll_ssh` reports the ssh
+  arguments as typed (`RemoteHost=<token>;<target>;args=<base64, NUL-
+  separated>`, `parseRemoteHost`), and the shell set up over ssh reports
+  its directory (`OSC 1337 ; KonsollRemoteDir=<remoteAgentToken>;<path>`,
+  kept in the directory marks as `remoteDirectory`). Each `TerminalBackend`
+  over ssh has one `SshConnection`: its own master (`ssh -M -f -N`,
+  ControlPersist 10 min, a socket in `$TMPDIR`, closed with `-O exit`) opened
+  with the user's options; transfers are `sftp -b -` over it (paths escaped,
+  never quoted: sftp keeps a backslash inside quotes), existence checks one
+  `ssh … sh -s` per batch. A master that needs a password is only opened
+  for a transfer: `SSH_ASKPASS` is Konsoll itself (`KONSOLL_ASKPASS_TOKEN`
+  set: `runSshAskpass`), asking the app over the agent socket
+  (`SshAskpass`, a token per connecting master) and
+  `NativeDialogs::answerSshPrompt`. Pointer moves probe quietly
+  (BatchMode) and never prompt. Drops go into `remoteDirectory()`, or to
+  `/tmp` with the path typed for an agent or an unknown directory.
+  Cmd+click opens on release so that Cmd+drag can drag a link
+  (`dragLinkAt`, `FileDrag.mm`): a local file as its URL, a remote one
+  (`konsoll-remote:` links, shown once the host said it exists) as an
+  `NSFilePromiseProvider` fetched with `sftp get -R` where it is dropped.
+  `--selftest` runs real transfers when `KONSOLL_SELFTEST_SSH_HOST` (and
+  `KONSOLL_SELFTEST_SSH_CONFIG`) name a key-only host on this machine.
 - **Agent integrations** (`AgentIntegrations`, QML singleton, Settings ▸ AI
   Agents): merges Konsoll's hooks into Claude Code / Codex / Qwen Code JSON
   settings (all use `{"hooks": {Event: [{matcher, hooks: [command]}]}}`;

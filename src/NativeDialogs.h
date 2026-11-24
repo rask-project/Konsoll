@@ -4,6 +4,8 @@
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
+#include <optional>
+
 namespace konsoll
 {
 
@@ -37,6 +39,10 @@ public:
     // Asks whether the program in the terminal titled `title` may read the
     // clipboard (OSC 52 query). True if the user allowed it.
     static bool confirmClipboardRead(const QString &title);
+    // ssh's question `prompt` while Konsoll connects to `host` for a file
+    // transfer (SshTransfers.h): a password, passphrase or code typed in a
+    // secure field, or "yes" to a new host key. nullopt when cancelled.
+    static std::optional<QString> answerSshPrompt(const QString &host, const QString &prompt);
 };
 
 } // namespace konsoll

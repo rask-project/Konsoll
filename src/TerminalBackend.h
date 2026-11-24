@@ -2,6 +2,7 @@
 
 #include "AgentStatus.h"
 #include "ProcessKind.h"
+#include "SshTransfers.h"
 #include "TextLinks.h"
 #include "pty/PtyWorker.h"
 #include "term/Terminal.h"
@@ -10,8 +11,6 @@
 #include <QElapsedTimer>
 #include <QJsonArray>
 #include <QObject>
-#include <QProcess>
-#include <QQueue>
 #include <QRegularExpression>
 #include <QThread>
 #include <QTimer>
@@ -26,6 +25,7 @@
 #include <vector>
 
 class QImage;
+class QQuickItem;
 
 namespace konsoll
 {
@@ -53,6 +53,8 @@ class TerminalBackend : public QObject
     // the shell's directory, else the program's title.
     Q_PROPERTY(QString displayTitle READ displayTitle NOTIFY displayTitleChanged)
     Q_PROPERTY(QString remoteHost READ remoteHost NOTIFY remoteHostChanged)
+    // What is being sent to or fetched from the ssh host (empty: nothing).
+    Q_PROPERTY(QString transferStatus READ transferStatus NOTIFY transferStatusChanged)
     Q_PROPERTY(int rows READ rows NOTIFY sizeChanged)
     Q_PROPERTY(int cols READ cols NOTIFY sizeChanged)
     Q_PROPERTY(int scrollOffset READ scrollOffset NOTIFY scrollOffsetChanged)
@@ -149,7 +151,16 @@ public:
     // The preview image source (ImagePreview.h) for a link target from
     // linkAt: a local image, PDF or video; empty otherwise.
     Q_INVOKABLE QString previewSourceFor(const QString &target) const;
+    // A file or folder dropped on the pane: its path typed in a local
+    // shell; over ssh, sent to the host (SshTransfers.h) -- into the remote
+    // shell's directory, or to /tmp with the path typed for an agent (or
+    // when that directory is unknown).
     Q_INVOKABLE void transferFile(const QUrl &url);
+    // Cmd+drag on a link to a file (linkAt): drags it out, a local file as
+    // itself, a file on the ssh host as a promise the Finder has fetched
+    // where it is dropped. `item` is the view the mouse drags in. False
+    // when there is no file link there.
+    Q_INVOKABLE bool dragLinkAt(int row, int col, QQuickItem *item);
 
     // Resize the terminal (cols x rows), driven by the QML view.
     Q_INVOKABLE void resize(int cols, int rows);
@@ -266,6 +277,10 @@ public:
     QString currentDirectory() const { return m_currentDirectory; }
     QString displayTitle() const;
     QString remoteHost() const { return m_remoteHost; }
+    QString transferStatus() const { return m_transferStatus; }
+    // The directory of the shell Konsoll set up over ssh (empty: local, or
+    // not reported).
+    QString remoteDirectory() const { return m_terminal ? m_terminal->remoteDirectory() : QString{}; }
     int rows() const { return m_rows; }
     int cols() const { return m_cols; }
     int scrollOffset() const { return m_terminal ? m_terminal->screen().scrollOffset() : 0; }
@@ -358,6 +373,10 @@ signals:
     void outputActivity();
     void pointerShapeChanged();
     void transferFailed(const QString &message);
+    void transferSucceeded(const QString &message);
+    void transferStatusChanged();
+    // Files on the ssh host were checked: links to them may have appeared.
+    void remoteLinksChanged();
     // A Cmd+clicked file opens in the terminal editor of Settings >
     // Terminal: `command` is to be typed in a new tab in `directory`.
     void editorTabRequested(const QString &title, const QString &directory, const QString &command);
@@ -397,7 +416,15 @@ private:
     void editorShortcuts(int key);
     void transferLocalFile(const QString &path, bool removeAfterTransfer = false);
     void transferImage(const QImage &image);
-    void startNextTransfer();
+    // The ssh connection the RemoteHost report names (none for a local shell).
+    void updateSshConnection();
+    void setTransferActivity(int delta, const QString &status);
+    void uploadFinished(
+        const std::expected<void, QString> &result,
+        const QString &typedPath,
+        const QString &host,
+        const QString &notice
+    );
     void clearTextSelectionAndHighlight();
     void sendMouseReport(int button, int row, int col, int event, int modifiers);
     QByteArray keyOutputBytes(int key, const QString &text, unsigned int mods, bool keypad, int eventType) const;
@@ -416,6 +443,10 @@ private:
     bool atEmptyPrompt() const;
     static std::optional<QUrl>
     resolveTextLink(const TextLinkCandidate &candidate, const std::optional<QString> &directory);
+    // A path in output of the ssh host's shell (printed in
+    // `remoteDirectory`): a konsoll-remote: link once the host said it
+    // exists; asks it in the background otherwise.
+    std::optional<QUrl> resolveRemoteTextLink(const TextLinkCandidate &candidate, const QString &remoteDirectory) const;
     // Route PTY I/O to the session worker via a queued call (never touch the
     // master descriptor from this thread).
     void writeToPty(const QByteArray &data);
@@ -441,24 +472,11 @@ private:
         int end;
     };
 
-    struct TransferJob {
-        QString localPath;
-        QString remotePath;
-        QString destination;
-        QString port;
-        QString targetHost;
-        std::uint64_t flags{0};
-
-        bool removeLocal() const { return (flags & 1u) != 0; }
-    };
-
     std::unique_ptr<QThread> m_thread;
     std::unique_ptr<PtyWorker> m_worker;
     std::unique_ptr<Terminal> m_terminal;
-    QProcess m_transferProcess;
+    std::unique_ptr<SshConnection> m_ssh;
     QVector<SearchMatch> m_searchMatches;
-    QQueue<TransferJob> m_transferQueue;
-    TransferJob m_activeTransfer;
 
     QTimer m_frameTimer;
     QTimer m_animationTimer;     // runs while a kitty image animation plays
@@ -472,9 +490,11 @@ private:
     QString m_agentMessage;
     QString m_agentTask;
     QString m_readRequest;
+    QString m_transferStatus;
     std::function<void(ReadAnswer)> m_readAnswer;
     qint64 m_agentSince{0};
     qint64 m_paneId{0};
+    qint64 m_activeTransfers{0};
     AbsPos m_selAnchor{.line = -1, .col = 0};
     AbsPos m_selCurrent{.line = -1, .col = 0};
     int m_highlightStart{-1};

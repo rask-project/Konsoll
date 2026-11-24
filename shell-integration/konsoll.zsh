@@ -29,14 +29,20 @@ function _konsoll_report_directory() {
     encoded_path=${encoded_path// /%20}
     encoded_path=${encoded_path//\#/%23}
     encoded_path=${encoded_path//\?/%3F}
-    printf '\e]7;file://localhost%s\a' "$encoded_path"
+    # Over ssh (konsoll-ssh.sh) the directory is the host's: reported with
+    # the connection's token, for file transfers and links to its files.
+    if [[ -n $KONSOLL_REMOTE ]]; then
+        printf '\e]1337;KonsollRemoteDir=%s;%s\a' "$KONSOLL_REMOTE_AGENT_TOKEN" "$encoded_path"
+    else
+        printf '\e]7;file://localhost%s\a' "$encoded_path"
+    fi
 }
 
 # A cd inside a command line ("cd src && ls") reports the directory at once,
 # so that the output after it resolves its paths there. Only to the
 # terminal: never into "$(cd x && pwd)" or a redirection.
 function _konsoll_chpwd() {
-    [[ -z $KONSOLL_REMOTE && -t 1 ]] && (( _KONSOLL_COMMAND_ACTIVE )) && _konsoll_report_directory
+    [[ -t 1 ]] && (( _KONSOLL_COMMAND_ACTIVE )) && _konsoll_report_directory
     return 0
 }
 
@@ -50,8 +56,8 @@ function _konsoll_precmd() {
     # Mac, and the host is the one the Mac connected to.
     if [[ -z $KONSOLL_REMOTE ]]; then
         printf '\e]1337;RemoteHost=%s;\a' "$KONSOLL_REMOTE_HOST_TOKEN"
-        _konsoll_report_directory
     fi
+    _konsoll_report_directory
     printf '\e]133;A\a'
     if [[ "$PROMPT" != *"$_KONSOLL_PROMPT_MARKER" ]]; then
         PROMPT+=$_KONSOLL_PROMPT_MARKER
@@ -66,6 +72,11 @@ function _konsoll_preexec() {
     local ssh_port=""
     local ssh_user=""
     [[ ${command_words[1]} == command || ${command_words[1]} == sudo ]] && (( command_index++ ))
+    # Over ssh, a connection onward prints another host's files: its
+    # directory is unknown until the next prompt here.
+    if [[ -n $KONSOLL_REMOTE && ${command_words[command_index]##*/} == (ssh|mosh|telnet|et) ]]; then
+        printf '\e]1337;KonsollRemoteDir=%s;\a' "$KONSOLL_REMOTE_AGENT_TOKEN"
+    fi
     if [[ -z $KONSOLL_REMOTE && ${command_words[command_index]##*/} == ssh ]]; then
         local target_index=$((command_index + 1))
         while (( target_index <= ${#command_words} )); do

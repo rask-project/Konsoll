@@ -296,8 +296,18 @@ at launch.
   the current match and the total, ↩ / ⇧↩ jump to the next / previous one
   (the view scrolls to it), `.*` switches to regular expressions and Esc
   closes the bar.
-- **Images and files.** Pasting an image or dropping files into an SSH
-  session uploads them to the remote host and inserts their remote path.
+- **Files over SSH.** Dropping files or folders from the Finder on an SSH
+  session uploads them into the remote shell's current directory, replacing
+  files of the same name like `scp`. For an AI agent running there (or when
+  the shell's directory is unknown) they go to `/tmp` and their remote path
+  is typed instead, like a pasted image. **⌘-drag** a file or folder named
+  in the output (`ls`, `find`, a path) to the Finder to download it; local
+  files drag out the same way, and ⌘-click still opens them. Transfers use
+  `sftp` over a connection of Konsoll's own, opened the way your `ssh` was
+  typed (aliases, `-J`, `-i`, `-o`): one sign-in per connection, with a
+  password, passphrase or new host key asked in a dialog and never stored.
+  In full-screen programs (Neovim) names resolve against the shell's
+  directory, so absolute paths and names from it work.
 - The right-click menu inside a pane has Split, Save Buffer or Selection…,
   Copy, Paste, Select All and Clear Buffer.
 

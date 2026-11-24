@@ -27,6 +27,10 @@ Item {
     property var session: null
     property bool active: false
     property string transferError: ""
+    // A finished transfer, shown for a moment; an error wins, then what is
+    // being transferred now.
+    property string transferNotice: ""
+    readonly property string transferBanner: transferError.length > 0 ? transferError : (session && session.transferStatus.length > 0 ? session.transferStatus : transferNotice)
     property real scrollAccumulator: 0
     property real horizontalAccumulator: 0
     property bool _syncingScrollBar: false
@@ -218,6 +222,16 @@ Item {
             transferErrorTimer.restart();
         }
 
+        function onTransferSucceeded(message) {
+            view.transferNotice = message;
+            transferNoticeTimer.restart();
+        }
+
+        // The host answered whether files exist: a link may be under Cmd now.
+        function onRemoteLinksChanged() {
+            selectionArea.refreshLinkHover();
+        }
+
         // A Cmd+clicked file opens in the terminal editor of Settings > Terminal.
         function onEditorTabRequested(title, directory, command) {
             view.sessionManager.addWorkspaceRunning(title, directory, command);
@@ -229,16 +243,16 @@ Item {
         anchors.right: parent.right
         anchors.margins: 14
         z: 10
-        visible: view.transferError.length > 0
+        visible: view.transferBanner.length > 0
         radius: 6
-        color: "#cc7f1d1d"
+        color: view.transferError.length > 0 ? "#cc7f1d1d" : "#cc1f2937"
         implicitWidth: transferErrorText.implicitWidth + 24
         implicitHeight: transferErrorText.implicitHeight + 16
 
         Text {
             id: transferErrorText
             anchors.centerIn: parent
-            text: view.transferError
+            text: view.transferBanner
             color: "white"
             Accessible.role: Accessible.AlertMessage
             Accessible.name: text
@@ -249,6 +263,12 @@ Item {
         id: transferErrorTimer
         interval: 6000
         onTriggered: view.transferError = ""
+    }
+
+    Timer {
+        id: transferNoticeTimer
+        interval: 4000
+        onTriggered: view.transferNotice = ""
     }
 
     WheelHandler {
@@ -368,6 +388,8 @@ Item {
         property bool _cancelOnly: false
         property bool _activationClick: false
         property bool _middlePaste: false
+        // Cmd pressed on a link: a click opens it, a drag drags its file.
+        property bool _linkPress: false
         property bool _pointerInside: false
         property bool _linkModifierDown: false
         // Option alone: only folders Option+click would cd into are links.
@@ -523,9 +545,16 @@ Item {
                     return;
                 }
             }
+            // Cmd+click opens a link on release; Cmd+drag drags its file out.
             if (mouse.button === Qt.LeftButton && (mouse.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0) {
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
-                if (view.session.openLinkAt(cell[1], cell[0])) {
+                const link = view.session.linkAt(cell[1], cell[0]);
+                if (link && link.target !== undefined) {
+                    selectionArea._linkPress = true;
+                    selectionArea._pressRow = cell[1];
+                    selectionArea._pressCol = cell[0];
+                    selectionArea._pressX = mouse.x;
+                    selectionArea._pressY = mouse.y;
                     mouse.accepted = true;
                     return;
                 }
@@ -579,6 +608,14 @@ Item {
             selectionArea.updateLinkHover(mouse.modifiers);
             if (selectionArea._activationClick || selectionArea._middlePaste)
                 return;
+            if (selectionArea._linkPress) {
+                if (Math.abs(mouse.x - selectionArea._pressX) >= 4 || Math.abs(mouse.y - selectionArea._pressY) >= 4) {
+                    selectionArea._linkPress = false;
+                    selectionArea.hidePreview();
+                    view.session.dragLinkAt(selectionArea._pressRow, selectionArea._pressCol, selectionArea);
+                }
+                return;
+            }
             if (view.session.mouseTracking && (mouse.buttons !== Qt.NoButton || view.session.mouseMotionTracking)) {
                 const button = (mouse.buttons & Qt.LeftButton) ? Qt.LeftButton : (mouse.buttons & Qt.MiddleButton) ? Qt.MiddleButton : (mouse.buttons & Qt.RightButton) ? Qt.RightButton : Qt.NoButton;
                 const cell = selectionArea.cellAt(mouse.x, mouse.y);
@@ -610,6 +647,12 @@ Item {
             }
             if (selectionArea._activationClick) {
                 selectionArea._activationClick = false;
+                mouse.accepted = true;
+                return;
+            }
+            if (selectionArea._linkPress) {
+                selectionArea._linkPress = false;
+                view.session.openLinkAt(selectionArea._pressRow, selectionArea._pressCol);
                 mouse.accepted = true;
                 return;
             }

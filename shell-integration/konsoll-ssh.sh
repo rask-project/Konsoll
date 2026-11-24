@@ -88,6 +88,11 @@ _konsoll_ssh() {
     if [ -r "$remote_command" ] && [ -n "${KONSOLL_REMOTE_AGENT_TOKEN-}" ] && [ -t 0 ] && [ -t 1 ] &&
         _konsoll_ssh_interactive "$@" && ! _konsoll_ssh_excluded "$_KONSOLL_SSH_TARGET" &&
         _konsoll_ssh_plain_config "$@"; then
+        # The connection as typed (options and destination, NUL-separated):
+        # Konsoll's file transfers open theirs the same way (aliases, -J,
+        # -i, -o ...).
+        printf '\033]1337;RemoteHost=%s;%s;args=%s\007' "$KONSOLL_REMOTE_HOST_TOKEN" "$_KONSOLL_SSH_TARGET" \
+            "$(printf '%s\0' "$@" | /usr/bin/base64 | tr -d '\n')"
         command ssh -t "$@" "$(cat "$remote_command") $KONSOLL_REMOTE_AGENT_TOKEN"
     else
         command ssh "$@"

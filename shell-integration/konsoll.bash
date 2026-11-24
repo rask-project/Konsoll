@@ -48,6 +48,10 @@ _konsoll_prompt_command() {
     if [[ -z "${KONSOLL_REMOTE-}" ]]; then
         printf '\e]1337;RemoteHost=%s;\a' "$KONSOLL_REMOTE_HOST_TOKEN"
         printf '\e]7;file://localhost%s\a' "$encoded_path"
+    else
+        # The host's directory, with the connection's token: for file
+        # transfers and links to its files.
+        printf '\e]1337;KonsollRemoteDir=%s;%s\a' "$KONSOLL_REMOTE_AGENT_TOKEN" "$encoded_path"
     fi
     printf '\e]133;A\a'
     if [[ "$PS1" != *"$_KONSOLL_PROMPT_MARKER" ]]; then
